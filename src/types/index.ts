@@ -1,0 +1,40 @@
+/** Metadata for a single file/directory in a processed repository. */
+export interface FileRecord {
+  /** d = directory, t = text file, b = binary file */
+  file_type: "d" | "t" | "b";
+  /** File name with path relative to the repo root */
+  file_name: string;
+  /** Size in bytes */
+  file_size: number;
+  /** ISO-8601 date of last modification according to git */
+  file_update_date: string;
+  /** SHA of the last commit that touched this file */
+  file_last_commit: string;
+  /** SHA-256 hex digest of the file content (empty string for directories) */
+  file_sha256_hash: string;
+}
+
+/** Payload sent when creating a new processing job. */
+export interface JobRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Git ref – tag name, branch, or commit SHA */
+  ref: string;
+}
+
+/** Status of a processing job. */
+export type JobStatus = "waiting" | "active" | "completed" | "failed";
+
+/** Response when querying a job. */
+export interface JobInfo {
+  id: string;
+  repo: string;
+  ref: string;
+  status: JobStatus;
+  progress: number;
+  total_files: number;
+  processed_files: number;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+}
