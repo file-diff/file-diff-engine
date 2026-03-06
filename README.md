@@ -28,6 +28,9 @@ A TypeScript backend service that uses **BullMQ** to process GitHub repositories
 ## Quick Start
 
 ```bash
+# Start Redis (Docker Compose)
+docker compose up -d redis
+
 # Install dependencies
 npm install
 
@@ -36,6 +39,12 @@ npm run build
 
 # Start the server (Redis must be running on localhost:6379)
 npm start
+```
+
+To stop Redis:
+
+```bash
+docker compose down
 ```
 
 ## Configuration
