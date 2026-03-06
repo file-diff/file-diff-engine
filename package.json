@@ -1,0 +1,41 @@
+{
+  "name": "file-diff-engine",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/file-diff/file-diff-engine.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/file-diff/file-diff-engine/issues"
+  },
+  "homepage": "https://github.com/file-diff/file-diff-engine#readme",
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "bullmq": "^5.70.4",
+    "express": "^5.2.1",
+    "ioredis": "^5.10.0",
+    "simple-git": "^3.32.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.3.5",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
