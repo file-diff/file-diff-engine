@@ -28,6 +28,33 @@ export async function createApp(
   const app = express();
   app.use(express.json());
 
+  // Maximally permissive CORS middleware
+  app.use((req, res, next) => {
+    const origin = (req.headers.origin as string) || "*";
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS"
+    );
+    const reqHeaders = req.headers["access-control-request-headers"] as
+      | string
+      | undefined;
+    res.header(
+      "Access-Control-Allow-Headers",
+      reqHeaders || "Content-Type, Authorization"
+    );
+    // Allow credentials when origin is provided (browsers will reject wildcard + credentials)
+    res.header("Access-Control-Allow-Credentials", "true");
+
+    if (req.method === "OPTIONS") {
+      // Respond to preflight immediately
+      res.sendStatus(204);
+      return;
+    }
+
+    next();
+  });
+
   const queue = deps?.queue ?? createQueue();
   const db = deps?.db ?? (await getDatabase(deps?.dbConfig));
   const jobRepo = new JobRepository(db);
