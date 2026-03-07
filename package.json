@@ -27,7 +27,6 @@
     "bullmq": "^5.70.4",
     "express": "^5.2.1",
     "ioredis": "^5.10.0",
-    "simple-git": "^3.32.3",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

@@ -1,8 +1,23 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import simpleGit, { SimpleGit } from "simple-git";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { FileRecord } from "../types";
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Helper to run git commands in a working directory and return stdout (trimmed).
+ */
+async function runGitCommand(cwd: string, args: string[]): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync("git", args, { cwd });
+    return (stdout ?? "").toString().trim();
+  } catch (err) {
+    return "";
+  }
+}
 
 /**
  * Determines if a file is binary by reading the first 8 KB and checking for
@@ -48,11 +63,9 @@ export async function processRepository(
     fs.rmSync(cloneDir, { recursive: true, force: true });
   }
 
-  const git: SimpleGit = simpleGit();
-  await git.clone(repoUrl, cloneDir);
-
-  const repoGit: SimpleGit = simpleGit(cloneDir);
-  await repoGit.checkout(ref);
+  // Use the system git to clone and checkout
+  await runGitCommand(workDir, ["clone", repoUrl, cloneDir]);
+  await runGitCommand(cloneDir, ["checkout", ref]);
 
   // Gather all file/directory entries (excluding .git)
   const entries = getAllEntries(cloneDir);
@@ -65,8 +78,8 @@ export async function processRepository(
 
     if (entry.isDirectory) {
       // For directories, get the last commit that touched any file in them
-      const lastCommit = getLastCommit(repoGit, relativePath);
-      const updateDate = getLastUpdateDate(repoGit, relativePath);
+      const lastCommit = getLastCommit(cloneDir, relativePath);
+      const updateDate = getLastUpdateDate(cloneDir, relativePath);
       records.push({
         file_type: "d",
         file_name: relativePath,
@@ -79,8 +92,8 @@ export async function processRepository(
       const stat = fs.statSync(entry.fullPath);
       const binary = isBinaryFile(entry.fullPath);
       const hash = sha256File(entry.fullPath);
-      const lastCommit = getLastCommit(repoGit, relativePath);
-      const updateDate = getLastUpdateDate(repoGit, relativePath);
+      const lastCommit = getLastCommit(cloneDir, relativePath);
+      const updateDate = getLastUpdateDate(cloneDir, relativePath);
 
       records.push({
         file_type: binary ? "b" : "t",
@@ -129,12 +142,15 @@ function getAllEntries(dir: string): EntryInfo[] {
 
 /** Get the last commit SHA that touched a given path. */
 async function getLastCommit(
-  git: SimpleGit,
+  repoDir: string,
   relativePath: string
 ): Promise<string> {
   try {
-    const log = await git.log({ file: relativePath, maxCount: 1 });
-    return log.latest?.hash ?? "";
+    // Normalize to POSIX-style paths for git
+    const rel = relativePath.split(path.sep).join("/");
+    // Use git log to get the latest commit hash for the path
+    const out = await runGitCommand(repoDir, ["log", "-n", "1", "--pretty=format:%H", "--", rel]);
+    return out ?? "";
   } catch {
     return "";
   }
@@ -142,12 +158,13 @@ async function getLastCommit(
 
 /** Get the last update date for a given path from git log. */
 async function getLastUpdateDate(
-  git: SimpleGit,
+  repoDir: string,
   relativePath: string
 ): Promise<string> {
   try {
-    const log = await git.log({ file: relativePath, maxCount: 1 });
-    return log.latest?.date ?? "";
+    const rel = relativePath.split(path.sep).join("/");
+    const out = await runGitCommand(repoDir, ["log", "-n", "1", "--pretty=format:%cI", "--", rel]);
+    return out ?? "";
   } catch {
     return "";
   }

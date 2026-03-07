@@ -10,20 +10,24 @@ import { QUEUE_NAME } from "../services/queue";
 const REDIS_HOST = process.env.REDIS_HOST || "127.0.0.1";
 const REDIS_PORT = parseInt(process.env.REDIS_PORT || "6379", 10);
 
+const TMP_DIR = process.env.TMP_DIR || "tmp";
+
 export function createWorker(dbPath?: string): Worker {
   const db = getDatabase(dbPath);
   const repo = new JobRepository(db);
+  console.log("Worker connected to database, ready to process jobs.");
 
   const worker = new Worker(
     QUEUE_NAME,
     async (job: Job) => {
+      console.log("Job started:", job.id);
       const { jobId, repoName, ref } = job.data as {
         jobId: string;
         repoName: string;
         ref: string;
       };
 
-      const workDir = path.join(os.tmpdir(), `fde-${jobId}`);
+      const workDir = path.join(TMP_DIR, `fde-${jobId}`);
       fs.mkdirSync(workDir, { recursive: true });
 
       try {

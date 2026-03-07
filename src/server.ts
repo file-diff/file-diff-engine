@@ -1,7 +1,7 @@
 import { createApp } from "./app";
 import { createWorker } from "./workers/repoWorker";
 
-const PORT = parseInt(process.env.PORT || "3000", 10);
+const PORT = parseInt(process.env.PORT || "12986", 10);
 
 const { app, queue } = createApp();
 const worker = createWorker();

@@ -4,7 +4,6 @@ import path from "path";
 import os from "os";
 import crypto from "crypto";
 import { execSync } from "child_process";
-import simpleGit from "simple-git";
 import { processRepository } from "../services/repoProcessor";
 
 /** Create a small local git repo with text, binary, and directory entries. */
@@ -47,8 +46,7 @@ describe("repoProcessor – local clone simulation", () => {
 
       // Clone locally (simulates what processRepository does internally)
       execSync(`git clone ${repoDir} ${cloneDir}`);
-      const git = simpleGit(cloneDir);
-      await git.checkout("v1.0.0");
+      execSync("git checkout v1.0.0", { cwd: cloneDir });
 
       // Walk the cloned repo the same way the service does
       const entries: string[] = [];
