@@ -51,7 +51,7 @@ async function runGitCommand(cwd: string, args: string[]): Promise<string> {
   }
 }
 
-function getRepositoryUrl(repo: string): string {
+export function getRepositoryUrl(repo: string): string {
   if (repo.includes("://") || path.isAbsolute(repo)) {
     return repo;
   }

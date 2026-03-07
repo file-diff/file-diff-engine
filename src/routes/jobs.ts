@@ -2,11 +2,16 @@ import { Router, Request, Response } from "express";
 import { Queue } from "bullmq";
 import { JobRepository } from "../db/repository";
 import { JobRequest } from "../types";
-import { resolveRefToCommitHash } from "../services/repoProcessor";
+import {
+  getRepositoryUrl,
+  resolveRefToCommitHash,
+} from "../services/repoProcessor";
 
 interface JobRouteOptions {
   resolveCommitHash?: (repoUrl: string, ref: string) => Promise<string>;
 }
+
+const POSTGRES_UNIQUE_VIOLATION = "23505";
 
 export function createJobRoutes(
   queue: Queue,
@@ -38,7 +43,7 @@ export function createJobRoutes(
       return;
     }
 
-    const jobId = await resolveCommitHash(`https://github.com/${repo}.git`, ref);
+    const jobId = await resolveCommitHash(getRepositoryUrl(repo), ref);
     const existingJob = await jobRepo.getJob(jobId);
     if (existingJob) {
       res.status(200).json({ id: existingJob.id, status: existingJob.status });
@@ -48,7 +53,7 @@ export function createJobRoutes(
     try {
       await jobRepo.createJob(jobId, repo, ref);
     } catch (error: unknown) {
-      if ((error as { code?: string }).code === "23505") {
+      if ((error as { code?: string }).code === POSTGRES_UNIQUE_VIOLATION) {
         const duplicateJob = await jobRepo.getJob(jobId);
         if (duplicateJob) {
           res.status(200).json({ id: duplicateJob.id, status: duplicateJob.status });
