@@ -40,14 +40,19 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
           repoName,
           ref,
           workDir,
-          async (processed, total) => {
-            logger.debug("Job progress updated", { jobId, processed, total });
-            await repo.updateJobProgress(jobId, processed, total);
+          {
+            onFilesDiscovered: async (files) => {
+              await repo.insertFiles(jobId, files);
+              await repo.updateJobProgress(jobId, 0, files.length);
+            },
+            onFileProcessed: async (file, processed, total) => {
+              await repo.updateFile(jobId, file);
+              logger.debug("Job progress updated", { jobId, processed, total });
+              await repo.updateJobProgress(jobId, processed, total);
+            },
           }
         );
 
-        await repo.insertFiles(jobId, files);
-        await repo.updateJobProgress(jobId, files.length, files.length);
         await repo.updateJobStatus(jobId, "completed");
         logger.info("Job completed", { jobId, processedFiles: files.length });
       } catch (err: unknown) {

@@ -93,6 +93,33 @@ export class JobRepository {
     }
   }
 
+  async updateFile(jobId: string, file: FileRecord): Promise<void> {
+    const result = await this.db.query(
+      `UPDATE files
+       SET file_type = $1,
+           file_size = $2,
+           file_update_date = $3,
+           file_last_commit = $4,
+           file_git_hash = $5
+       WHERE job_id = $6 AND file_name = $7`,
+      [
+        file.file_type,
+        file.file_size,
+        file.file_update_date,
+        file.file_last_commit,
+        file.file_git_hash,
+        jobId,
+        file.file_name,
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      throw new Error(
+        `Failed to update file metadata for job '${jobId}' and path '${file.file_name}'.`
+      );
+    }
+  }
+
   async getFiles(jobId: string): Promise<FileRecord[]> {
     const result = await this.db.query(
       `SELECT file_type, file_name, file_size, file_update_date, file_last_commit, file_git_hash
