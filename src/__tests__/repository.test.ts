@@ -81,11 +81,27 @@ describe("JobRepository", () => {
         file_last_commit: "ghi789",
         file_git_hash: "f6e5d4c3b2a1",
       },
+      {
+        file_type: "x",
+        file_name: "bin/run.sh",
+        file_size: 32,
+        file_update_date: "2024-01-04T00:00:00Z",
+        file_last_commit: "jkl012",
+        file_git_hash: "1234567890abcdef",
+      },
+      {
+        file_type: "s",
+        file_name: "hello-link",
+        file_size: 9,
+        file_update_date: "2024-01-05T00:00:00Z",
+        file_last_commit: "mno345",
+        file_git_hash: "fedcba0987654321",
+      },
     ];
 
     await repo.insertFiles("job-4", files);
     const retrieved = await repo.getFiles("job-4");
-    expect(retrieved).toHaveLength(3);
+    expect(retrieved).toHaveLength(5);
     expect(retrieved[0].file_type).toBe("d");
     expect(retrieved[0].file_name).toBe("src");
     expect(retrieved[1].file_type).toBe("t");
@@ -93,6 +109,10 @@ describe("JobRepository", () => {
     expect(retrieved[1].file_size).toBe(100);
     expect(retrieved[2].file_type).toBe("b");
     expect(retrieved[2].file_git_hash).toBe("f6e5d4c3b2a1");
+    expect(retrieved[3].file_type).toBe("x");
+    expect(retrieved[3].file_name).toBe("bin/run.sh");
+    expect(retrieved[4].file_type).toBe("s");
+    expect(retrieved[4].file_name).toBe("hello-link");
   });
 
   it("should return empty array for job with no files", async () => {

@@ -1,7 +1,7 @@
 /** Metadata for a single file/directory in a processed repository. */
 export interface FileRecord {
-  /** d = directory, t = text file, b = binary file */
-  file_type: "d" | "t" | "b";
+  /** d = directory, t = text file, b = binary file, x = executable, s = symlink */
+  file_type: "d" | "t" | "b" | "x" | "s";
   /** File name with path relative to the repo root */
   file_name: string;
   /** Size in bytes */

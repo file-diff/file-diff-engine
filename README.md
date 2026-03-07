@@ -8,7 +8,7 @@ A TypeScript backend service that uses **BullMQ** to process GitHub repositories
 - **File metadata** – for every file/directory the service records:
   | Field | Description |
   |---|---|
-  | `file_type` | `d` – directory, `t` – text file, `b` – binary file |
+  | `file_type` | `d` – directory, `t` – text file, `b` – binary file, `x` – executable file, `s` – symlink |
   | `file_name` | Path relative to the repository root |
   | `file_size` | Size in bytes (0 for directories) |
   | `file_update_date` | ISO-8601 date of the last git commit that touched the file |

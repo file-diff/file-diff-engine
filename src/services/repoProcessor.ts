@@ -67,28 +67,23 @@ function isBinaryFile(filePath: string): boolean {
   return false;
 }
 
-/** Git blob hash of a file's content. */
-function gitHashFile(filePath: string): string | null {
-  try {
-    const cwd = path.dirname(filePath);
-    const fileName = path.basename(filePath);
-    const out = require("child_process").execFileSync(
-      "git",
-      ["hash-object", "--no-filters", "--", fileName],
-      { cwd, encoding: "utf8" }
-    );
-    return (out ?? "").toString().trim();
-  } catch (err) {
-    logger.error("git hash-object failed", {
-      filePath,
-      error: (err as Error).message,
-    });
-    return null;
-  }
-}
-
 export interface ProgressCallback {
   (processed: number, total: number): void;
+}
+
+export function getFileTypeFromGitMode(
+  mode: string,
+  isBinary: boolean
+): FileRecord["file_type"] {
+  if (mode === "120000") {
+    return "s";
+  }
+
+  if (mode === "100755") {
+    return "x";
+  }
+
+  return isBinary ? "b" : "t";
 }
 
 /**
@@ -122,7 +117,7 @@ export async function processRepository(
     const entry = entries[i];
     const relativePath = path.relative(cloneDir, entry.fullPath);
 
-    if (entry.isDirectory) {
+    if (entry.kind === "directory") {
       // For directories, get the last commit that touched any file in them
       const lastCommit = getLastCommit(cloneDir, relativePath);
       const updateDate = getLastUpdateDate(cloneDir, relativePath);
@@ -135,22 +130,25 @@ export async function processRepository(
         file_git_hash: "",
       });
     } else {
-      const stat = fs.statSync(entry.fullPath);
-      const binary = isBinaryFile(entry.fullPath);
-      const hash = gitHashFile(entry.fullPath);
-      if (!hash) {
-        throw new Error(`Failed to hash file with git: ${entry.fullPath}`);
+      const stat =
+        entry.kind === "symlink"
+          ? fs.lstatSync(entry.fullPath)
+          : fs.statSync(entry.fullPath);
+      const binary = entry.kind === "file" ? isBinaryFile(entry.fullPath) : false;
+      const gitEntry = await getGitEntryInfo(cloneDir, relativePath);
+      if (!gitEntry) {
+        throw new Error(`Failed to read git metadata for path: ${relativePath}`);
       }
       const lastCommit = getLastCommit(cloneDir, relativePath);
       const updateDate = getLastUpdateDate(cloneDir, relativePath);
 
       records.push({
-        file_type: binary ? "b" : "t",
+        file_type: getFileTypeFromGitMode(gitEntry.mode, binary),
         file_name: relativePath,
         file_size: stat.size,
         file_update_date: await updateDate,
         file_last_commit: await lastCommit,
-        file_git_hash: hash,
+        file_git_hash: gitEntry.hash,
       });
     }
 
@@ -169,7 +167,7 @@ export async function processRepository(
 
 interface EntryInfo {
   fullPath: string;
-  isDirectory: boolean;
+  kind: "directory" | "file" | "symlink";
 }
 
 /** Recursively list all files and directories, excluding .git */
@@ -181,17 +179,40 @@ function getAllEntries(dir: string): EntryInfo[] {
     for (const item of items) {
       if (item.name === ".git") continue;
       const fullPath = path.join(currentDir, item.name);
-      if (item.isDirectory()) {
-        results.push({ fullPath, isDirectory: true });
+      if (item.isSymbolicLink()) {
+        results.push({ fullPath, kind: "symlink" });
+      } else if (item.isDirectory()) {
+        results.push({ fullPath, kind: "directory" });
         walk(fullPath);
       } else {
-        results.push({ fullPath, isDirectory: false });
+        results.push({ fullPath, kind: "file" });
       }
     }
   }
 
   walk(dir);
   return results;
+}
+
+async function getGitEntryInfo(
+  repoDir: string,
+  relativePath: string
+): Promise<{ mode: string; hash: string } | null> {
+  const rel = relativePath.split(path.sep).join("/");
+  const out = await runGitCommand(repoDir, ["ls-files", "--stage", "--", rel]);
+  if (!out) {
+    return null;
+  }
+
+  const match = out.match(/^(\d{6}) ([a-f0-9]{40}) \d+\t/);
+  if (!match) {
+    throw new Error(`Unexpected git ls-files output for path '${rel}': ${out}`);
+  }
+
+  return {
+    mode: match[1],
+    hash: match[2],
+  };
 }
 
 /** Get the last commit SHA that touched a given path. */

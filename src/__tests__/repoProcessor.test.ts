@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { execSync } from "child_process";
-import { processRepository } from "../services/repoProcessor";
+import { getFileTypeFromGitMode, processRepository } from "../services/repoProcessor";
 
 /** Create a small local git repo with text, binary, and directory entries. */
 function createTestRepo(dir: string): void {
@@ -26,6 +26,14 @@ function createTestRepo(dir: string): void {
   // Binary file (contains null bytes)
   const binBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00, 0x01]);
   fs.writeFileSync(path.join(dir, "image.bin"), binBuf);
+
+  // Executable text file
+  const scriptPath = path.join(dir, "script.sh");
+  fs.writeFileSync(scriptPath, "#!/bin/sh\necho hello\n");
+  fs.chmodSync(scriptPath, 0o755);
+
+  // Symlink to a tracked file
+  fs.symlinkSync("hello.txt", path.join(dir, "hello-link"));
 
   execSync("git add -A", { cwd: dir });
   execSync('git commit -m "initial commit"', { cwd: dir });
@@ -63,6 +71,8 @@ describe("repoProcessor – local clone simulation", () => {
       expect(entries).toContain("src");
       expect(entries).toContain(path.join("src", "index.ts"));
       expect(entries).toContain("image.bin");
+      expect(entries).toContain("script.sh");
+      expect(entries).toContain("hello-link");
 
       // Git blob hash check
       const helloHash = execSync("git hash-object --no-filters -- hello.txt", {
@@ -78,6 +88,24 @@ describe("repoProcessor – local clone simulation", () => {
 
       // Text file should have no null bytes
       expect(helloContent.includes(0)).toBe(false);
+
+      const scriptMode = execSync("git ls-files --stage -- script.sh", {
+        cwd: cloneDir,
+        encoding: "utf8",
+      })
+        .trim()
+        .split(/\s+/)[0];
+      expect(getFileTypeFromGitMode(scriptMode, false)).toBe("x");
+      expect(fs.statSync(path.join(cloneDir, "script.sh")).mode & 0o111).not.toBe(0);
+
+      const linkMode = execSync("git ls-files --stage -- hello-link", {
+        cwd: cloneDir,
+        encoding: "utf8",
+      })
+        .trim()
+        .split(/\s+/)[0];
+      expect(getFileTypeFromGitMode(linkMode, false)).toBe("s");
+      expect(fs.lstatSync(path.join(cloneDir, "hello-link")).isSymbolicLink()).toBe(true);
     } finally {
       fs.rmSync(testDir, { recursive: true, force: true });
     }
