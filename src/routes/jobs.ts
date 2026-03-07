@@ -74,7 +74,14 @@ export function createJobRoutes(
       job_id: job.id,
       status: job.status,
       progress: job.progress,
-      files,
+      files: files.map(f => ({
+        t: f.file_type,
+        path: f.file_name,
+        s: f.file_size,
+        update: f.file_update_date,
+        commit: f.file_last_commit,
+        hash: f.file_git_hash,
+      }))
     });
   });
 
