@@ -1,14 +1,26 @@
 import { Router, Request, Response } from "express";
-import { v4 as uuidv4 } from "uuid";
 import { Queue } from "bullmq";
 import { JobRepository } from "../db/repository";
 import { JobRequest } from "../types";
+import {
+  getRepositoryUrl,
+  resolveRefToCommitHash,
+} from "../services/repoProcessor";
+
+interface JobRouteOptions {
+  resolveCommitHash?: (repoUrl: string, ref: string) => Promise<string>;
+}
+
+const POSTGRES_UNIQUE_VIOLATION = "23505";
 
 export function createJobRoutes(
   queue: Queue,
-  jobRepo: JobRepository
+  jobRepo: JobRepository,
+  options: JobRouteOptions = {}
 ): Router {
   const router = Router();
+  const resolveCommitHash =
+    options.resolveCommitHash ?? resolveRefToCommitHash;
 
   /**
    * POST /api/jobs
@@ -31,13 +43,33 @@ export function createJobRoutes(
       return;
     }
 
-    const jobId = uuidv4();
-    await jobRepo.createJob(jobId, repo, ref);
+    const jobId = await resolveCommitHash(getRepositoryUrl(repo), ref);
+    const existingJob = await jobRepo.getJob(jobId);
+    if (existingJob) {
+      res.status(200).json({ id: existingJob.id, status: existingJob.status });
+      return;
+    }
+
+    try {
+      await jobRepo.createJob(jobId, repo, ref);
+    } catch (error: unknown) {
+      if ((error as { code?: string }).code === POSTGRES_UNIQUE_VIOLATION) {
+        const duplicateJob = await jobRepo.getJob(jobId);
+        if (duplicateJob) {
+          res.status(200).json({ id: duplicateJob.id, status: duplicateJob.status });
+          return;
+        }
+      }
+
+      throw error;
+    }
 
     await queue.add("process-repo", {
       jobId,
       repoName: repo,
-      ref,
+      ref: jobId,
+    }, {
+      jobId,
     });
 
     res.status(201).json({ id: jobId, status: "waiting" });

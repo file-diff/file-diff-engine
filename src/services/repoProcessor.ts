@@ -51,6 +51,59 @@ async function runGitCommand(cwd: string, args: string[]): Promise<string> {
   }
 }
 
+export function getRepositoryUrl(repo: string): string {
+  if (repo.includes("://") || path.isAbsolute(repo)) {
+    return repo;
+  }
+
+  return `https://github.com/${repo}.git`;
+}
+
+export async function resolveRefToCommitHash(
+  repoUrl: string,
+  ref: string
+): Promise<string> {
+  const trimmedRef = ref.trim();
+  if (!trimmedRef) {
+    throw new Error("Git ref is required.");
+  }
+
+  if (/^[a-f0-9]{40}$/i.test(trimmedRef)) {
+    return trimmedRef.toLowerCase();
+  }
+
+  const refCandidates = trimmedRef.startsWith("refs/")
+    ? [trimmedRef, `${trimmedRef}^{}`]
+    : [
+        `refs/heads/${trimmedRef}`,
+        `refs/tags/${trimmedRef}^{}`,
+        `refs/tags/${trimmedRef}`,
+      ];
+  const output = await runGitCommand(process.cwd(), [
+    "ls-remote",
+    repoUrl,
+    ...refCandidates,
+  ]);
+
+  const refsByName = new Map(
+    output
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [hash, name] = line.trim().split(/\s+/, 2);
+        return [name, hash.toLowerCase()] as const;
+      })
+  );
+  const resolvedRef = refCandidates.find((candidate) => refsByName.has(candidate));
+  if (!resolvedRef) {
+    throw new Error(
+      `Unable to resolve git ref '${trimmedRef}' for repository '${repoUrl}'.`
+    );
+  }
+
+  return refsByName.get(resolvedRef)!;
+}
+
 /**
  * Determines if a file is binary by reading the first 8 KB and checking for
  * null bytes — the same heuristic Git uses.
@@ -107,15 +160,22 @@ export async function processRepository(
   hooks: ProcessRepositoryHooks = {}
 ): Promise<FileRecord[]> {
   logger.debug("Starting repository processing", { repo, ref, workDir });
-  // Clone the repository
-  const repoUrl = `https://github.com/${repo}.git`;
+  const repoUrl = getRepositoryUrl(repo);
   const cloneDir = path.join(workDir, "tree");
 
   logger.debug("Using clone directory", { cloneDir });
   fs.mkdirSync(cloneDir, { recursive: true });
 
-  // Use the system git to clone and checkout
-  await runGitCommand(workDir, ["clone", "--depth=1", "--single-branch", `--branch=${ref}`, repoUrl, "tree"]);
+  await runGitCommand(cloneDir, ["init"]);
+  await runGitCommand(cloneDir, ["remote", "add", "origin", repoUrl]);
+  await runGitCommand(cloneDir, ["fetch", "--depth=1", "origin", ref]);
+  await runGitCommand(cloneDir, [
+    "-c",
+    "advice.detachedHead=false",
+    "checkout",
+    "--detach",
+    "FETCH_HEAD",
+  ]);
 
   // Gather all file/directory entries (excluding .git)
   const entries = getAllEntries(cloneDir);

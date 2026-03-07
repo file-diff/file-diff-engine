@@ -3,7 +3,11 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { execSync } from "child_process";
-import { getFileTypeFromGitMode, processRepository } from "../services/repoProcessor";
+import {
+  getFileTypeFromGitMode,
+  processRepository,
+  resolveRefToCommitHash,
+} from "../services/repoProcessor";
 
 /** Create a small local git repo with text, binary, and directory entries. */
 function createTestRepo(dir: string): void {
@@ -133,6 +137,59 @@ describe("repoProcessor – local clone simulation", () => {
 
       // Verify the callback type is accepted
       expect(typeof callback).toBe("function");
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should resolve a branch ref to the current commit hash", async () => {
+    const testDir = path.join(os.tmpdir(), `fde-ref-test-${Date.now()}`);
+    const repoDir = path.join(testDir, "origin");
+
+    try {
+      createTestRepo(repoDir);
+
+      const branchName = execSync("git branch --show-current", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+      const headCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      await expect(
+        resolveRefToCommitHash(`file://${repoDir}`, branchName)
+      ).resolves.toBe(headCommit);
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should process the exact commit hash even after the branch moves", async () => {
+    const testDir = path.join(os.tmpdir(), `fde-commit-test-${Date.now()}`);
+    const repoDir = path.join(testDir, "origin");
+    const workDir = path.join(testDir, "work");
+
+    try {
+      createTestRepo(repoDir);
+      const initialCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      fs.writeFileSync(path.join(repoDir, "later.txt"), "later\n");
+      execSync("git add later.txt", { cwd: repoDir });
+      execSync('git commit -m "later commit"', { cwd: repoDir });
+
+      const records = await processRepository(
+        `file://${repoDir}`,
+        initialCommit,
+        workDir
+      );
+
+      expect(records.some((record) => record.file_name === "later.txt")).toBe(false);
+      expect(records.some((record) => record.file_name === "hello.txt")).toBe(true);
     } finally {
       fs.rmSync(testDir, { recursive: true, force: true });
     }
