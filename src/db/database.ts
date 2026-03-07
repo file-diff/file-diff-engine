@@ -53,7 +53,7 @@ async function initSchema(db: DatabaseClient): Promise<void> {
       file_size INTEGER NOT NULL DEFAULT 0,
       file_update_date TEXT NOT NULL DEFAULT '',
       file_last_commit TEXT NOT NULL DEFAULT '',
-      file_sha256_hash TEXT NOT NULL DEFAULT '',
+      file_git_hash TEXT NOT NULL DEFAULT '',
       FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
     );
 

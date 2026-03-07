@@ -69,7 +69,7 @@ export class JobRepository {
       await client.query("BEGIN");
       for (const file of files) {
         await client.query(
-          `INSERT INTO files (job_id, file_type, file_name, file_size, file_update_date, file_last_commit, file_sha256_hash)
+          `INSERT INTO files (job_id, file_type, file_name, file_size, file_update_date, file_last_commit, file_git_hash)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
             jobId,
@@ -78,7 +78,7 @@ export class JobRepository {
             file.file_size,
             file.file_update_date,
             file.file_last_commit,
-            file.file_sha256_hash,
+            file.file_git_hash,
           ]
         );
       }
@@ -95,7 +95,7 @@ export class JobRepository {
 
   async getFiles(jobId: string): Promise<FileRecord[]> {
     const result = await this.db.query(
-      `SELECT file_type, file_name, file_size, file_update_date, file_last_commit, file_sha256_hash
+      `SELECT file_type, file_name, file_size, file_update_date, file_last_commit, file_git_hash
        FROM files WHERE job_id = $1 ORDER BY id ASC`,
       [jobId]
     );

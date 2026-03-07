@@ -13,7 +13,7 @@ A TypeScript backend service that uses **BullMQ** to process GitHub repositories
   | `file_size` | Size in bytes (0 for directories) |
   | `file_update_date` | ISO-8601 date of the last git commit that touched the file |
   | `file_last_commit` | SHA of the last commit that touched the file |
-  | `file_sha256_hash` | SHA-256 hex digest of the file content (empty for directories) |
+  | `file_git_hash` | Git blob hash of the file content (empty for directories) |
 - **Progress tracking** – query a job at any time to see how many files have been processed.
 - **PostgreSQL storage** – durable persistence for jobs and indexed files.
 
@@ -131,7 +131,7 @@ GET /api/jobs/:id/files
       "file_size": 1234,
       "file_update_date": "2024-01-01T12:00:00+00:00",
       "file_last_commit": "abc123def456",
-      "file_sha256_hash": "e3b0c44298fc..."
+      "file_git_hash": "557db03de997c86a4a028e1ebd3a1ceb225be238"
     }
   ]
 }
