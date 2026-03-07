@@ -63,7 +63,7 @@ describe("JobRepository", () => {
         file_size: 0,
         file_update_date: "2024-01-01T00:00:00Z",
         file_last_commit: "abc123",
-        file_sha256_hash: "",
+        file_git_hash: "",
       },
       {
         file_type: "t",
@@ -71,7 +71,7 @@ describe("JobRepository", () => {
         file_size: 100,
         file_update_date: "2024-01-02T00:00:00Z",
         file_last_commit: "def456",
-        file_sha256_hash: "a1b2c3d4e5f6",
+        file_git_hash: "a1b2c3d4e5f6",
       },
       {
         file_type: "b",
@@ -79,7 +79,7 @@ describe("JobRepository", () => {
         file_size: 2048,
         file_update_date: "2024-01-03T00:00:00Z",
         file_last_commit: "ghi789",
-        file_sha256_hash: "f6e5d4c3b2a1",
+        file_git_hash: "f6e5d4c3b2a1",
       },
     ];
 
@@ -92,7 +92,7 @@ describe("JobRepository", () => {
     expect(retrieved[1].file_name).toBe("src/index.ts");
     expect(retrieved[1].file_size).toBe(100);
     expect(retrieved[2].file_type).toBe("b");
-    expect(retrieved[2].file_sha256_hash).toBe("f6e5d4c3b2a1");
+    expect(retrieved[2].file_git_hash).toBe("f6e5d4c3b2a1");
   });
 
   it("should return empty array for job with no files", async () => {

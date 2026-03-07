@@ -10,8 +10,8 @@ export interface FileRecord {
   file_update_date: string;
   /** SHA of the last commit that touched this file */
   file_last_commit: string;
-  /** SHA-256 hex digest of the file content (empty string for directories) */
-  file_sha256_hash: string;
+  /** Git blob hash of the file content (empty string for directories) */
+  file_git_hash: string;
 }
 
 /** Payload sent when creating a new processing job. */

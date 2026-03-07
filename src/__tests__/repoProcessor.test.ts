@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import crypto from "crypto";
 import { execSync } from "child_process";
 import { processRepository } from "../services/repoProcessor";
 
@@ -34,7 +33,7 @@ function createTestRepo(dir: string): void {
 }
 
 describe("repoProcessor – local clone simulation", () => {
-  it("should correctly walk files, detect types, and compute hashes", async () => {
+  it("should correctly walk files, detect types, and compute git blob hashes", async () => {
     const testDir = path.join(os.tmpdir(), `fde-proc-test-${Date.now()}`);
     const repoDir = path.join(testDir, "origin");
     const workDir = path.join(testDir, "work");
@@ -65,13 +64,13 @@ describe("repoProcessor – local clone simulation", () => {
       expect(entries).toContain(path.join("src", "index.ts"));
       expect(entries).toContain("image.bin");
 
-      // SHA-256 check
+      // Git blob hash check
+      const helloHash = execSync("git hash-object --no-filters -- hello.txt", {
+        cwd: cloneDir,
+        encoding: "utf8",
+      }).trim();
+      expect(helloHash).toMatch(/^[a-f0-9]{40}$/);
       const helloContent = fs.readFileSync(path.join(cloneDir, "hello.txt"));
-      const hash = crypto
-        .createHash("sha256")
-        .update(helloContent)
-        .digest("hex");
-      expect(hash).toMatch(/^[a-f0-9]{64}$/);
 
       // Binary detection – image.bin contains null bytes
       const binContent = fs.readFileSync(path.join(cloneDir, "image.bin"));

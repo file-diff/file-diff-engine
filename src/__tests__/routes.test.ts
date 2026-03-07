@@ -104,13 +104,16 @@ describe("Job Routes", () => {
         file_size: 50,
         file_update_date: "2024-01-01T00:00:00Z",
         file_last_commit: "abc123",
-        file_sha256_hash: "deadbeef",
+        file_git_hash: "deadbeef",
       },
     ]);
     const res = await makeRequest(app, "GET", "/api/jobs/test-job-2/files");
     expect(res.status).toBe(200);
     const resBody = res.body as { files: unknown[] };
     expect(resBody.files).toHaveLength(1);
+    expect((resBody.files[0] as { file_git_hash: string }).file_git_hash).toBe(
+      "deadbeef"
+    );
   });
 
   it("GET /api/jobs/:id/files - should return 404 for unknown job", async () => {

@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import crypto from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { FileRecord } from "../types";
@@ -68,7 +67,7 @@ function isBinaryFile(filePath: string): boolean {
   return false;
 }
 
-/** SHA-256 hex digest of a file's content. */
+/** Git blob hash of a file's content. */
 function gitHashFile(filePath: string): string | null {
   try {
     const cwd = path.dirname(filePath);
@@ -80,9 +79,11 @@ function gitHashFile(filePath: string): string | null {
     );
     return (out ?? "").toString().trim();
   } catch (err) {
-    logger.error("git hash-object failed, falling back to sha256", {filePath, error: (err as Error).message});
+    logger.error("git hash-object failed", {
+      filePath,
+      error: (err as Error).message,
+    });
     return null;
-    // Fallback: compute SHA-256 directly (not exactly the same as git's hash-object)
   }
 }
 
@@ -131,7 +132,7 @@ export async function processRepository(
         file_size: 0,
         file_update_date: await updateDate,
         file_last_commit: await lastCommit,
-        file_sha256_hash: "",
+        file_git_hash: "",
       });
     } else {
       const stat = fs.statSync(entry.fullPath);
@@ -149,7 +150,7 @@ export async function processRepository(
         file_size: stat.size,
         file_update_date: await updateDate,
         file_last_commit: await lastCommit,
-        file_sha256_hash: hash,
+        file_git_hash: hash,
       });
     }
 
