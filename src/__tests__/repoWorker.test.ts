@@ -44,6 +44,7 @@ describe("repoWorker", () => {
 
   it("should insert discovered files before updating processed metadata", async () => {
     const order: string[] = [];
+    const commitHash = "0123456789abcdef0123456789abcdef01234567";
 
     repoMethods.updateJobStatus.mockImplementation(async (_jobId, status) => {
       order.push(`status:${status}`);
@@ -91,9 +92,9 @@ describe("repoWorker", () => {
     await worker.handler({
       id: "queue-job-1",
       data: {
-        jobId: "job-1",
+        jobId: commitHash,
         repoName: "owner/repo",
-        ref: "main",
+        ref: commitHash,
       },
     });
 
@@ -105,7 +106,13 @@ describe("repoWorker", () => {
       "progress:1/1",
       "status:completed",
     ]);
-    expect(repoMethods.insertFiles).toHaveBeenCalledWith("job-1", initialFiles);
-    expect(repoMethods.updateFile).toHaveBeenCalledWith("job-1", processedFile);
+    expect(processRepositoryMock).toHaveBeenCalledWith(
+      "owner/repo",
+      commitHash,
+      `tmp/fde-${commitHash}`,
+      expect.any(Object)
+    );
+    expect(repoMethods.insertFiles).toHaveBeenCalledWith(commitHash, initialFiles);
+    expect(repoMethods.updateFile).toHaveBeenCalledWith(commitHash, processedFile);
   });
 });

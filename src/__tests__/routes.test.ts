@@ -36,6 +36,8 @@ describe("Job Routes", () => {
   let jobRepo: JobRepository;
   let app: express.Express;
   let mockQueue: Queue;
+  let mockResolveCommitHash: ReturnType<typeof vi.fn>;
+  const commitHash = "0123456789abcdef0123456789abcdef01234567";
 
   beforeEach(async () => {
     db = await createTestDatabase();
@@ -44,10 +46,16 @@ describe("Job Routes", () => {
     mockQueue = {
       add: vi.fn().mockResolvedValue({}),
     } as unknown as Queue;
+    mockResolveCommitHash = vi.fn().mockResolvedValue(commitHash);
 
     app = express();
     app.use(express.json());
-    app.use("/api/jobs", createJobRoutes(mockQueue, jobRepo));
+    app.use(
+      "/api/jobs",
+      createJobRoutes(mockQueue, jobRepo, {
+        resolveCommitHash: mockResolveCommitHash,
+      })
+    );
   });
 
   afterEach(async () => {
@@ -61,9 +69,42 @@ describe("Job Routes", () => {
     });
     expect(res.status).toBe(201);
     const resBody = res.body as { id: string; status: string };
-    expect(resBody.id).toBeDefined();
+    expect(resBody.id).toBe(commitHash);
     expect(resBody.status).toBe("waiting");
-    expect(mockQueue.add).toHaveBeenCalled();
+    expect(mockResolveCommitHash).toHaveBeenCalledWith(
+      "https://github.com/facebook/react.git",
+      "v18.0.0"
+    );
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      "process-repo",
+      {
+        jobId: commitHash,
+        repoName: "facebook/react",
+        ref: commitHash,
+      },
+      {
+        jobId: commitHash,
+      }
+    );
+  });
+
+  it("POST /api/jobs - should reuse an existing job for the same commit", async () => {
+    const firstResponse = await makeRequest(app, "POST", "/api/jobs", {
+      repo: "facebook/react",
+      ref: "main",
+    });
+    expect(firstResponse.status).toBe(201);
+
+    const secondResponse = await makeRequest(app, "POST", "/api/jobs", {
+      repo: "file-diff/file-diff-engine",
+      ref: "stable",
+    });
+    expect(secondResponse.status).toBe(200);
+    expect(secondResponse.body).toEqual({
+      id: commitHash,
+      status: "waiting",
+    });
+    expect(mockQueue.add).toHaveBeenCalledTimes(1);
   });
 
   it("POST /api/jobs - should reject missing fields", async () => {
