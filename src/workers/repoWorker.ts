@@ -53,7 +53,6 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
           }
         );
 
-        await repo.updateJobProgress(jobId, files.length, files.length);
         await repo.updateJobStatus(jobId, "completed");
         logger.info("Job completed", { jobId, processedFiles: files.length });
       } catch (err: unknown) {

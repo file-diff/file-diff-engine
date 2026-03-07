@@ -186,14 +186,27 @@ interface EntryInfo {
 
 function createInitialRecord(repoDir: string, entry: EntryInfo): FileRecord {
   return {
-    file_type:
-      entry.kind === "directory" ? "d" : entry.kind === "symlink" ? "s" : "t",
+    file_type: getInitialFileType(entry.kind),
     file_name: path.relative(repoDir, entry.fullPath),
     file_size: 0,
     file_update_date: "",
     file_last_commit: "",
     file_git_hash: "",
   };
+}
+
+function getInitialFileType(kind: EntryInfo["kind"]): FileRecord["file_type"] {
+  if (kind === "directory") {
+    return "d";
+  }
+
+  if (kind === "symlink") {
+    return "s";
+  }
+
+  // Regular files are inserted immediately with a temporary text-file marker.
+  // Binary/executable detection runs later and updates the row in place.
+  return "t";
 }
 
 /** Recursively list all files and directories, excluding .git */

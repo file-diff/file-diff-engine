@@ -103,7 +103,6 @@ describe("repoWorker", () => {
       "progress:0/1",
       "updateFile",
       "progress:1/1",
-      "progress:1/1",
       "status:completed",
     ]);
     expect(repoMethods.insertFiles).toHaveBeenCalledWith("job-1", initialFiles);
