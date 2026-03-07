@@ -32,7 +32,7 @@ export function createJobRoutes(
     }
 
     const jobId = uuidv4();
-    jobRepo.createJob(jobId, repo, ref);
+    await jobRepo.createJob(jobId, repo, ref);
 
     await queue.add("process-repo", {
       jobId,
@@ -47,9 +47,9 @@ export function createJobRoutes(
    * GET /api/jobs/:id
    * Returns job status and progress.
    */
-  router.get("/:id", (req: Request, res: Response) => {
+  router.get("/:id", async (req: Request, res: Response) => {
     const id = req.params.id as string;
-    const job = jobRepo.getJob(id);
+    const job = await jobRepo.getJob(id);
     if (!job) {
       res.status(404).json({ error: "Job not found." });
       return;
@@ -61,15 +61,15 @@ export function createJobRoutes(
    * GET /api/jobs/:id/files
    * Returns processed file metadata for a completed job.
    */
-  router.get("/:id/files", (req: Request, res: Response) => {
+  router.get("/:id/files", async (req: Request, res: Response) => {
     const id = req.params.id as string;
-    const job = jobRepo.getJob(id);
+    const job = await jobRepo.getJob(id);
     if (!job) {
       res.status(404).json({ error: "Job not found." });
       return;
     }
 
-    const files = jobRepo.getFiles(id);
+    const files = await jobRepo.getFiles(id);
     res.json({
       job_id: job.id,
       status: job.status,

@@ -1,39 +1,52 @@
-import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
+import { Pool } from "pg";
 
-const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
+export interface DatabaseConfig {
+  pool?: Pool;
+}
 
-export function getDatabase(dbPath?: string): Database.Database {
-  const resolvedPath = dbPath || path.join(DATA_DIR, "file-diff-engine.db");
-  const dir = path.dirname(resolvedPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+export type DatabaseClient = Pool;
+
+function createPool(): Pool {
+  if (process.env.DATABASE_URL) {
+    return new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
   }
-  const db = new Database(resolvedPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  initSchema(db);
+
+  return new Pool({
+    host: process.env.DB_HOST || "127.0.0.1",
+    port: parseInt(process.env.DB_PORT || "5432", 10),
+    database: process.env.DB_NAME || "file_diff_engine",
+    user: process.env.DB_USER || "postgres",
+    password: process.env.DB_PASSWORD || "postgres",
+  });
+}
+
+export async function getDatabase(
+  config?: DatabaseConfig
+): Promise<DatabaseClient> {
+  const db = config?.pool ?? createPool();
+  await initSchema(db);
   return db;
 }
 
-function initSchema(db: Database.Database): void {
-  db.exec(`
+async function initSchema(db: DatabaseClient): Promise<void> {
+  await db.query(`
     CREATE TABLE IF NOT EXISTS jobs (
       id TEXT PRIMARY KEY,
       repo TEXT NOT NULL,
       ref TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'waiting',
-      progress REAL NOT NULL DEFAULT 0,
+      progress DOUBLE PRECISION NOT NULL DEFAULT 0,
       total_files INTEGER NOT NULL DEFAULT 0,
       processed_files INTEGER NOT NULL DEFAULT 0,
       error TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS files (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id BIGSERIAL PRIMARY KEY,
       job_id TEXT NOT NULL,
       file_type TEXT NOT NULL,
       file_name TEXT NOT NULL,
