@@ -7,7 +7,7 @@ const logger = createLogger("server");
 
 async function main() {
   const { app, queue, db } = await createApp();
-  const worker = await createWorker();
+  const worker = await createWorker(db);
 
   app.listen(PORT, () => {
     logger.info(`File-diff-engine API listening on port ${PORT}`);

@@ -99,6 +99,10 @@ export class JobRepository {
 }
 
 function toIsoString(value: unknown): string {
+  if (value == null) {
+    throw new Error("Expected database timestamp value.");
+  }
+
   if (value instanceof Date) {
     return value.toISOString();
   }
