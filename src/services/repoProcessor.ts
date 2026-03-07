@@ -69,9 +69,21 @@ function isBinaryFile(filePath: string): boolean {
 }
 
 /** SHA-256 hex digest of a file's content. */
-function sha256File(filePath: string): string {
-  const data = fs.readFileSync(filePath);
-  return crypto.createHash("sha256").update(data).digest("hex");
+function gitHashFile(filePath: string): string | null {
+  try {
+    const cwd = path.dirname(filePath);
+    const fileName = path.basename(filePath);
+    const out = require("child_process").execFileSync(
+      "git",
+      ["hash-object", "--no-filters", "--", fileName],
+      { cwd, encoding: "utf8" }
+    );
+    return (out ?? "").toString().trim();
+  } catch (err) {
+    logger.error("git hash-object failed, falling back to sha256", {filePath, error: (err as Error).message});
+    return null;
+    // Fallback: compute SHA-256 directly (not exactly the same as git's hash-object)
+  }
 }
 
 export interface ProgressCallback {
@@ -91,15 +103,13 @@ export async function processRepository(
   logger.debug("Starting repository processing", { repo, ref, workDir });
   // Clone the repository
   const repoUrl = `https://github.com/${repo}.git`;
-  const cloneDir = path.join(workDir, "repo");
+  const cloneDir = path.join(workDir, "tree");
 
-  if (fs.existsSync(cloneDir)) {
-    fs.rmSync(cloneDir, { recursive: true, force: true });
-  }
+  logger.debug("Using clone directory", { cloneDir });
+  fs.mkdirSync(cloneDir, { recursive: true });
 
   // Use the system git to clone and checkout
-  await runGitCommand(workDir, ["clone", repoUrl, cloneDir]);
-  await runGitCommand(cloneDir, ["checkout", ref]);
+  await runGitCommand(workDir, ["clone", "--depth=1", "--single-branch", `--branch=${ref}`, repoUrl, "tree"]);
 
   // Gather all file/directory entries (excluding .git)
   const entries = getAllEntries(cloneDir);
@@ -126,7 +136,10 @@ export async function processRepository(
     } else {
       const stat = fs.statSync(entry.fullPath);
       const binary = isBinaryFile(entry.fullPath);
-      const hash = sha256File(entry.fullPath);
+      const hash = gitHashFile(entry.fullPath);
+      if (!hash) {
+        throw new Error(`Failed to hash file with git: ${entry.fullPath}`);
+      }
       const lastCommit = getLastCommit(cloneDir, relativePath);
       const updateDate = getLastUpdateDate(cloneDir, relativePath);
 

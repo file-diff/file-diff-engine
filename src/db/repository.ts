@@ -1,5 +1,8 @@
 import type { DatabaseClient } from "./database";
 import { FileRecord, JobInfo, JobStatus } from "../types";
+import {createLogger} from "../utils/logger";
+
+const logger = createLogger("repository");
 
 export class JobRepository {
   constructor(private db: DatabaseClient) {}
@@ -80,7 +83,9 @@ export class JobRepository {
         );
       }
       await client.query("COMMIT");
+      logger.info("Inserted files successfully", { jobId, fileCount: files.length });
     } catch (error) {
+      logger.error("Failed to insert files, rolling back transaction + error", { jobId, error });
       await client.query("ROLLBACK");
       throw error;
     } finally {

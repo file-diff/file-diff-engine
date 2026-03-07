@@ -57,8 +57,8 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
         await repo.updateJobStatus(jobId, "failed", message);
         throw err;
       } finally {
-        fs.rmSync(workDir, { recursive: true, force: true });
-        logger.debug("Cleaned up work directory", { jobId, workDir });
+        //fs.rmSync(workDir, { recursive: true, force: true });
+        //logger.debug("Cleaned up work directory", { jobId, workDir });
       }
     },
     {
