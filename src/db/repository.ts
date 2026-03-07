@@ -1,85 +1,111 @@
-import Database from "better-sqlite3";
+import type { DatabaseClient } from "./database";
 import { FileRecord, JobInfo, JobStatus } from "../types";
 
 export class JobRepository {
-  constructor(private db: Database.Database) {}
+  constructor(private db: DatabaseClient) {}
 
-  createJob(id: string, repo: string, ref: string): void {
-    this.db
-      .prepare(
-        `INSERT INTO jobs (id, repo, ref, status, created_at, updated_at)
-         VALUES (?, ?, ?, 'waiting', datetime('now'), datetime('now'))`
-      )
-      .run(id, repo, ref);
+  async createJob(id: string, repo: string, ref: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO jobs (id, repo, ref, status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'waiting', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [id, repo, ref]
+    );
   }
 
-  getJob(id: string): JobInfo | undefined {
-    const row = this.db
-      .prepare("SELECT * FROM jobs WHERE id = ?")
-      .get(id) as Record<string, unknown> | undefined;
-    if (!row) return undefined;
+  async getJob(id: string): Promise<JobInfo | undefined> {
+    const result = await this.db.query("SELECT * FROM jobs WHERE id = $1", [id]);
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (!row) {
+      return undefined;
+    }
+
     return {
       id: row.id as string,
       repo: row.repo as string,
       ref: row.ref as string,
       status: row.status as JobStatus,
-      progress: row.progress as number,
-      total_files: row.total_files as number,
-      processed_files: row.processed_files as number,
-      error: row.error as string | undefined,
-      created_at: row.created_at as string,
-      updated_at: row.updated_at as string,
+      progress: Number(row.progress),
+      total_files: Number(row.total_files),
+      processed_files: Number(row.processed_files),
+      error: (row.error as string | null) ?? undefined,
+      created_at: toIsoString(row.created_at),
+      updated_at: toIsoString(row.updated_at),
     };
   }
 
-  updateJobStatus(id: string, status: JobStatus, error?: string): void {
-    this.db
-      .prepare(
-        `UPDATE jobs SET status = ?, error = ?, updated_at = datetime('now') WHERE id = ?`
-      )
-      .run(status, error ?? null, id);
+  async updateJobStatus(
+    id: string,
+    status: JobStatus,
+    error?: string
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE jobs SET status = $1, error = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+      [status, error ?? null, id]
+    );
   }
 
-  updateJobProgress(
+  async updateJobProgress(
     id: string,
     processedFiles: number,
     totalFiles: number
-  ): void {
+  ): Promise<void> {
     const progress = totalFiles > 0 ? (processedFiles / totalFiles) * 100 : 0;
-    this.db
-      .prepare(
-        `UPDATE jobs SET processed_files = ?, total_files = ?, progress = ?, updated_at = datetime('now') WHERE id = ?`
-      )
-      .run(processedFiles, totalFiles, progress, id);
+    await this.db.query(
+      `UPDATE jobs SET processed_files = $1, total_files = $2, progress = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4`,
+      [processedFiles, totalFiles, progress, id]
+    );
   }
 
-  insertFiles(jobId: string, files: FileRecord[]): void {
-    const insert = this.db.prepare(
-      `INSERT INTO files (job_id, file_type, file_name, file_size, file_update_date, file_last_commit, file_sha256_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    );
-    const transaction = this.db.transaction((records: FileRecord[]) => {
-      for (const f of records) {
-        insert.run(
-          jobId,
-          f.file_type,
-          f.file_name,
-          f.file_size,
-          f.file_update_date,
-          f.file_last_commit,
-          f.file_sha256_hash
+  async insertFiles(jobId: string, files: FileRecord[]): Promise<void> {
+    if (files.length === 0) {
+      return;
+    }
+
+    const client = await this.db.connect();
+    try {
+      await client.query("BEGIN");
+      for (const file of files) {
+        await client.query(
+          `INSERT INTO files (job_id, file_type, file_name, file_size, file_update_date, file_last_commit, file_sha256_hash)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            jobId,
+            file.file_type,
+            file.file_name,
+            file.file_size,
+            file.file_update_date,
+            file.file_last_commit,
+            file.file_sha256_hash,
+          ]
         );
       }
-    });
-    transaction(files);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
-  getFiles(jobId: string): FileRecord[] {
-    const rows = this.db
-      .prepare(
-        "SELECT file_type, file_name, file_size, file_update_date, file_last_commit, file_sha256_hash FROM files WHERE job_id = ?"
-      )
-      .all(jobId) as FileRecord[];
-    return rows;
+  async getFiles(jobId: string): Promise<FileRecord[]> {
+    const result = await this.db.query(
+      `SELECT file_type, file_name, file_size, file_update_date, file_last_commit, file_sha256_hash
+       FROM files WHERE job_id = $1 ORDER BY id ASC`,
+      [jobId]
+    );
+    return result.rows as FileRecord[];
   }
+}
+
+function toIsoString(value: unknown): string {
+  if (value == null) {
+    throw new Error("Expected database timestamp value.");
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  return String(value);
 }

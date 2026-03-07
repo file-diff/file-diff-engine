@@ -1,12 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import express from "express";
-import path from "path";
-import os from "os";
-import fs from "fs";
-import { getDatabase } from "../db/database";
+import type { DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
 import { createJobRoutes } from "../routes/jobs";
 import { Queue } from "bullmq";
+import { createTestDatabase } from "./helpers/testDatabase";
 
 // Helper to make requests without supertest
 async function makeRequest(
@@ -34,18 +32,15 @@ async function makeRequest(
 }
 
 describe("Job Routes", () => {
-  let dbPath: string;
-  let db: ReturnType<typeof getDatabase>;
+  let db: DatabaseClient;
   let jobRepo: JobRepository;
   let app: express.Express;
   let mockQueue: Queue;
 
-  beforeEach(() => {
-    dbPath = path.join(os.tmpdir(), `fde-routes-test-${Date.now()}.db`);
-    db = getDatabase(dbPath);
+  beforeEach(async () => {
+    db = await createTestDatabase();
     jobRepo = new JobRepository(db);
 
-    // Mock queue - we don't need real Redis for route tests
     mockQueue = {
       add: vi.fn().mockResolvedValue({}),
     } as unknown as Queue;
@@ -55,13 +50,8 @@ describe("Job Routes", () => {
     app.use("/api/jobs", createJobRoutes(mockQueue, jobRepo));
   });
 
-  afterEach(() => {
-    db.close();
-    if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
-    for (const ext of ["-wal", "-shm"]) {
-      const f = dbPath + ext;
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    }
+  afterEach(async () => {
+    await db.end();
   });
 
   it("POST /api/jobs - should create a job", async () => {
@@ -92,8 +82,7 @@ describe("Job Routes", () => {
   });
 
   it("GET /api/jobs/:id - should return job info", async () => {
-    // Create a job directly in the DB
-    jobRepo.createJob("test-job-1", "owner/repo", "main");
+    await jobRepo.createJob("test-job-1", "owner/repo", "main");
     const res = await makeRequest(app, "GET", "/api/jobs/test-job-1");
     expect(res.status).toBe(200);
     const resBody = res.body as { id: string; status: string };
@@ -107,8 +96,8 @@ describe("Job Routes", () => {
   });
 
   it("GET /api/jobs/:id/files - should return files for a job", async () => {
-    jobRepo.createJob("test-job-2", "owner/repo", "main");
-    jobRepo.insertFiles("test-job-2", [
+    await jobRepo.createJob("test-job-2", "owner/repo", "main");
+    await jobRepo.insertFiles("test-job-2", [
       {
         file_type: "t",
         file_name: "README.md",

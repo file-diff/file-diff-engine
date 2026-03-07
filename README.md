@@ -15,7 +15,7 @@ A TypeScript backend service that uses **BullMQ** to process GitHub repositories
   | `file_last_commit` | SHA of the last commit that touched the file |
   | `file_sha256_hash` | SHA-256 hex digest of the file content (empty for directories) |
 - **Progress tracking** – query a job at any time to see how many files have been processed.
-- **SQLite storage** – lightweight, zero-configuration persistence.
+- **PostgreSQL storage** – durable persistence for jobs and indexed files.
 
 ## Prerequisites
 
@@ -23,13 +23,14 @@ A TypeScript backend service that uses **BullMQ** to process GitHub repositories
 |---|---|
 | Node.js | ≥ 18 |
 | Redis | ≥ 6 (required by BullMQ) |
+| PostgreSQL | ≥ 16 |
 | Git | any recent version |
 
 ## Quick Start
 
 ```bash
-# Start Redis (Docker Compose)
-docker compose up -d redis
+# Start local development services (Postgres + Redis)
+docker compose up -d
 
 # Install dependencies
 npm install
@@ -37,11 +38,19 @@ npm install
 # Build
 npm run build
 
-# Start the server (Redis must be running on localhost:6379)
+# Start the server
 npm start
 ```
 
-To stop Redis:
+The Docker Compose configuration exposes a ready-to-use local PostgreSQL instance:
+
+- host: `127.0.0.1`
+- port: `5432`
+- database: `file_diff_engine`
+- user: `postgres`
+- password: `postgres`
+
+To stop the development services:
 
 ```bash
 docker compose down
@@ -56,7 +65,12 @@ Environment variables:
 | `PORT` | `3000` | HTTP server port |
 | `REDIS_HOST` | `127.0.0.1` | Redis host |
 | `REDIS_PORT` | `6379` | Redis port |
-| `DATA_DIR` | `./data` | Directory for the SQLite database |
+| `DATABASE_URL` | unset | Full PostgreSQL connection string; overrides individual DB settings |
+| `DB_HOST` | `127.0.0.1` | PostgreSQL host |
+| `DB_PORT` | `5432` | PostgreSQL port |
+| `DB_NAME` | `file_diff_engine` | PostgreSQL database name |
+| `DB_USER` | `postgres` | PostgreSQL user |
+| `DB_PASSWORD` | `postgres` | PostgreSQL password |
 
 ## API
 
@@ -150,7 +164,7 @@ src/
 ├── server.ts               # Entry point – starts API + worker
 ├── types/index.ts          # Shared TypeScript interfaces
 ├── db/
-│   ├── database.ts         # SQLite initialisation & schema
+│   ├── database.ts         # PostgreSQL initialisation & schema
 │   └── repository.ts       # Data-access layer (jobs + files)
 ├── routes/
 │   └── jobs.ts             # REST endpoints
