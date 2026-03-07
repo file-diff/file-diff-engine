@@ -196,7 +196,7 @@ async function getLastCommit(
     "--",
     rel,
   ]);
-  return out ?? "";
+  return out;
 }
 
 /** Get the last update date for a given path from git log. */
@@ -213,5 +213,5 @@ async function getLastUpdateDate(
     "--",
     rel,
   ]);
-  return out ?? "";
+  return out;
 }
