@@ -115,6 +115,36 @@ describe("JobRepository", () => {
     expect(retrieved[4].file_name).toBe("hello-link");
   });
 
+  it("should update file metadata after initial insert", async () => {
+    await repo.createJob("job-6", "owner/repo", "main");
+    await repo.insertFiles("job-6", [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_size: 0,
+        file_update_date: "",
+        file_last_commit: "",
+        file_git_hash: "",
+      },
+    ]);
+
+    await repo.updateFile("job-6", {
+      file_type: "x",
+      file_name: "README.md",
+      file_size: 50,
+      file_update_date: "2024-01-01T00:00:00Z",
+      file_last_commit: "abc123",
+      file_git_hash: "deadbeef",
+    });
+
+    const [updated] = await repo.getFiles("job-6");
+    expect(updated.file_type).toBe("x");
+    expect(updated.file_size).toBe(50);
+    expect(updated.file_update_date).toBe("2024-01-01T00:00:00Z");
+    expect(updated.file_last_commit).toBe("abc123");
+    expect(updated.file_git_hash).toBe("deadbeef");
+  });
+
   it("should return empty array for job with no files", async () => {
     await repo.createJob("job-5", "owner/repo", "main");
     const files = await repo.getFiles("job-5");

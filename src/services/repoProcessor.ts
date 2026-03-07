@@ -71,6 +71,16 @@ export interface ProgressCallback {
   (processed: number, total: number): void;
 }
 
+export interface ProcessRepositoryHooks {
+  onFilesDiscovered?: (files: FileRecord[]) => void | Promise<void>;
+  onFileProcessed?: (
+    file: FileRecord,
+    processed: number,
+    total: number
+  ) => void | Promise<void>;
+  onProgress?: ProgressCallback;
+}
+
 export function getFileTypeFromGitMode(
   mode: string,
   isBinary: boolean
@@ -94,7 +104,7 @@ export async function processRepository(
   repo: string,
   ref: string,
   workDir: string,
-  onProgress?: ProgressCallback
+  hooks: ProcessRepositoryHooks = {}
 ): Promise<FileRecord[]> {
   logger.debug("Starting repository processing", { repo, ref, workDir });
   // Clone the repository
@@ -111,24 +121,27 @@ export async function processRepository(
   const entries = getAllEntries(cloneDir);
   const total = entries.length;
   logger.debug("Discovered repository entries", { repo, ref, total });
+  const initialRecords = entries.map((entry) => createInitialRecord(cloneDir, entry));
+  await hooks.onFilesDiscovered?.(initialRecords);
   const records: FileRecord[] = [];
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
     const relativePath = path.relative(cloneDir, entry.fullPath);
+    let record: FileRecord;
 
     if (entry.kind === "directory") {
       // For directories, get the last commit that touched any file in them
       const lastCommit = getLastCommit(cloneDir, relativePath);
       const updateDate = getLastUpdateDate(cloneDir, relativePath);
-      records.push({
+      record = {
         file_type: "d",
         file_name: relativePath,
         file_size: 0,
         file_update_date: await updateDate,
         file_last_commit: await lastCommit,
         file_git_hash: "",
-      });
+      };
     } else {
       const stat =
         entry.kind === "symlink"
@@ -142,19 +155,20 @@ export async function processRepository(
       const lastCommit = getLastCommit(cloneDir, relativePath);
       const updateDate = getLastUpdateDate(cloneDir, relativePath);
 
-      records.push({
+      record = {
         file_type: getFileTypeFromGitMode(gitEntry.mode, binary),
         file_name: relativePath,
         file_size: stat.size,
         file_update_date: await updateDate,
         file_last_commit: await lastCommit,
         file_git_hash: gitEntry.hash,
-      });
+      };
     }
 
-    if (onProgress) {
-      onProgress(i + 1, total);
-    }
+    records.push(record);
+    await hooks.onFileProcessed?.(record, i + 1, total);
+
+    hooks.onProgress?.(i + 1, total);
   }
 
   logger.debug("Repository processing completed", {
@@ -168,6 +182,18 @@ export async function processRepository(
 interface EntryInfo {
   fullPath: string;
   kind: "directory" | "file" | "symlink";
+}
+
+function createInitialRecord(repoDir: string, entry: EntryInfo): FileRecord {
+  return {
+    file_type:
+      entry.kind === "directory" ? "d" : entry.kind === "symlink" ? "s" : "t",
+    file_name: path.relative(repoDir, entry.fullPath),
+    file_size: 0,
+    file_update_date: "",
+    file_last_commit: "",
+    file_git_hash: "",
+  };
 }
 
 /** Recursively list all files and directories, excluding .git */
