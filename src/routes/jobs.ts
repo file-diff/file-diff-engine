@@ -28,11 +28,13 @@ export function createJobRoutes(
    * Creates a new processing job and enqueues it.
    */
   router.post("/", async (req: Request, res: Response) => {
-    const { repo, ref } = req.body as JobRequest;
+    let { repo, ref } = req.body as JobRequest;
     if (!repo || !ref) {
       res.status(400).json({ error: "Both 'repo' and 'ref' are required." });
       return;
     }
+
+    repo = repo.replace("https://github.com/", "").replace(".git", "").trim();
 
     // Basic validation: repo should look like owner/repo
     if (!/^[\w.\-]+\/[\w.\-]+$/.test(repo)) {
