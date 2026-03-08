@@ -47,7 +47,7 @@ The PostgreSQL container is configured with:
 - user: `postgres`
 - password: `postgres`
 
-Processed repository files are stored inside the application container at `/app/tmp`. No bind mounts or Docker volumes are configured yet.
+Processed repository files are stored inside the application container at `/app/tmp`. No bind mounts or Docker volumes are configured.
 
 To stop the development services:
 
