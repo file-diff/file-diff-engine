@@ -29,20 +29,17 @@ A TypeScript backend service that uses **BullMQ** to process GitHub repositories
 ## Quick Start
 
 ```bash
-# Start local development services (Postgres + Redis)
-docker compose up -d
-
-# Install dependencies
-npm install
-
-# Build
-npm run build
-
-# Start the server
-npm start
+# Build and start the full stack (API + worker + Postgres + Redis)
+docker compose up --build
 ```
 
-The Docker Compose configuration exposes a ready-to-use local PostgreSQL instance:
+The Docker Compose configuration exposes:
+
+- API: `http://127.0.0.1:12986`
+- PostgreSQL: `127.0.0.1:5432`
+- Redis: `127.0.0.1:6379`
+
+The PostgreSQL container is configured with:
 
 - host: `127.0.0.1`
 - port: `5432`
@@ -50,10 +47,21 @@ The Docker Compose configuration exposes a ready-to-use local PostgreSQL instanc
 - user: `postgres`
 - password: `postgres`
 
+Processed repository files are stored inside the application container at `/app/tmp`. No bind mounts or Docker volumes are configured yet.
+
 To stop the development services:
 
 ```bash
 docker compose down
+```
+
+If you only want local infrastructure for running the app outside Docker:
+
+```bash
+docker compose up -d postgres redis
+npm install
+npm run build
+npm start
 ```
 
 ## Configuration
