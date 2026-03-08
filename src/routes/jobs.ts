@@ -1,5 +1,5 @@
-import { Router, Request, Response } from "express";
 import { Queue } from "bullmq";
+import type { FastifyPluginAsync } from "fastify";
 import { JobRepository } from "../db/repository";
 import { JobRequest } from "../types";
 import {
@@ -17,108 +17,111 @@ export function createJobRoutes(
   queue: Queue,
   jobRepo: JobRepository,
   options: JobRouteOptions = {}
-): Router {
-  const router = Router();
+): FastifyPluginAsync {
   const resolveCommitHash =
     options.resolveCommitHash ?? resolveRefToCommitHash;
 
-  /**
-   * POST /api/jobs
-   * Body: { "repo": "owner/repo", "ref": "v1.0.0" }
-   * Creates a new processing job and enqueues it.
-   */
-  router.post("/", async (req: Request, res: Response) => {
-    let { repo, ref } = req.body as JobRequest;
-    if (!repo || !ref) {
-      res.status(400).json({ error: "Both 'repo' and 'ref' are required." });
-      return;
-    }
-
-    repo = repo.replace("https://github.com/", "").replace(".git", "").trim();
-
-    // Basic validation: repo should look like owner/repo
-    if (!/^[\w.\-]+\/[\w.\-]+$/.test(repo)) {
-      res.status(400).json({
-        error:
-          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
-      });
-      return;
-    }
-
-    const jobId = await resolveCommitHash(getRepositoryUrl(repo), ref);
-    const existingJob = await jobRepo.getJob(jobId);
-    if (existingJob) {
-      res.status(200).json({ id: existingJob.id, status: existingJob.status });
-      return;
-    }
-
-    try {
-      await jobRepo.createJob(jobId, repo, ref);
-    } catch (error: unknown) {
-      if ((error as { code?: string }).code === POSTGRES_UNIQUE_VIOLATION) {
-        const duplicateJob = await jobRepo.getJob(jobId);
-        if (duplicateJob) {
-          res.status(200).json({ id: duplicateJob.id, status: duplicateJob.status });
-          return;
-        }
+  return async function registerJobRoutes(app) {
+    /**
+     * POST /api/jobs
+     * Body: { "repo": "owner/repo", "ref": "v1.0.0" }
+     * Creates a new processing job and enqueues it.
+     */
+    app.post<{ Body: JobRequest }>("/", async (request, reply) => {
+      let { repo, ref } = request.body ?? {};
+      if (!repo || !ref) {
+        return reply
+          .code(400)
+          .send({ error: "Both 'repo' and 'ref' are required." });
       }
 
-      throw error;
-    }
+      repo = repo.replace("https://github.com/", "").replace(".git", "").trim();
 
-    await queue.add("process-repo", {
-      jobId,
-      repoName: repo,
-      ref: jobId,
-    }, {
-      jobId,
+      // Basic validation: repo should look like owner/repo
+      if (!/^[\w.\-]+\/[\w.\-]+$/.test(repo)) {
+        return reply.code(400).send({
+          error:
+            "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        });
+      }
+
+      const jobId = await resolveCommitHash(getRepositoryUrl(repo), ref);
+      const existingJob = await jobRepo.getJob(jobId);
+      if (existingJob) {
+        return reply
+          .code(200)
+          .send({ id: existingJob.id, status: existingJob.status });
+      }
+
+      try {
+        await jobRepo.createJob(jobId, repo, ref);
+      } catch (error: unknown) {
+        if ((error as { code?: string }).code === POSTGRES_UNIQUE_VIOLATION) {
+          const duplicateJob = await jobRepo.getJob(jobId);
+          if (duplicateJob) {
+            return reply
+              .code(200)
+              .send({ id: duplicateJob.id, status: duplicateJob.status });
+          }
+        }
+
+        throw error;
+      }
+
+      await queue.add(
+        "process-repo",
+        {
+          jobId,
+          repoName: repo,
+          ref: jobId,
+        },
+        {
+          jobId,
+        }
+      );
+
+      return reply.code(201).send({ id: jobId, status: "waiting" });
     });
 
-    res.status(201).json({ id: jobId, status: "waiting" });
-  });
-
-  /**
-   * GET /api/jobs/:id
-   * Returns job status and progress.
-   */
-  router.get("/:id", async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const job = await jobRepo.getJob(id);
-    if (!job) {
-      res.status(404).json({ error: "Job not found." });
-      return;
-    }
-    res.json(job);
-  });
-
-  /**
-   * GET /api/jobs/:id/files
-   * Returns processed file metadata for a completed job.
-   */
-  router.get("/:id/files", async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const job = await jobRepo.getJob(id);
-    if (!job) {
-      res.status(404).json({ error: "Job not found." });
-      return;
-    }
-
-    const files = await jobRepo.getFiles(id);
-    // Do not change the structure of the response, as the frontend relies on it
-    res.json({
-      job_id: job.id,
-      status: job.status,
-      progress: job.progress,
-      files: files.map(f => ({
-        t: f.file_type,
-        path: f.file_name,
-        s: f.file_size,
-        update: f.file_update_date,
-        commit: f.file_last_commit,
-        hash: f.file_git_hash,
-      }))
+    /**
+     * GET /api/jobs/:id
+     * Returns job status and progress.
+     */
+    app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
+      const { id } = request.params;
+      const job = await jobRepo.getJob(id);
+      if (!job) {
+        return reply.code(404).send({ error: "Job not found." });
+      }
+      return reply.send(job);
     });
-  });
 
-  return router;
+    /**
+     * GET /api/jobs/:id/files
+     * Returns processed file metadata for a completed job.
+     */
+    app.get<{ Params: { id: string } }>("/:id/files", async (request, reply) => {
+      const { id } = request.params;
+      const job = await jobRepo.getJob(id);
+      if (!job) {
+        return reply.code(404).send({ error: "Job not found." });
+      }
+
+      const files = await jobRepo.getFiles(id);
+      // Do not change the structure of the response, as the frontend relies on it
+      return reply.send({
+        job_id: job.id,
+        status: job.status,
+        progress: job.progress,
+        files: files.map((f) => ({
+          t: f.file_type,
+          path: f.file_name,
+          s: f.file_size,
+          update: f.file_update_date,
+          commit: f.file_last_commit,
+          hash: f.file_git_hash,
+        })),
+      });
+    });
+  };
 }
