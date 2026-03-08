@@ -11,7 +11,7 @@ async function main() {
   const worker = await createWorker(db);
 
   app.listen(PORT, ADDR, () => {
-    logger.info(`File-diff-engine API listening on ${PORT}:${PORT}`);
+    logger.info(`File-diff-engine API listening on ${ADDR}:${PORT}`);
     logger.info("Worker connected to Redis, processing queue…");
   });
 
