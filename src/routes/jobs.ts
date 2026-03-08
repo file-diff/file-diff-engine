@@ -102,11 +102,19 @@ export function createJobRoutes(
     }
 
     const files = await jobRepo.getFiles(id);
+    // Do not change the structure of the response, as the frontend relies on it
     res.json({
       job_id: job.id,
       status: job.status,
       progress: job.progress,
-      files,
+      files: files.map(f => ({
+        t: f.file_type,
+        path: f.file_name,
+        s: f.file_size,
+        update: f.file_update_date,
+        commit: f.file_last_commit,
+        hash: f.file_git_hash,
+      }))
     });
   });
 
