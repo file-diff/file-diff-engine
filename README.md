@@ -62,7 +62,9 @@ Environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `3000` | HTTP server port |
+| `PORT` | `12986` | HTTP server port |
+| `HOST` | `0.0.0.0` | HTTP server bind address |
+| `ADDR` | `0.0.0.0` | Legacy alias for `HOST` |
 | `REDIS_HOST` | `127.0.0.1` | Redis host |
 | `REDIS_PORT` | `6379` | Redis port |
 | `DATABASE_URL` | unset | Full PostgreSQL connection string; overrides individual DB settings |
@@ -143,6 +145,8 @@ GET /api/jobs/:id/files
 GET /health
 ```
 
+The API uses permissive CORS by default so it can be called from a frontend hosted on a different domain.
+
 ## Development
 
 ```bash
@@ -160,7 +164,7 @@ npm run dev
 
 ```
 src/
-├── app.ts                  # Express app factory
+├── app.ts                  # Fastify app factory
 ├── server.ts               # Entry point – starts API + worker
 ├── types/index.ts          # Shared TypeScript interfaces
 ├── db/

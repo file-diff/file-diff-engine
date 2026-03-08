@@ -1,40 +1,34 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import express from "express";
+import Fastify, { type FastifyInstance } from "fastify";
 import type { DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
 import { createJobRoutes } from "../routes/jobs";
 import { Queue } from "bullmq";
 import { createTestDatabase } from "./helpers/testDatabase";
 
-// Helper to make requests without supertest
 async function makeRequest(
-  app: express.Express,
+  app: FastifyInstance,
   method: string,
   url: string,
   body?: unknown
 ): Promise<{ status: number; body: unknown }> {
-  return new Promise((resolve) => {
-    const server = app.listen(0, async () => {
-      const addr = server.address() as { port: number };
-      const fetchOptions: RequestInit = {
-        method,
-        headers: { "Content-Type": "application/json" },
-      };
-      if (body) {
-        fetchOptions.body = JSON.stringify(body);
-      }
-      const res = await fetch(`http://127.0.0.1:${addr.port}${url}`, fetchOptions);
-      const json = await res.json();
-      server.close();
-      resolve({ status: res.status, body: json });
-    });
+  const response = await app.inject({
+    method,
+    url,
+    payload: body,
+    headers: body ? { "content-type": "application/json" } : undefined,
   });
+
+  return {
+    status: response.statusCode,
+    body: response.json(),
+  };
 }
 
 describe("Job Routes", () => {
   let db: DatabaseClient;
   let jobRepo: JobRepository;
-  let app: express.Express;
+  let app: FastifyInstance;
   let mockQueue: Queue;
   let mockResolveCommitHash: ReturnType<typeof vi.fn>;
   const commitHash = "0123456789abcdef0123456789abcdef01234567";
@@ -48,17 +42,17 @@ describe("Job Routes", () => {
     } as unknown as Queue;
     mockResolveCommitHash = vi.fn().mockResolvedValue(commitHash);
 
-    app = express();
-    app.use(express.json());
-    app.use(
-      "/api/jobs",
+    app = Fastify();
+    await app.register(
       createJobRoutes(mockQueue, jobRepo, {
         resolveCommitHash: mockResolveCommitHash,
-      })
+      }),
+      { prefix: "/api/jobs" }
     );
   });
 
   afterEach(async () => {
+    await app.close();
     await db.end();
   });
 
@@ -150,11 +144,9 @@ describe("Job Routes", () => {
     ]);
     const res = await makeRequest(app, "GET", "/api/jobs/test-job-2/files");
     expect(res.status).toBe(200);
-    const resBody = res.body as { files: unknown[] };
+    const resBody = res.body as { files: Array<{ hash: string }> };
     expect(resBody.files).toHaveLength(1);
-    expect((resBody.files[0] as { file_git_hash: string }).file_git_hash).toBe(
-      "deadbeef"
-    );
+    expect(resBody.files[0].hash).toBe("deadbeef");
   });
 
   it("GET /api/jobs/:id/files - should return 404 for unknown job", async () => {

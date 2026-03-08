@@ -3,20 +3,20 @@ import { createWorker } from "./workers/repoWorker";
 import { createLogger } from "./utils/logger";
 
 const PORT = parseInt(process.env.PORT || "12986", 10);
-const ADDR = process.env.ADDR || "127.0.0.1";
+const HOST = process.env.HOST || process.env.ADDR || "0.0.0.0";
 const logger = createLogger("server");
 
 async function main() {
   const { app, queue, db } = await createApp();
   const worker = await createWorker(db);
 
-  app.listen(PORT, ADDR, () => {
-    logger.info(`File-diff-engine API listening on ${ADDR}:${PORT}`);
-    logger.info("Worker connected to Redis, processing queue…");
-  });
+  await app.listen({ port: PORT, host: HOST });
+  logger.info(`File-diff-engine API listening on ${HOST}:${PORT}`);
+  logger.info("Worker connected to Redis, processing queue…");
 
   async function shutdown() {
     logger.info("Shutting down…");
+    await app.close();
     await worker.close();
     await queue.close();
     await db.end();
