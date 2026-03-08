@@ -14,9 +14,9 @@ FROM node:20-bookworm-slim
 
 WORKDIR /app
 
+# Install git and system CA certificates so TLS/SSL requests succeed
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get install -y git ca-certificates
 
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
