@@ -62,6 +62,7 @@ async function initSchema(db: DatabaseClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id);
   `);
 
+  // Backfill columns for databases created before permalink metadata existed.
   await db.query(`
     ALTER TABLE jobs ADD COLUMN IF NOT EXISTS ref TEXT;
     ALTER TABLE jobs ADD COLUMN IF NOT EXISTS permalink TEXT NOT NULL DEFAULT '';

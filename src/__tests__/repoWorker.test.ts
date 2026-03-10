@@ -96,13 +96,13 @@ describe("repoWorker", () => {
 
     await worker.handler({
       id: "queue-job-1",
-        data: {
-          jobId: commitHash,
-          repoName: "owner/repo",
-          ref: "main",
-          commit: commitHash,
-        },
-      });
+      data: {
+        jobId: commitHash,
+        repoName: "owner/repo",
+        ref: "main",
+        commit: commitHash,
+      },
+    });
 
     expect(order).toEqual([
       "status:active",
