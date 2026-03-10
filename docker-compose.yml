@@ -21,6 +21,8 @@ services:
       TMP_DIR: /app/tmp
     ports:
       - "12986:12986"
+    volumes:
+      - ./repositories_data:/app/tmp
   postgres:
     image: postgres:17-alpine
     environment:
