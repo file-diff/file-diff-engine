@@ -84,6 +84,9 @@ Environment variables:
 
 ## API
 
+A machine-readable OpenAPI description of the current API is available in
+[`openapi.yaml`](./openapi.yaml).
+
 ### Create a processing job
 
 ```
@@ -96,8 +99,11 @@ Content-Type: application/json
 **Response** `201 Created`
 
 ```json
-{ "id": "uuid", "status": "waiting" }
+{ "id": "0123456789abcdef0123456789abcdef01234567", "status": "waiting" }
 ```
+
+If the supplied ref resolves to a commit that has already been indexed, the API
+returns `200 OK` with the existing job instead of creating a duplicate.
 
 ### Query job progress
 
@@ -131,17 +137,17 @@ GET /api/jobs/:id/files
 
 ```json
 {
-  "job_id": "uuid",
+  "job_id": "0123456789abcdef0123456789abcdef01234567",
   "status": "completed",
   "progress": 100,
   "files": [
     {
-      "file_type": "t",
-      "file_name": "src/index.ts",
-      "file_size": 1234,
-      "file_update_date": "2024-01-01T12:00:00+00:00",
-      "file_last_commit": "abc123def456",
-      "file_git_hash": "557db03de997c86a4a028e1ebd3a1ceb225be238"
+      "t": "t",
+      "path": "src/index.ts",
+      "s": 1234,
+      "update": "2024-01-01T12:00:00+00:00",
+      "commit": "abc123def456",
+      "hash": "557db03de997c86a4a028e1ebd3a1ceb225be238"
     }
   ]
 }
