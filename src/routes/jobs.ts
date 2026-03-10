@@ -118,7 +118,7 @@ export function createJobRoutes(
       const files = await jobRepo.getFiles(id);
       // Do not change the structure of the response, as the frontend relies on it
       return reply.send({
-        job_id: job.id,
+        jobId: job.id,
         commit: job.commit,
         commitShort: job.commitShort,
         status: job.status,
