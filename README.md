@@ -4,7 +4,7 @@ A TypeScript backend service that uses **BullMQ** to process GitHub repositories
 
 ## Features
 
-- **Job-based processing** – submit a GitHub repository and git ref (tag, branch, or commit SHA) for asynchronous processing via BullMQ.
+- **Job-based processing** – submit a GitHub repository and commit SHA for asynchronous processing via BullMQ.
 - **File metadata** – for every file/directory the service records:
   | Field | Description |
   |---|---|
@@ -90,13 +90,18 @@ Environment variables:
 POST /api/jobs
 Content-Type: application/json
 
-{ "repo": "owner/repo", "ref": "v1.0.0" }
+{ "repo": "owner/repo", "commit": "0123456789abcdef0123456789abcdef01234567" }
 ```
 
 **Response** `201 Created`
 
 ```json
-{ "id": "uuid", "status": "waiting" }
+{
+  "id": "0123456789abcdef0123456789abcdef01234567",
+  "status": "waiting",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "commitShort": "0123456"
+}
 ```
 
 ### Query job progress
@@ -111,7 +116,8 @@ GET /api/jobs/:id
 {
   "id": "uuid",
   "repo": "owner/repo",
-  "ref": "v1.0.0",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "commitShort": "0123456",
   "status": "active",
   "progress": 42.5,
   "total_files": 200,
@@ -132,6 +138,8 @@ GET /api/jobs/:id/files
 ```json
 {
   "job_id": "uuid",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "commitShort": "0123456",
   "status": "completed",
   "progress": 100,
   "files": [

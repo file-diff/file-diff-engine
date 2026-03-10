@@ -78,7 +78,7 @@ describe("repoWorker", () => {
       file_git_hash: "deadbeef",
     };
 
-    processRepositoryMock.mockImplementation(async (_repo, _ref, _workDir, hooks) => {
+    processRepositoryMock.mockImplementation(async (_repo, _commit, _workDir, hooks) => {
       await hooks.onFilesDiscovered(initialFiles);
       await hooks.onFileProcessed(processedFile, 1, 1);
       return [processedFile];
@@ -94,7 +94,7 @@ describe("repoWorker", () => {
       data: {
         jobId: commitHash,
         repoName: "owner/repo",
-        ref: commitHash,
+        commit: commitHash,
       },
     });
 
