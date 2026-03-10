@@ -4,3 +4,4 @@ dist
 npm-debug.log
 postgres_data
 redis_data
+repositories_data
