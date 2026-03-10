@@ -38,20 +38,20 @@ export async function createApp(
   const queue = deps?.queue ?? createQueue();
   const db = deps?.db ?? (await getDatabase(deps?.dbConfig));
   const jobRepo = new JobRepository(db);
+  const healthHandler = async (): Promise<HealthResponse> => ({
+    status: "ok",
+    message: "API is healthy",
+  });
+  const versionHandler = async (): Promise<VersionResponse> => ({
+    version: buildVersion,
+  });
 
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
 
-  app.get("/api/health", async () => {
-    const response: HealthResponse = {
-      status: "ok",
-      message: "API is healthy",
-    };
-    return response;
-  });
-  app.get("/api/version", async () => {
-    const response: VersionResponse = { version: buildVersion };
-    return response;
-  });
+  app.get("/health", healthHandler);
+  app.get("/api/health", healthHandler);
+  app.get("/version", versionHandler);
+  app.get("/api/version", versionHandler);
 
   return { app, queue, db, jobRepo };
 }
