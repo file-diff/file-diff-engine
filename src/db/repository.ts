@@ -2,40 +2,57 @@ import type { DatabaseClient } from "./database";
 import { FileRecord, JobInfo, JobStatus } from "../types";
 import {createLogger} from "../utils/logger";
 import { getCommitShort } from "../utils/commit";
+import { normalizeJobRef } from "../utils/jobIdentity";
 
 const logger = createLogger("repository");
 
 export class JobRepository {
   constructor(private db: DatabaseClient) {}
 
-  async createJob(id: string, repo: string, commit: string): Promise<void> {
+  async createJob(
+    id: string,
+    repo: string,
+    commit: string,
+    ref?: string,
+    permalink?: string
+  ): Promise<void> {
     await this.db.query(
-      `INSERT INTO jobs (id, repo, commit, status, created_at, updated_at)
-       VALUES ($1, $2, $3, 'waiting', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      [id, repo, commit]
+      `INSERT INTO jobs (id, repo, ref, commit, permalink, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'waiting', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [id, repo, normalizeJobRef(ref) ?? null, commit, permalink ?? ""]
     );
+  }
+
+  async findJob(repo: string, commit: string): Promise<JobInfo | undefined> {
+    const result = await this.db.query(
+      "SELECT * FROM jobs WHERE repo = $1 AND commit = $2 ORDER BY created_at ASC LIMIT 1",
+      [repo, commit]
+    );
+    return this.toJobInfo(result.rows[0] as Record<string, unknown> | undefined);
   }
 
   async getJob(id: string): Promise<JobInfo | undefined> {
     const result = await this.db.query("SELECT * FROM jobs WHERE id = $1", [id]);
-    const row = result.rows[0] as Record<string, unknown> | undefined;
-    if (!row) {
-      return undefined;
-    }
+    return this.toJobInfo(result.rows[0] as Record<string, unknown> | undefined);
+  }
 
-    return {
-      id: row.id as string,
-      repo: row.repo as string,
-      commit: row.commit as string,
-      commitShort: getCommitShort(row.commit as string),
-      status: row.status as JobStatus,
-      progress: Number(row.progress),
-      totalFiles: Number(row.total_files),
-      processedFiles: Number(row.processed_files),
-      error: (row.error as string | null) ?? undefined,
-      createdAt: toIsoString(row.created_at),
-      updatedAt: toIsoString(row.updated_at),
-    };
+  async updateJobPermalink(
+    id: string,
+    ref: string | undefined,
+    permalink: string
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE jobs
+       SET ref = COALESCE(ref, $1),
+           permalink = CASE
+             WHEN ref IS NULL AND $1 IS NOT NULL THEN $2
+             WHEN permalink = '' THEN $2
+             ELSE permalink
+           END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3`,
+      [normalizeJobRef(ref) ?? null, permalink, id]
+    );
   }
 
   async updateJobStatus(
@@ -129,6 +146,28 @@ export class JobRepository {
       [jobId]
     );
     return result.rows as FileRecord[];
+  }
+
+  private toJobInfo(row: Record<string, unknown> | undefined): JobInfo | undefined {
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      id: row.id as string,
+      repo: row.repo as string,
+      ref: (row.ref as string | null) ?? undefined,
+      commit: row.commit as string,
+      commitShort: getCommitShort(row.commit as string),
+      permalink: (row.permalink as string | null) ?? "",
+      status: row.status as JobStatus,
+      progress: Number(row.progress),
+      totalFiles: Number(row.total_files),
+      processedFiles: Number(row.processed_files),
+      error: (row.error as string | null) ?? undefined,
+      createdAt: toIsoString(row.created_at),
+      updatedAt: toIsoString(row.updated_at),
+    };
   }
 }
 

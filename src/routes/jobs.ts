@@ -13,6 +13,11 @@ import type {
 } from "../types";
 import * as repoProcessor from "../services/repoProcessor";
 import { getCommitShort } from "../utils/commit";
+import {
+  getJobId,
+  getJobPermalink,
+  normalizeJobRef,
+} from "../utils/jobIdentity";
 
 const POSTGRES_UNIQUE_VIOLATION = "23505";
 
@@ -127,7 +132,7 @@ export function createJobRoutes(
      * Creates a new processing job and enqueues it.
      */
     app.post<{ Body: JobRequest }>("/", async (request, reply) => {
-      let { repo, commit } = request.body ?? {};
+      let { repo, ref, commit } = request.body ?? {};
       if (!repo || !commit) {
         const response: ErrorResponse = {
           error: "Both 'repo' and 'commit' are required.",
@@ -138,6 +143,7 @@ export function createJobRoutes(
       }
 
       repo = normalizeRepo(repo);
+      ref = normalizeJobRef(ref);
       commit = commit.trim().toLowerCase();
 
       // Basic validation: repo should look like owner/repo
@@ -157,29 +163,46 @@ export function createJobRoutes(
         return reply.code(400).send(response);
       }
 
-      const jobId = commit;
-      const existingJob = await jobRepo.getJob(jobId);
+      const jobId = getJobId(repo, commit);
+      const permalink = getJobPermalink(repo, commit, ref);
+      const existingJob = await jobRepo.findJob(repo, commit);
       if (existingJob) {
+        if (ref && !existingJob.ref) {
+          await jobRepo.updateJobPermalink(existingJob.id, ref, permalink);
+          existingJob.ref = ref;
+          existingJob.permalink = permalink;
+        }
         const response: JobSummary = {
           id: existingJob.id,
           status: existingJob.status,
+          repo: existingJob.repo,
+          ref: existingJob.ref,
           commit: existingJob.commit,
           commitShort: existingJob.commitShort,
+          permalink: existingJob.permalink,
         };
         return reply.code(200).send(response);
       }
 
       try {
-        await jobRepo.createJob(jobId, repo, commit);
+        await jobRepo.createJob(jobId, repo, commit, ref, permalink);
       } catch (error: unknown) {
         if ((error as { code?: string }).code === POSTGRES_UNIQUE_VIOLATION) {
-          const duplicateJob = await jobRepo.getJob(jobId);
+          const duplicateJob = await jobRepo.findJob(repo, commit);
           if (duplicateJob) {
+            if (ref && !duplicateJob.ref) {
+              await jobRepo.updateJobPermalink(duplicateJob.id, ref, permalink);
+              duplicateJob.ref = ref;
+              duplicateJob.permalink = permalink;
+            }
             const response: JobSummary = {
               id: duplicateJob.id,
               status: duplicateJob.status,
+              repo: duplicateJob.repo,
+              ref: duplicateJob.ref,
               commit: duplicateJob.commit,
               commitShort: duplicateJob.commitShort,
+              permalink: duplicateJob.permalink,
             };
             return reply.code(200).send(response);
           }
@@ -193,7 +216,8 @@ export function createJobRoutes(
         {
           jobId,
           repoName: repo,
-          commit: jobId,
+          ref,
+          commit,
         },
         {
           jobId,
@@ -203,8 +227,11 @@ export function createJobRoutes(
       const response: JobSummary = {
         id: jobId,
         status: "waiting",
-        commit: jobId,
-        commitShort: getCommitShort(jobId),
+        repo,
+        ref,
+        commit,
+        commitShort: getCommitShort(commit),
+        permalink,
       };
       return reply.code(201).send(response);
     });

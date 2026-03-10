@@ -35,7 +35,9 @@ async function initSchema(db: DatabaseClient): Promise<void> {
     CREATE TABLE IF NOT EXISTS jobs (
       id TEXT PRIMARY KEY,
       repo TEXT NOT NULL,
+      ref TEXT,
       commit TEXT NOT NULL,
+      permalink TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'waiting',
       progress DOUBLE PRECISION NOT NULL DEFAULT 0,
       total_files INTEGER NOT NULL DEFAULT 0,
@@ -58,5 +60,10 @@ async function initSchema(db: DatabaseClient): Promise<void> {
     );
 
     CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id);
+  `);
+
+  await db.query(`
+    ALTER TABLE jobs ADD COLUMN IF NOT EXISTS ref TEXT;
+    ALTER TABLE jobs ADD COLUMN IF NOT EXISTS permalink TEXT NOT NULL DEFAULT '';
   `);
 }

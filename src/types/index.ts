@@ -18,6 +18,8 @@ export interface FileRecord {
 export interface JobRequest {
   /** GitHub repository in owner/repo format */
   repo: string;
+  /** Optional Git ref used to resolve the commit */
+  ref?: string;
   /** Full commit SHA */
   commit: string;
 }
@@ -48,8 +50,11 @@ export type JobStatus = "waiting" | "active" | "completed" | "failed";
 export interface JobSummary {
   id: string;
   status: JobStatus;
+  repo: string;
+  ref?: string;
   commit: string;
   commitShort: string;
+  permalink: string;
 }
 
 /** Response payload when resolving a Git ref to a commit SHA. */
@@ -82,8 +87,10 @@ export interface ListRefsResponse {
 export interface JobInfo {
   id: string;
   repo: string;
+  ref?: string;
   commit: string;
   commitShort: string;
+  permalink: string;
   status: JobStatus;
   progress: number;
   totalFiles: number;

@@ -6,6 +6,7 @@ import { JobRepository } from "../db/repository";
 import { processRepository } from "../services/repoProcessor";
 import { QUEUE_NAME } from "../services/queue";
 import { createLogger } from "../utils/logger";
+import { getJobPermalink } from "../utils/jobIdentity";
 
 const REDIS_HOST = process.env.REDIS_HOST || "127.0.0.1";
 const REDIS_PORT = parseInt(process.env.REDIS_PORT || "6379", 10);
@@ -22,9 +23,10 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
     QUEUE_NAME,
     async (job: Job) => {
       logger.debug("Job started", { jobId: job.id });
-      const { jobId, repoName, commit } = job.data as {
+      const { jobId, repoName, ref, commit } = job.data as {
         jobId: string;
         repoName: string;
+        ref?: string;
         commit: string;
       };
 
@@ -34,6 +36,11 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
 
       try {
         await repo.updateJobStatus(jobId, "active");
+        await repo.updateJobPermalink(
+          jobId,
+          ref,
+          getJobPermalink(repoName, commit, ref)
+        );
         logger.info("Job marked as active", { jobId, repoName, commit });
 
         const files = await processRepository(

@@ -6,6 +6,7 @@ const workerConstructorMock = vi.fn();
 
 const repoMethods = {
   updateJobStatus: vi.fn(),
+  updateJobPermalink: vi.fn(),
   insertFiles: vi.fn(),
   updateJobProgress: vi.fn(),
   updateFile: vi.fn(),
@@ -37,6 +38,7 @@ describe("repoWorker", () => {
     vi.clearAllMocks();
     processRepositoryMock.mockReset();
     repoMethods.updateJobStatus.mockReset();
+    repoMethods.updateJobPermalink.mockReset();
     repoMethods.insertFiles.mockReset();
     repoMethods.updateJobProgress.mockReset();
     repoMethods.updateFile.mockReset();
@@ -48,6 +50,9 @@ describe("repoWorker", () => {
 
     repoMethods.updateJobStatus.mockImplementation(async (_jobId, status) => {
       order.push(`status:${status}`);
+    });
+    repoMethods.updateJobPermalink.mockImplementation(async () => {
+      order.push("permalink");
     });
     repoMethods.insertFiles.mockImplementation(async () => {
       order.push("insertFiles");
@@ -91,15 +96,17 @@ describe("repoWorker", () => {
 
     await worker.handler({
       id: "queue-job-1",
-      data: {
-        jobId: commitHash,
-        repoName: "owner/repo",
-        commit: commitHash,
-      },
-    });
+        data: {
+          jobId: commitHash,
+          repoName: "owner/repo",
+          ref: "main",
+          commit: commitHash,
+        },
+      });
 
     expect(order).toEqual([
       "status:active",
+      "permalink",
       "insertFiles",
       "progress:0/1",
       "updateFile",
@@ -114,5 +121,10 @@ describe("repoWorker", () => {
     );
     expect(repoMethods.insertFiles).toHaveBeenCalledWith(commitHash, initialFiles);
     expect(repoMethods.updateFile).toHaveBeenCalledWith(commitHash, processedFile);
+    expect(repoMethods.updateJobPermalink).toHaveBeenCalledWith(
+      commitHash,
+      "main",
+      "/?repo=owner%2Frepo&ref=main&commit=0123456789abcdef0123456789abcdef01234567"
+    );
   });
 });

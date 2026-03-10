@@ -3,6 +3,7 @@ import type { DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
 import type { FileRecord } from "../types";
 import { createTestDatabase } from "./helpers/testDatabase";
+import { getJobId, getJobPermalink } from "../utils/jobIdentity";
 
 describe("JobRepository", () => {
   let repo: JobRepository;
@@ -18,13 +19,27 @@ describe("JobRepository", () => {
   });
 
   it("should create and retrieve a job", async () => {
-    await repo.createJob("job-1", "owner/repo", "0123456789abcdef0123456789abcdef01234567");
+    await repo.createJob(
+      "job-1",
+      "owner/repo",
+      "0123456789abcdef0123456789abcdef01234567",
+      "main",
+      getJobPermalink(
+        "owner/repo",
+        "0123456789abcdef0123456789abcdef01234567",
+        "main"
+      )
+    );
     const job = await repo.getJob("job-1");
     expect(job).toBeDefined();
     expect(job!.id).toBe("job-1");
     expect(job!.repo).toBe("owner/repo");
+    expect(job!.ref).toBe("main");
     expect(job!.commit).toBe("0123456789abcdef0123456789abcdef01234567");
     expect(job!.commitShort).toBe("0123456");
+    expect(job!.permalink).toBe(
+      "/?repo=owner%2Frepo&ref=main&commit=0123456789abcdef0123456789abcdef01234567"
+    );
     expect(job!.status).toBe("waiting");
     expect(job!.progress).toBe(0);
   });
@@ -50,9 +65,50 @@ describe("JobRepository", () => {
     await repo.createJob("job-3", "owner/repo", "main");
     await repo.updateJobProgress("job-3", 5, 10);
     const job = await repo.getJob("job-3");
-    expect(job!.processed_files).toBe(5);
-    expect(job!.total_files).toBe(10);
+    expect(job!.processedFiles).toBe(5);
+    expect(job!.totalFiles).toBe(10);
     expect(job!.progress).toBe(50);
+  });
+
+  it("should find a job by repository and commit", async () => {
+    const commit = "0123456789abcdef0123456789abcdef01234567";
+    const jobId = getJobId("owner/repo", commit);
+
+    await repo.createJob(
+      jobId,
+      "owner/repo",
+      commit,
+      undefined,
+      getJobPermalink("owner/repo", commit)
+    );
+
+    const job = await repo.findJob("owner/repo", commit);
+    expect(job).toBeDefined();
+    expect(job!.id).toBe(jobId);
+  });
+
+  it("should set permalink metadata when it becomes available", async () => {
+    const commit = "0123456789abcdef0123456789abcdef01234567";
+    const jobId = getJobId("owner/repo", commit);
+
+    await repo.createJob(
+      jobId,
+      "owner/repo",
+      commit,
+      undefined,
+      getJobPermalink("owner/repo", commit)
+    );
+    await repo.updateJobPermalink(
+      jobId,
+      "main",
+      getJobPermalink("owner/repo", commit, "main")
+    );
+
+    const job = await repo.getJob(jobId);
+    expect(job!.ref).toBe("main");
+    expect(job!.permalink).toBe(
+      "/?repo=owner%2Frepo&ref=main&commit=0123456789abcdef0123456789abcdef01234567"
+    );
   });
 
   it("should insert and retrieve files", async () => {
