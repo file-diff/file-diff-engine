@@ -18,12 +18,13 @@ describe("JobRepository", () => {
   });
 
   it("should create and retrieve a job", async () => {
-    await repo.createJob("job-1", "owner/repo", "v1.0.0");
+    await repo.createJob("job-1", "owner/repo", "0123456789abcdef0123456789abcdef01234567");
     const job = await repo.getJob("job-1");
     expect(job).toBeDefined();
     expect(job!.id).toBe("job-1");
     expect(job!.repo).toBe("owner/repo");
-    expect(job!.ref).toBe("v1.0.0");
+    expect(job!.commit).toBe("0123456789abcdef0123456789abcdef01234567");
+    expect(job!.commitShort).toBe("0123456");
     expect(job!.status).toBe("waiting");
     expect(job!.progress).toBe(0);
   });

@@ -18,8 +18,8 @@ export interface FileRecord {
 export interface JobRequest {
   /** GitHub repository in owner/repo format */
   repo: string;
-  /** Git ref – tag name, branch, or commit SHA */
-  ref: string;
+  /** Full commit SHA */
+  commit: string;
 }
 
 /** Status of a processing job. */
@@ -29,7 +29,8 @@ export type JobStatus = "waiting" | "active" | "completed" | "failed";
 export interface JobInfo {
   id: string;
   repo: string;
-  ref: string;
+  commit: string;
+  commitShort: string;
   status: JobStatus;
   progress: number;
   total_files: number;

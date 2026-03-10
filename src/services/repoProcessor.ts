@@ -150,16 +150,16 @@ export function getFileTypeFromGitMode(
 }
 
 /**
- * Clone or download a GitHub repository at a given ref and compute metadata
+ * Clone or download a GitHub repository at a given commit and compute metadata
  * for every file and directory in it.
  */
 export async function processRepository(
   repo: string,
-  ref: string,
+  commit: string,
   workDir: string,
   hooks: ProcessRepositoryHooks = {}
 ): Promise<FileRecord[]> {
-  logger.debug("Starting repository processing", { repo, ref, workDir });
+  logger.debug("Starting repository processing", { repo, commit, workDir });
   const repoUrl = getRepositoryUrl(repo);
   const cloneDir = path.join(workDir, "tree");
 
@@ -168,7 +168,7 @@ export async function processRepository(
 
   await runGitCommand(cloneDir, ["init"]);
   await runGitCommand(cloneDir, ["remote", "add", "origin", repoUrl]);
-  await runGitCommand(cloneDir, ["fetch", "--depth=1", "origin", ref]);
+  await runGitCommand(cloneDir, ["fetch", "--depth=1", "origin", commit]);
   await runGitCommand(cloneDir, [
     "-c",
     "advice.detachedHead=false",
@@ -180,7 +180,7 @@ export async function processRepository(
   // Gather all file/directory entries (excluding .git)
   const entries = getAllEntries(cloneDir);
   const total = entries.length;
-  logger.debug("Discovered repository entries", { repo, ref, total });
+  logger.debug("Discovered repository entries", { repo, commit, total });
   const initialRecords = entries.map((entry) => createInitialRecord(cloneDir, entry));
   await hooks.onFilesDiscovered?.(initialRecords);
   const records: FileRecord[] = [];
@@ -233,7 +233,7 @@ export async function processRepository(
 
   logger.debug("Repository processing completed", {
     repo,
-    ref,
+    commit,
     totalRecords: records.length,
   });
   return records;

@@ -30,7 +30,6 @@ describe("Job Routes", () => {
   let jobRepo: JobRepository;
   let app: FastifyInstance;
   let mockQueue: Queue;
-  let mockResolveCommitHash: ReturnType<typeof vi.fn>;
   const commitHash = "0123456789abcdef0123456789abcdef01234567";
 
   beforeEach(async () => {
@@ -40,15 +39,11 @@ describe("Job Routes", () => {
     mockQueue = {
       add: vi.fn().mockResolvedValue({}),
     } as unknown as Queue;
-    mockResolveCommitHash = vi.fn().mockResolvedValue(commitHash);
 
     app = Fastify();
-    await app.register(
-      createJobRoutes(mockQueue, jobRepo, {
-        resolveCommitHash: mockResolveCommitHash,
-      }),
-      { prefix: "/api/jobs" }
-    );
+    await app.register(createJobRoutes(mockQueue, jobRepo), {
+      prefix: "/api/jobs",
+    });
   });
 
   afterEach(async () => {
@@ -59,22 +54,25 @@ describe("Job Routes", () => {
   it("POST /api/jobs - should create a job", async () => {
     const res = await makeRequest(app, "POST", "/api/jobs", {
       repo: "facebook/react",
-      ref: "v18.0.0",
+      commit: commitHash.toUpperCase(),
     });
     expect(res.status).toBe(201);
-    const resBody = res.body as { id: string; status: string };
+    const resBody = res.body as {
+      id: string;
+      status: string;
+      commit: string;
+      commitShort: string;
+    };
     expect(resBody.id).toBe(commitHash);
     expect(resBody.status).toBe("waiting");
-    expect(mockResolveCommitHash).toHaveBeenCalledWith(
-      "https://github.com/facebook/react.git",
-      "v18.0.0"
-    );
+    expect(resBody.commit).toBe(commitHash);
+    expect(resBody.commitShort).toBe(commitHash.slice(0, 7));
     expect(mockQueue.add).toHaveBeenCalledWith(
       "process-repo",
       {
         jobId: commitHash,
         repoName: "facebook/react",
-        ref: commitHash,
+        commit: commitHash,
       },
       {
         jobId: commitHash,
@@ -85,18 +83,20 @@ describe("Job Routes", () => {
   it("POST /api/jobs - should reuse an existing job for the same commit", async () => {
     const firstResponse = await makeRequest(app, "POST", "/api/jobs", {
       repo: "facebook/react",
-      ref: "main",
+      commit: commitHash,
     });
     expect(firstResponse.status).toBe(201);
 
     const secondResponse = await makeRequest(app, "POST", "/api/jobs", {
       repo: "file-diff/file-diff-engine",
-      ref: "stable",
+      commit: commitHash,
     });
     expect(secondResponse.status).toBe(200);
     expect(secondResponse.body).toEqual({
       id: commitHash,
       status: "waiting",
+      commit: commitHash,
+      commitShort: commitHash.slice(0, 7),
     });
     expect(mockQueue.add).toHaveBeenCalledTimes(1);
   });
@@ -111,18 +111,33 @@ describe("Job Routes", () => {
   it("POST /api/jobs - should reject invalid repo format", async () => {
     const res = await makeRequest(app, "POST", "/api/jobs", {
       repo: "invalid-format",
-      ref: "v1.0.0",
+      commit: commitHash,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /api/jobs - should reject invalid commit format", async () => {
+    const res = await makeRequest(app, "POST", "/api/jobs", {
+      repo: "facebook/react",
+      commit: "main",
     });
     expect(res.status).toBe(400);
   });
 
   it("GET /api/jobs/:id - should return job info", async () => {
-    await jobRepo.createJob("test-job-1", "owner/repo", "main");
-    const res = await makeRequest(app, "GET", "/api/jobs/test-job-1");
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    const res = await makeRequest(app, "GET", `/api/jobs/${commitHash}`);
     expect(res.status).toBe(200);
-    const resBody = res.body as { id: string; status: string };
-    expect(resBody.id).toBe("test-job-1");
+    const resBody = res.body as {
+      id: string;
+      status: string;
+      commit: string;
+      commitShort: string;
+    };
+    expect(resBody.id).toBe(commitHash);
     expect(resBody.status).toBe("waiting");
+    expect(resBody.commit).toBe(commitHash);
+    expect(resBody.commitShort).toBe(commitHash.slice(0, 7));
   });
 
   it("GET /api/jobs/:id - should return 404 for unknown job", async () => {
@@ -131,8 +146,8 @@ describe("Job Routes", () => {
   });
 
   it("GET /api/jobs/:id/files - should return files for a job", async () => {
-    await jobRepo.createJob("test-job-2", "owner/repo", "main");
-    await jobRepo.insertFiles("test-job-2", [
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
       {
         file_type: "t",
         file_name: "README.md",
@@ -142,9 +157,15 @@ describe("Job Routes", () => {
         file_git_hash: "deadbeef",
       },
     ]);
-    const res = await makeRequest(app, "GET", "/api/jobs/test-job-2/files");
+    const res = await makeRequest(app, "GET", `/api/jobs/${commitHash}/files`);
     expect(res.status).toBe(200);
-    const resBody = res.body as { files: Array<{ hash: string }> };
+    const resBody = res.body as {
+      commit: string;
+      commitShort: string;
+      files: Array<{ hash: string }>;
+    };
+    expect(resBody.commit).toBe(commitHash);
+    expect(resBody.commitShort).toBe(commitHash.slice(0, 7));
     expect(resBody.files).toHaveLength(1);
     expect(resBody.files[0].hash).toBe("deadbeef");
   });

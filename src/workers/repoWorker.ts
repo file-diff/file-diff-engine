@@ -22,10 +22,10 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
     QUEUE_NAME,
     async (job: Job) => {
       logger.debug("Job started", { jobId: job.id });
-      const { jobId, repoName, ref } = job.data as {
+      const { jobId, repoName, commit } = job.data as {
         jobId: string;
         repoName: string;
-        ref: string;
+        commit: string;
       };
 
       const workDir = path.join(TMP_DIR, `fde-${jobId}`);
@@ -34,11 +34,11 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
 
       try {
         await repo.updateJobStatus(jobId, "active");
-        logger.info("Job marked as active", { jobId, repoName, ref });
+        logger.info("Job marked as active", { jobId, repoName, commit });
 
         const files = await processRepository(
           repoName,
-          ref,
+          commit,
           workDir,
           {
             onFilesDiscovered: async (files) => {
@@ -58,7 +58,7 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Unknown error";
-        logger.error("Job failed", { jobId, repoName, ref, error: message });
+        logger.error("Job failed", { jobId, repoName, commit, error: message });
         await repo.updateJobStatus(jobId, "failed", message);
         throw err;
       } finally {
