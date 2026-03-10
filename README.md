@@ -48,7 +48,7 @@ The PostgreSQL container is configured with:
 - password: `postgres`
 
 Processed repository files are stored inside the application container at `/app/tmp`.
-PostgreSQL and Redis data are persisted in sibling folders next to the repository checkout:
+PostgreSQL and Redis data are persisted in local folders within the repository directory (these should be excluded from version control):
 
 - `./postgres_data`
 - `./redis_data`

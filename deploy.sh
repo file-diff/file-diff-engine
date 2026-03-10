@@ -3,8 +3,9 @@
   set -euo pipefail
   set -x
 
-  POSTGRES_DATA_DIR="./postgres_data"
-  REDIS_DATA_DIR="./redis_data"
+  SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+  POSTGRES_DATA_DIR="${SCRIPT_DIR}/postgres_data"
+  REDIS_DATA_DIR="${SCRIPT_DIR}/redis_data"
 
   ensure_data_dir() {
     local dir="$1"
