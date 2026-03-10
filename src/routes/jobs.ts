@@ -5,17 +5,79 @@ import type {
   ErrorResponse,
   JobFilesResponse,
   JobRequest,
+  ResolveCommitRequest,
+  ResolveCommitResponse,
   JobSummary,
 } from "../types";
+import * as repoProcessor from "../services/repoProcessor";
 import { getCommitShort } from "../utils/commit";
 
 const POSTGRES_UNIQUE_VIOLATION = "23505";
+
+function normalizeRepo(repo: string): string {
+  return repo.replace("https://github.com/", "").replace(".git", "").trim();
+}
+
+function isValidRepo(repo: string): boolean {
+  return /^[\w.\-]+\/[\w.\-]+$/.test(repo);
+}
 
 export function createJobRoutes(
   queue: Queue,
   jobRepo: JobRepository
 ): FastifyPluginAsync {
   return async function registerJobRoutes(app) {
+    /**
+     * POST /api/jobs/resolve
+     * Body: { "repo": "owner/repo", "ref": "main" }
+     * Resolves a Git ref to a full commit SHA.
+     */
+    app.post<{ Body: ResolveCommitRequest }>("/resolve", async (request, reply) => {
+      let { repo, ref } = request.body ?? {};
+      if (!repo || !ref) {
+        const response: ErrorResponse = {
+          error: "Both 'repo' and 'ref' are required.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      repo = normalizeRepo(repo);
+      ref = ref.trim();
+
+      if (!isValidRepo(repo)) {
+        const response: ErrorResponse = {
+          error:
+            "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        };
+        return reply.code(400).send(response);
+      }
+
+      try {
+        const commit = await repoProcessor.resolveRefToCommitHash(
+          repoProcessor.getRepositoryUrl(repo),
+          ref
+        );
+        const response: ResolveCommitResponse = {
+          repo,
+          ref,
+          commit,
+          commitShort: getCommitShort(commit),
+        };
+        return reply.code(200).send(response);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to resolve git ref.";
+        const response: ErrorResponse = { error: message };
+        const statusCode =
+          message === "Git ref is required."
+            ? 400
+            : message.startsWith("Unable to resolve git ref")
+              ? 404
+              : 500;
+        return reply.code(statusCode).send(response);
+      }
+    });
+
     /**
      * POST /api/jobs
      * Body: { "repo": "owner/repo", "commit": "0123456789abcdef0123456789abcdef01234567" }
@@ -32,11 +94,11 @@ export function createJobRoutes(
           .send(response);
       }
 
-      repo = repo.replace("https://github.com/", "").replace(".git", "").trim();
+      repo = normalizeRepo(repo);
       commit = commit.trim().toLowerCase();
 
       // Basic validation: repo should look like owner/repo
-      if (!/^[\w.\-]+\/[\w.\-]+$/.test(repo)) {
+      if (!isValidRepo(repo)) {
         const response: ErrorResponse = {
           error:
             "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",

@@ -22,6 +22,14 @@ export interface JobRequest {
   commit: string;
 }
 
+/** Payload sent when resolving a Git ref to a commit SHA. */
+export interface ResolveCommitRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Git ref or full commit SHA */
+  ref: string;
+}
+
 /** Generic error response payload returned by the API. */
 export interface ErrorResponse {
   error: string;
@@ -34,6 +42,14 @@ export type JobStatus = "waiting" | "active" | "completed" | "failed";
 export interface JobSummary {
   id: string;
   status: JobStatus;
+  commit: string;
+  commitShort: string;
+}
+
+/** Response payload when resolving a Git ref to a commit SHA. */
+export interface ResolveCommitResponse {
+  repo: string;
+  ref: string;
   commit: string;
   commitShort: string;
 }
