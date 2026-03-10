@@ -85,6 +85,26 @@ Environment variables:
 
 ## API
 
+### Resolve a ref to a commit
+
+```
+POST /api/jobs/resolve
+Content-Type: application/json
+
+{ "repo": "owner/repo", "ref": "main" }
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "repo": "owner/repo",
+  "ref": "main",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "commitShort": "0123456"
+}
+```
+
 ### Create a processing job
 
 ```

@@ -4,8 +4,14 @@ import type { DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
 import { createJobRoutes } from "../routes/jobs";
 import { Queue } from "bullmq";
-import type { JobFilesResponse, JobInfo, JobSummary } from "../types";
+import type {
+  JobFilesResponse,
+  JobInfo,
+  JobSummary,
+  ResolveCommitResponse,
+} from "../types";
 import { createTestDatabase } from "./helpers/testDatabase";
+import * as repoProcessor from "../services/repoProcessor";
 
 async function makeRequest(
   app: FastifyInstance,
@@ -48,8 +54,62 @@ describe("Job Routes", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await app.close();
     await db.end();
+  });
+
+  it("POST /api/jobs/resolve - should resolve a ref to a commit", async () => {
+    const resolveSpy = vi
+      .spyOn(repoProcessor, "resolveRefToCommitHash")
+      .mockResolvedValue(commitHash);
+
+    const res = await makeRequest(app, "POST", "/api/jobs/resolve", {
+      repo: "https://github.com/facebook/react.git",
+      ref: " main ",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<ResolveCommitResponse>({
+      repo: "facebook/react",
+      ref: "main",
+      commit: commitHash,
+      commitShort: commitHash.slice(0, 7),
+    });
+    expect(resolveSpy).toHaveBeenCalledWith(
+      "https://github.com/facebook/react.git",
+      "main"
+    );
+  });
+
+  it("POST /api/jobs/resolve - should reject missing fields", async () => {
+    const res = await makeRequest(app, "POST", "/api/jobs/resolve", {
+      repo: "facebook/react",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Both 'repo' and 'ref' are required.",
+    });
+  });
+
+  it("POST /api/jobs/resolve - should return 404 when the ref cannot be resolved", async () => {
+    vi.spyOn(repoProcessor, "resolveRefToCommitHash").mockRejectedValue(
+      new Error(
+        "Unable to resolve git ref 'missing-branch' for repository 'https://github.com/facebook/react.git'."
+      )
+    );
+
+    const res = await makeRequest(app, "POST", "/api/jobs/resolve", {
+      repo: "facebook/react",
+      ref: "missing-branch",
+    });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({
+      error:
+        "Unable to resolve git ref 'missing-branch' for repository 'https://github.com/facebook/react.git'.",
+    });
   });
 
   it("POST /api/jobs - should create a job", async () => {
