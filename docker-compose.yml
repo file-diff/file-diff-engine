@@ -8,6 +8,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      BUILD_VERSION: ${BUILD_VERSION:-dev}
       HOST: 0.0.0.0
       PORT: 12986
       REDIS_HOST: redis

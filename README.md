@@ -81,6 +81,7 @@ Environment variables:
 | `DB_NAME` | `file_diff_engine` | PostgreSQL database name |
 | `DB_USER` | `postgres` | PostgreSQL user |
 | `DB_PASSWORD` | `postgres` | PostgreSQL password |
+| `BUILD_VERSION` | `dev` | Version string exposed by `GET /version`; `deploy.sh` defaults this to the current Git commit |
 
 ## API
 
@@ -159,6 +160,20 @@ GET /api/jobs/:id/files
 
 ```
 GET /health
+```
+
+### Build version
+
+```
+GET /version
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "version": "0123456789abcdef0123456789abcdef01234567"
+}
 ```
 
 The API uses permissive CORS by default so it can be called from a frontend hosted on a different domain.
