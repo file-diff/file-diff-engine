@@ -1,4 +1,4 @@
-import { Pool } from "pg";
+import { Pool, type PoolConfig } from "pg";
 
 export interface DatabaseConfig {
   pool?: Pool;
@@ -7,13 +7,22 @@ export interface DatabaseConfig {
 export type DatabaseClient = Pool;
 
 function createPool(): Pool {
+  const baseConfig: PoolConfig = {
+    idleTimeoutMillis: parseNonNegativeInteger(
+      process.env.DB_IDLE_TIMEOUT_MS,
+      0
+    ),
+  };
+
   if (process.env.DATABASE_URL) {
     return new Pool({
+      ...baseConfig,
       connectionString: process.env.DATABASE_URL,
     });
   }
 
   return new Pool({
+    ...baseConfig,
     host: process.env.DB_HOST || "127.0.0.1",
     port: parseInt(process.env.DB_PORT || "5432", 10),
     database: process.env.DB_NAME || "file_diff_engine",
@@ -59,4 +68,20 @@ async function initSchema(db: DatabaseClient): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id);
   `);
+}
+
+function parseNonNegativeInteger(
+  value: string | undefined,
+  fallback: number
+): number {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    return fallback;
+  }
+
+  return parsed;
 }
