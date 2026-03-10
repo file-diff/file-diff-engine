@@ -5,6 +5,7 @@ import { JobRepository } from "../db/repository";
 import { createJobRoutes } from "../routes/jobs";
 import { Queue } from "bullmq";
 import type {
+  ListRefsResponse,
   JobFilesResponse,
   JobInfo,
   JobSummary,
@@ -109,6 +110,63 @@ describe("Job Routes", () => {
     expect(res.body).toEqual({
       error:
         "Unable to resolve git ref 'missing-branch' for repository 'https://github.com/facebook/react.git'.",
+    });
+  });
+
+  it("POST /api/jobs/refs - should list refs for a repository", async () => {
+    const refs: ListRefsResponse["refs"] = [
+      {
+        name: "main",
+        ref: "refs/heads/main",
+        type: "branch",
+        commit: commitHash,
+        commitShort: commitHash.slice(0, 7),
+      },
+      {
+        name: "v1.0.0",
+        ref: "refs/tags/v1.0.0",
+        type: "tag",
+        commit: commitHash,
+        commitShort: commitHash.slice(0, 7),
+      },
+    ];
+    const listRefsSpy = vi
+      .spyOn(repoProcessor, "listRepositoryRefs")
+      .mockResolvedValue(refs);
+
+    const res = await makeRequest(app, "POST", "/api/jobs/refs", {
+      repo: "https://github.com/facebook/react.git",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<ListRefsResponse>({
+      repo: "facebook/react",
+      refs,
+    });
+    expect(listRefsSpy).toHaveBeenCalledWith("https://github.com/facebook/react.git");
+  });
+
+  it("POST /api/jobs/refs - should reject missing repo", async () => {
+    const res = await makeRequest(app, "POST", "/api/jobs/refs", {});
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Field 'repo' is required.",
+    });
+  });
+
+  it("POST /api/jobs/refs - should return 500 when refs cannot be listed", async () => {
+    vi.spyOn(repoProcessor, "listRepositoryRefs").mockRejectedValue(
+      new Error("Unable to list refs for repository 'https://github.com/facebook/react.git'.")
+    );
+
+    const res = await makeRequest(app, "POST", "/api/jobs/refs", {
+      repo: "facebook/react",
+    });
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({
+      error: "Unable to list refs for repository 'https://github.com/facebook/react.git'.",
     });
   });
 

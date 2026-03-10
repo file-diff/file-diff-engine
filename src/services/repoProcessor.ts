@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { FileRecord } from "../types";
+import { FileRecord, type GitRefSummary } from "../types";
+import { getCommitShort } from "../utils/commit";
 import { createLogger } from "../utils/logger";
 
 const execFileAsync = promisify(execFile);
@@ -102,6 +103,51 @@ export async function resolveRefToCommitHash(
   }
 
   return refsByName.get(resolvedRef)!;
+}
+
+export async function listRepositoryRefs(repoUrl: string): Promise<GitRefSummary[]> {
+  const output = await runGitCommand(process.cwd(), ["ls-remote", "--heads", "--tags", repoUrl]);
+  const refsByName = new Map<string, GitRefSummary>();
+
+  for (const line of output.split("\n").filter(Boolean)) {
+    const [hash, rawRef] = line.trim().split(/\s+/, 2);
+    if (!hash || !rawRef) {
+      continue;
+    }
+
+    const ref = rawRef.endsWith("^{}") ? rawRef.slice(0, -3) : rawRef;
+    const commit = hash.toLowerCase();
+    let type: GitRefSummary["type"];
+    let name: string;
+
+    if (ref.startsWith("refs/heads/")) {
+      type = "branch";
+      name = ref.slice("refs/heads/".length);
+    } else if (ref.startsWith("refs/tags/")) {
+      type = "tag";
+      name = ref.slice("refs/tags/".length);
+    } else {
+      continue;
+    }
+
+    const existing = refsByName.get(ref);
+    const resolvedCommit = rawRef.endsWith("^{}") || !existing ? commit : existing.commit;
+    refsByName.set(ref, {
+      name,
+      ref,
+      type,
+      commit: resolvedCommit,
+      commitShort: getCommitShort(resolvedCommit),
+    });
+  }
+
+  return Array.from(refsByName.values()).sort((a, b) => {
+    if (a.type !== b.type) {
+      return a.type.localeCompare(b.type);
+    }
+
+    return a.name.localeCompare(b.name);
+  });
 }
 
 /**

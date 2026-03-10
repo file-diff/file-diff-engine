@@ -5,6 +5,7 @@ import os from "os";
 import { execSync } from "child_process";
 import {
   getFileTypeFromGitMode,
+  listRepositoryRefs,
   processRepository,
   resolveRefToCommitHash,
 } from "../services/repoProcessor";
@@ -161,6 +162,56 @@ describe("repoProcessor – local clone simulation", () => {
       await expect(
         resolveRefToCommitHash(`file://${repoDir}`, branchName)
       ).resolves.toBe(headCommit);
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should list branch and tag refs with resolved commits", async () => {
+    const testDir = path.join(os.tmpdir(), `fde-list-refs-test-${Date.now()}`);
+    const repoDir = path.join(testDir, "origin");
+
+    try {
+      createTestRepo(repoDir);
+      execSync('git tag -a v2.0.0 -m "annotated release"', { cwd: repoDir });
+
+      const branchName = execSync("git branch --show-current", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+      const headCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      const refs = await listRepositoryRefs(`file://${repoDir}`);
+
+      expect(refs).toEqual(
+        expect.arrayContaining([
+          {
+            name: branchName,
+            ref: `refs/heads/${branchName}`,
+            type: "branch",
+            commit: headCommit,
+            commitShort: headCommit.slice(0, 7),
+          },
+          {
+            name: "v1.0.0",
+            ref: "refs/tags/v1.0.0",
+            type: "tag",
+            commit: headCommit,
+            commitShort: headCommit.slice(0, 7),
+          },
+          {
+            name: "v2.0.0",
+            ref: "refs/tags/v2.0.0",
+            type: "tag",
+            commit: headCommit,
+            commitShort: headCommit.slice(0, 7),
+          },
+        ])
+      );
+      expect(refs.filter((ref) => ref.ref === "refs/tags/v2.0.0")).toHaveLength(1);
     } finally {
       fs.rmSync(testDir, { recursive: true, force: true });
     }

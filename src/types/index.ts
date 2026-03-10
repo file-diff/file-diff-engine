@@ -30,6 +30,12 @@ export interface ResolveCommitRequest {
   ref: string;
 }
 
+/** Payload sent when listing Git refs for a repository. */
+export interface ListRefsRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+}
+
 /** Generic error response payload returned by the API. */
 export interface ErrorResponse {
   error: string;
@@ -52,6 +58,24 @@ export interface ResolveCommitResponse {
   ref: string;
   commit: string;
   commitShort: string;
+}
+
+/** Supported Git ref types exposed by the API. */
+export type GitRefType = "branch" | "tag";
+
+/** Response entry when listing Git refs for a repository. */
+export interface GitRefSummary {
+  name: string;
+  ref: string;
+  type: GitRefType;
+  commit: string;
+  commitShort: string;
+}
+
+/** Response payload when listing Git refs for a repository. */
+export interface ListRefsResponse {
+  repo: string;
+  refs: GitRefSummary[];
 }
 
 /** Response when querying a job. */

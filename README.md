@@ -105,6 +105,39 @@ Content-Type: application/json
 }
 ```
 
+### List repository refs
+
+```
+POST /api/jobs/refs
+Content-Type: application/json
+
+{ "repo": "owner/repo" }
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "repo": "owner/repo",
+  "refs": [
+    {
+      "name": "main",
+      "ref": "refs/heads/main",
+      "type": "branch",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "commitShort": "0123456"
+    },
+    {
+      "name": "v1.0.0",
+      "ref": "refs/tags/v1.0.0",
+      "type": "tag",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "commitShort": "0123456"
+    }
+  ]
+}
+```
+
 ### Create a processing job
 
 ```
