@@ -7,11 +7,11 @@ const logger = createLogger("repository");
 export class JobRepository {
   constructor(private db: DatabaseClient) {}
 
-  async createJob(id: string, repo: string, ref: string): Promise<void> {
+  async createJob(id: string, repo: string, commit: string): Promise<void> {
     await this.db.query(
-      `INSERT INTO jobs (id, repo, ref, status, created_at, updated_at)
+      `INSERT INTO jobs (id, repo, commit, status, created_at, updated_at)
        VALUES ($1, $2, $3, 'waiting', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      [id, repo, ref]
+      [id, repo, commit]
     );
   }
 
@@ -25,7 +25,8 @@ export class JobRepository {
     return {
       id: row.id as string,
       repo: row.repo as string,
-      ref: row.ref as string,
+      commit: row.commit as string,
+      commitShort: String(row.commit).slice(0, 7),
       status: row.status as JobStatus,
       progress: Number(row.progress),
       total_files: Number(row.total_files),

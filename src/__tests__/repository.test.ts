@@ -7,6 +7,7 @@ import { createTestDatabase } from "./helpers/testDatabase";
 describe("JobRepository", () => {
   let repo: JobRepository;
   let db: DatabaseClient;
+  const commitHash = "0123456789abcdef0123456789abcdef01234567";
 
   beforeEach(async () => {
     db = await createTestDatabase();
@@ -18,12 +19,13 @@ describe("JobRepository", () => {
   });
 
   it("should create and retrieve a job", async () => {
-    await repo.createJob("job-1", "owner/repo", "v1.0.0");
-    const job = await repo.getJob("job-1");
+    await repo.createJob(commitHash, "owner/repo", commitHash);
+    const job = await repo.getJob(commitHash);
     expect(job).toBeDefined();
-    expect(job!.id).toBe("job-1");
+    expect(job!.id).toBe(commitHash);
     expect(job!.repo).toBe("owner/repo");
-    expect(job!.ref).toBe("v1.0.0");
+    expect(job!.commit).toBe(commitHash);
+    expect(job!.commitShort).toBe(commitHash.slice(0, 7));
     expect(job!.status).toBe("waiting");
     expect(job!.progress).toBe(0);
   });
@@ -34,28 +36,28 @@ describe("JobRepository", () => {
   });
 
   it("should update job status", async () => {
-    await repo.createJob("job-2", "owner/repo", "main");
-    await repo.updateJobStatus("job-2", "active");
-    let job = await repo.getJob("job-2");
+    await repo.createJob(commitHash, "owner/repo", commitHash);
+    await repo.updateJobStatus(commitHash, "active");
+    let job = await repo.getJob(commitHash);
     expect(job!.status).toBe("active");
 
-    await repo.updateJobStatus("job-2", "failed", "Something went wrong");
-    job = await repo.getJob("job-2");
+    await repo.updateJobStatus(commitHash, "failed", "Something went wrong");
+    job = await repo.getJob(commitHash);
     expect(job!.status).toBe("failed");
     expect(job!.error).toBe("Something went wrong");
   });
 
   it("should update job progress", async () => {
-    await repo.createJob("job-3", "owner/repo", "main");
-    await repo.updateJobProgress("job-3", 5, 10);
-    const job = await repo.getJob("job-3");
+    await repo.createJob(commitHash, "owner/repo", commitHash);
+    await repo.updateJobProgress(commitHash, 5, 10);
+    const job = await repo.getJob(commitHash);
     expect(job!.processed_files).toBe(5);
     expect(job!.total_files).toBe(10);
     expect(job!.progress).toBe(50);
   });
 
   it("should insert and retrieve files", async () => {
-    await repo.createJob("job-4", "owner/repo", "main");
+    await repo.createJob(commitHash, "owner/repo", commitHash);
     const files: FileRecord[] = [
       {
         file_type: "d",
@@ -99,8 +101,8 @@ describe("JobRepository", () => {
       },
     ];
 
-    await repo.insertFiles("job-4", files);
-    const retrieved = await repo.getFiles("job-4");
+    await repo.insertFiles(commitHash, files);
+    const retrieved = await repo.getFiles(commitHash);
     expect(retrieved).toHaveLength(5);
     expect(retrieved[0].file_type).toBe("d");
     expect(retrieved[0].file_name).toBe("src");
@@ -116,8 +118,8 @@ describe("JobRepository", () => {
   });
 
   it("should update file metadata after initial insert", async () => {
-    await repo.createJob("job-6", "owner/repo", "main");
-    await repo.insertFiles("job-6", [
+    await repo.createJob(commitHash, "owner/repo", commitHash);
+    await repo.insertFiles(commitHash, [
       {
         file_type: "t",
         file_name: "README.md",
@@ -128,7 +130,7 @@ describe("JobRepository", () => {
       },
     ]);
 
-    await repo.updateFile("job-6", {
+    await repo.updateFile(commitHash, {
       file_type: "x",
       file_name: "README.md",
       file_size: 50,
@@ -137,7 +139,7 @@ describe("JobRepository", () => {
       file_git_hash: "deadbeef",
     });
 
-    const [updated] = await repo.getFiles("job-6");
+    const [updated] = await repo.getFiles(commitHash);
     expect(updated.file_type).toBe("x");
     expect(updated.file_size).toBe(50);
     expect(updated.file_update_date).toBe("2024-01-01T00:00:00Z");
@@ -146,8 +148,8 @@ describe("JobRepository", () => {
   });
 
   it("should return empty array for job with no files", async () => {
-    await repo.createJob("job-5", "owner/repo", "main");
-    const files = await repo.getFiles("job-5");
+    await repo.createJob(commitHash, "owner/repo", commitHash);
+    const files = await repo.getFiles(commitHash);
     expect(files).toEqual([]);
   });
 });

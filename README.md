@@ -90,13 +90,18 @@ Environment variables:
 POST /api/jobs
 Content-Type: application/json
 
-{ "repo": "owner/repo", "ref": "v1.0.0" }
+{ "repo": "owner/repo", "commit": "0123456789abcdef0123456789abcdef01234567" }
 ```
 
 **Response** `201 Created`
 
 ```json
-{ "id": "uuid", "status": "waiting" }
+{
+  "id": "0123456789abcdef0123456789abcdef01234567",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "commitShort": "0123456",
+  "status": "waiting"
+}
 ```
 
 ### Query job progress
@@ -109,9 +114,10 @@ GET /api/jobs/:id
 
 ```json
 {
-  "id": "uuid",
+  "id": "0123456789abcdef0123456789abcdef01234567",
   "repo": "owner/repo",
-  "ref": "v1.0.0",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "commitShort": "0123456",
   "status": "active",
   "progress": 42.5,
   "total_files": 200,
@@ -131,7 +137,9 @@ GET /api/jobs/:id/files
 
 ```json
 {
-  "job_id": "uuid",
+  "job_id": "0123456789abcdef0123456789abcdef01234567",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "commitShort": "0123456",
   "status": "completed",
   "progress": 100,
   "files": [

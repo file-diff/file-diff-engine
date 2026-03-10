@@ -2,40 +2,28 @@ import { Queue } from "bullmq";
 import type { FastifyPluginAsync } from "fastify";
 import { JobRepository } from "../db/repository";
 import { JobRequest } from "../types";
-import {
-  getRepositoryUrl,
-  resolveRefToCommitHash,
-} from "../services/repoProcessor";
-
-interface JobRouteOptions {
-  resolveCommitHash?: (repoUrl: string, ref: string) => Promise<string>;
-}
 
 const POSTGRES_UNIQUE_VIOLATION = "23505";
 
 export function createJobRoutes(
   queue: Queue,
-  jobRepo: JobRepository,
-  options: JobRouteOptions = {}
+  jobRepo: JobRepository
 ): FastifyPluginAsync {
-  const resolveCommitHash =
-    options.resolveCommitHash ?? resolveRefToCommitHash;
-
   return async function registerJobRoutes(app) {
     /**
      * POST /api/jobs
-     * Body: { "repo": "owner/repo", "ref": "v1.0.0" }
+     * Body: { "repo": "owner/repo", "commit": "0123456789abcdef..." }
      * Creates a new processing job and enqueues it.
      */
     app.post<{ Body: JobRequest }>("/", async (request, reply) => {
-      let { repo, ref } = request.body ?? {};
-      if (!repo || !ref) {
+      let { repo, commit } = request.body ?? {};
+      repo = repo?.replace("https://github.com/", "").replace(".git", "").trim();
+      commit = commit?.trim();
+      if (!repo || !commit) {
         return reply
           .code(400)
-          .send({ error: "Both 'repo' and 'ref' are required." });
+          .send({ error: "Both 'repo' and 'commit' are required." });
       }
-
-      repo = repo.replace("https://github.com/", "").replace(".git", "").trim();
 
       // Basic validation: repo should look like owner/repo
       if (!/^[\w.\-]+\/[\w.\-]+$/.test(repo)) {
@@ -45,23 +33,33 @@ export function createJobRoutes(
         });
       }
 
-      const jobId = await resolveCommitHash(getRepositoryUrl(repo), ref);
+      const jobId = commit;
       const existingJob = await jobRepo.getJob(jobId);
       if (existingJob) {
         return reply
           .code(200)
-          .send({ id: existingJob.id, status: existingJob.status });
+          .send({
+            id: existingJob.id,
+            commit: existingJob.commit,
+            commitShort: existingJob.commitShort,
+            status: existingJob.status,
+          });
       }
 
       try {
-        await jobRepo.createJob(jobId, repo, ref);
+        await jobRepo.createJob(jobId, repo, commit);
       } catch (error: unknown) {
         if ((error as { code?: string }).code === POSTGRES_UNIQUE_VIOLATION) {
           const duplicateJob = await jobRepo.getJob(jobId);
           if (duplicateJob) {
             return reply
               .code(200)
-              .send({ id: duplicateJob.id, status: duplicateJob.status });
+              .send({
+                id: duplicateJob.id,
+                commit: duplicateJob.commit,
+                commitShort: duplicateJob.commitShort,
+                status: duplicateJob.status,
+              });
           }
         }
 
@@ -73,14 +71,19 @@ export function createJobRoutes(
         {
           jobId,
           repoName: repo,
-          ref: jobId,
+          commit,
         },
         {
           jobId,
         }
       );
 
-      return reply.code(201).send({ id: jobId, status: "waiting" });
+      return reply.code(201).send({
+        id: jobId,
+        commit,
+        commitShort: commit.slice(0, 7),
+        status: "waiting",
+      });
     });
 
     /**
@@ -111,6 +114,8 @@ export function createJobRoutes(
       // Do not change the structure of the response, as the frontend relies on it
       return reply.send({
         job_id: job.id,
+        commit: job.commit,
+        commitShort: job.commitShort,
         status: job.status,
         progress: job.progress,
         files: files.map((f) => ({
