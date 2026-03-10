@@ -27,6 +27,7 @@ export async function createApp(
   deps?: Partial<AppDependencies>
 ): Promise<AppContext> {
   const app = Fastify();
+  const buildVersion = process.env.BUILD_VERSION || "dev";
   await app.register(cors, {
     origin: true,
     credentials: true,
@@ -40,6 +41,7 @@ export async function createApp(
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
 
   app.get("/health", async () => ({ status: "ok" }));
+  app.get("/version", async () => ({ version: buildVersion }));
 
   return { app, queue, db, jobRepo };
 }

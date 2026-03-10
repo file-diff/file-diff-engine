@@ -7,6 +7,7 @@ import { createTestDatabase } from "./helpers/testDatabase";
 describe("createApp", () => {
   let db: DatabaseClient;
   let mockQueue: Queue;
+  const originalBuildVersion = process.env.BUILD_VERSION;
 
   beforeEach(async () => {
     db = await createTestDatabase();
@@ -16,6 +17,11 @@ describe("createApp", () => {
   });
 
   afterEach(async () => {
+    if (originalBuildVersion === undefined) {
+      delete process.env.BUILD_VERSION;
+    } else {
+      process.env.BUILD_VERSION = originalBuildVersion;
+    }
     await db.end();
   });
 
@@ -41,6 +47,21 @@ describe("createApp", () => {
     expect(response.headers["access-control-allow-headers"]).toContain(
       "X-Requested-With"
     );
+
+    await app.close();
+  });
+
+  it("returns the configured build version", async () => {
+    process.env.BUILD_VERSION = "2026.03.10+abc1234";
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/version",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ version: "2026.03.10+abc1234" });
 
     await app.close();
   });
