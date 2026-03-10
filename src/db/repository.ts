@@ -45,8 +45,7 @@ export class JobRepository {
       `UPDATE jobs
        SET ref = COALESCE(ref, $1),
            permalink = CASE
-             WHEN ref IS NULL AND $1 IS NOT NULL THEN $2
-             WHEN permalink = '' THEN $2
+             WHEN permalink = '' OR (ref IS NULL AND $1 IS NOT NULL) THEN $2
              ELSE permalink
            END,
            updated_at = CURRENT_TIMESTAMP
