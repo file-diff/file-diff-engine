@@ -5,3 +5,5 @@ data/
 *.db
 .env
 tmp/
+postgres_data
+redis_data
