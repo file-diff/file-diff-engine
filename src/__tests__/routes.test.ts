@@ -4,6 +4,7 @@ import type { DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
 import { createJobRoutes } from "../routes/jobs";
 import { Queue } from "bullmq";
+import type { JobFilesResponse, JobInfo, JobSummary } from "../types";
 import { createTestDatabase } from "./helpers/testDatabase";
 
 async function makeRequest(
@@ -57,12 +58,7 @@ describe("Job Routes", () => {
       commit: commitHash.toUpperCase(),
     });
     expect(res.status).toBe(201);
-    const resBody = res.body as {
-      id: string;
-      status: string;
-      commit: string;
-      commitShort: string;
-    };
+    const resBody = res.body as JobSummary;
     expect(resBody.id).toBe(commitHash);
     expect(resBody.status).toBe("waiting");
     expect(resBody.commit).toBe(commitHash);
@@ -128,12 +124,7 @@ describe("Job Routes", () => {
     await jobRepo.createJob(commitHash, "owner/repo", commitHash);
     const res = await makeRequest(app, "GET", `/api/jobs/${commitHash}`);
     expect(res.status).toBe(200);
-    const resBody = res.body as {
-      id: string;
-      status: string;
-      commit: string;
-      commitShort: string;
-    };
+    const resBody = res.body as JobInfo;
     expect(resBody.id).toBe(commitHash);
     expect(resBody.status).toBe("waiting");
     expect(resBody.commit).toBe(commitHash);
@@ -159,15 +150,21 @@ describe("Job Routes", () => {
     ]);
     const res = await makeRequest(app, "GET", `/api/jobs/${commitHash}/files`);
     expect(res.status).toBe(200);
-    const resBody = res.body as {
-      commit: string;
-      commitShort: string;
-      files: Array<{ hash: string }>;
-    };
+    const resBody = res.body as JobFilesResponse;
+    expect(resBody.jobId).toBe(commitHash);
     expect(resBody.commit).toBe(commitHash);
     expect(resBody.commitShort).toBe(commitHash.slice(0, 7));
+    expect(resBody.status).toBe("waiting");
+    expect(resBody.progress).toBe(0);
     expect(resBody.files).toHaveLength(1);
-    expect(resBody.files[0].hash).toBe("deadbeef");
+    expect(resBody.files[0]).toEqual({
+      t: "t",
+      path: "README.md",
+      s: 50,
+      update: "2024-01-01T00:00:00Z",
+      commit: "abc123",
+      hash: "deadbeef",
+    });
   });
 
   it("GET /api/jobs/:id/files - should return 404 for unknown job", async () => {

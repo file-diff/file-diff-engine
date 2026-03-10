@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Queue } from "bullmq";
 import type { DatabaseClient } from "../db/database";
 import { createApp } from "../app";
+import type { VersionResponse } from "../types";
 import { createTestDatabase } from "./helpers/testDatabase";
 
 describe("createApp", () => {
@@ -61,7 +62,9 @@ describe("createApp", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ version: "2026.03.10+abc1234" });
+    expect(response.json<VersionResponse>()).toEqual({
+      version: "2026.03.10+abc1234",
+    });
 
     await app.close();
   });

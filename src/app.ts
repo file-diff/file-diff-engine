@@ -9,6 +9,7 @@ import {
 import { JobRepository } from "./db/repository";
 import { createJobRoutes } from "./routes/jobs";
 import { createQueue } from "./services/queue";
+import type { HealthResponse, VersionResponse } from "./types";
 
 export interface AppDependencies {
   queue: Queue;
@@ -40,8 +41,17 @@ export async function createApp(
 
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
 
-  app.get("/api/health", async () => ({ status: "ok", message: "API is healthy" }));
-  app.get("/api/version", async () => ({ version: buildVersion }));
+  app.get("/api/health", async () => {
+    const response: HealthResponse = {
+      status: "ok",
+      message: "API is healthy",
+    };
+    return response;
+  });
+  app.get("/api/version", async () => {
+    const response: VersionResponse = { version: buildVersion };
+    return response;
+  });
 
   return { app, queue, db, jobRepo };
 }
