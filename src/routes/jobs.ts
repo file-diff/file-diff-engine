@@ -3,6 +3,8 @@ import type { FastifyPluginAsync } from "fastify";
 import { JobRepository } from "../db/repository";
 import type {
   ErrorResponse,
+  ListRefsRequest,
+  ListRefsResponse,
   JobFilesResponse,
   JobRequest,
   ResolveCommitRequest,
@@ -75,6 +77,47 @@ export function createJobRoutes(
               ? 404
               : 500;
         return reply.code(statusCode).send(response);
+      }
+    });
+
+    /**
+     * POST /api/jobs/refs
+     * Body: { "repo": "owner/repo" }
+     * Lists available branch and tag refs for a repository.
+     */
+    app.post<{ Body: ListRefsRequest }>("/refs", async (request, reply) => {
+      let { repo } = request.body ?? {};
+      if (!repo) {
+        const response: ErrorResponse = {
+          error: "Field 'repo' is required.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      repo = normalizeRepo(repo);
+
+      if (!isValidRepo(repo)) {
+        const response: ErrorResponse = {
+          error:
+            "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        };
+        return reply.code(400).send(response);
+      }
+
+      try {
+        const refs = await repoProcessor.listRepositoryRefs(
+          repoProcessor.getRepositoryUrl(repo)
+        );
+        const response: ListRefsResponse = {
+          repo,
+          refs,
+        };
+        return reply.code(200).send(response);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to list git refs.";
+        const response: ErrorResponse = { error: message };
+        return reply.code(500).send(response);
       }
     });
 
