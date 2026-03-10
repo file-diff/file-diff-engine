@@ -40,8 +40,8 @@ export async function createApp(
 
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
 
-  app.get("/health", async () => ({ status: "ok" }));
-  app.get("/version", async () => ({ version: buildVersion }));
+  app.get("/api/health", async () => ({ status: "ok" }));
+  app.get("/api/version", async () => ({ version: buildVersion }));
 
   return { app, queue, db, jobRepo };
 }
