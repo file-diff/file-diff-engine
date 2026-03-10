@@ -30,11 +30,11 @@ export class JobRepository {
       commitShort: getCommitShort(row.commit as string),
       status: row.status as JobStatus,
       progress: Number(row.progress),
-      total_files: Number(row.total_files),
-      processed_files: Number(row.processed_files),
+      totalFiles: Number(row.total_files),
+      processedFiles: Number(row.processed_files),
       error: (row.error as string | null) ?? undefined,
-      created_at: toIsoString(row.created_at),
-      updated_at: toIsoString(row.updated_at),
+      createdAt: toIsoString(row.created_at),
+      updatedAt: toIsoString(row.updated_at),
     };
   }
 

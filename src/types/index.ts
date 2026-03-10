@@ -33,9 +33,9 @@ export interface JobInfo {
   commitShort: string;
   status: JobStatus;
   progress: number;
-  total_files: number;
-  processed_files: number;
+  totalFiles: number;
+  processedFiles: number;
   error?: string;
-  created_at: string;
-  updated_at: string;
+  createdAt: string;
+  updatedAt: string;
 }
