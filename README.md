@@ -50,8 +50,8 @@ The PostgreSQL container is configured with:
 Processed repository files are stored inside the application container at `/app/tmp`.
 PostgreSQL and Redis data are persisted in sibling folders next to the repository checkout:
 
-- `../postgres_data`
-- `../redis_data`
+- `./postgres_data`
+- `./redis_data`
 
 To stop the development services:
 
