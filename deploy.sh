@@ -26,11 +26,38 @@ ensure_data_dir() {
   fi
 }
 
+wait_for_postgres() {
+  local attempts=30
+  local i
+
+  for ((i = 1; i <= attempts; i += 1)); do
+    if docker compose exec -T postgres pg_isready -U postgres -d postgres >/dev/null 2>&1; then
+      return 0
+    fi
+
+    sleep 1
+  done
+
+  echo "Postgres did not become ready in time." >&2
+  return 1
+}
+
+escape_sql_literal() {
+  printf "%s" "$1" | sed "s/'/''/g"
+}
+
 export BUILD_VERSION="${BUILD_VERSION:-$(git rev-parse HEAD)}"
+export DB_PASSWORD="${DB_PASSWORD:-postgres}"
 
 ensure_data_dir "${POSTGRES_DATA_DIR}" "70" "70"
 ensure_data_dir "${REDIS_DATA_DIR}" "999" "999"
 ensure_data_dir "${REPOSITORIES_DATA_DIR}" "649" "649"
 
 docker compose down
-docker compose up -d --build
+docker compose up -d postgres redis
+wait_for_postgres
+ESCAPED_DB_PASSWORD="$(escape_sql_literal "${DB_PASSWORD}")"
+docker compose exec -T postgres \
+  psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  -c "ALTER USER postgres WITH PASSWORD '${ESCAPED_DB_PASSWORD}';"
+docker compose up -d --build app

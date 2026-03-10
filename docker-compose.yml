@@ -17,7 +17,7 @@ services:
       DB_PORT: 5432
       DB_NAME: file_diff_engine
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
       TMP_DIR: /app/tmp
     ports:
       - "12986:12986"
@@ -28,7 +28,7 @@ services:
     environment:
       POSTGRES_DB: file_diff_engine
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
     ports:
