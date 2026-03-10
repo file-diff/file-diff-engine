@@ -2,6 +2,7 @@ import { Queue } from "bullmq";
 import type { FastifyPluginAsync } from "fastify";
 import { JobRepository } from "../db/repository";
 import { JobRequest } from "../types";
+import { getCommitShort } from "../utils/commit";
 
 const POSTGRES_UNIQUE_VIOLATION = "23505";
 
@@ -133,8 +134,4 @@ export function createJobRoutes(
       });
     });
   };
-}
-
-function getCommitShort(commit: string): string {
-  return commit.slice(0, 7);
 }

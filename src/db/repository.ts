@@ -1,6 +1,7 @@
 import type { DatabaseClient } from "./database";
 import { FileRecord, JobInfo, JobStatus } from "../types";
 import {createLogger} from "../utils/logger";
+import { getCommitShort } from "../utils/commit";
 
 const logger = createLogger("repository");
 
@@ -141,8 +142,4 @@ function toIsoString(value: unknown): string {
   }
 
   return String(value);
-}
-
-function getCommitShort(commit: string): string {
-  return commit.slice(0, 7);
 }
