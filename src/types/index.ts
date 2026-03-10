@@ -22,8 +22,21 @@ export interface JobRequest {
   commit: string;
 }
 
+/** Generic error response payload returned by the API. */
+export interface ErrorResponse {
+  error: string;
+}
+
 /** Status of a processing job. */
 export type JobStatus = "waiting" | "active" | "completed" | "failed";
+
+/** Minimal job payload returned after creating or reusing a job. */
+export interface JobSummary {
+  id: string;
+  status: JobStatus;
+  commit: string;
+  commitShort: string;
+}
 
 /** Response when querying a job. */
 export interface JobInfo {
@@ -38,4 +51,35 @@ export interface JobInfo {
   error?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Compact file metadata shape returned by the files endpoint. */
+export interface JobFileSummary {
+  t: FileRecord["file_type"];
+  path: FileRecord["file_name"];
+  s: FileRecord["file_size"];
+  update: FileRecord["file_update_date"];
+  commit: FileRecord["file_last_commit"];
+  hash: FileRecord["file_git_hash"];
+}
+
+/** Response payload when querying processed files for a job. */
+export interface JobFilesResponse {
+  jobId: string;
+  commit: string;
+  commitShort: string;
+  status: JobStatus;
+  progress: number;
+  files: JobFileSummary[];
+}
+
+/** Health endpoint response payload. */
+export interface HealthResponse {
+  status: "ok";
+  message: string;
+}
+
+/** Build version endpoint response payload. */
+export interface VersionResponse {
+  version: string;
 }

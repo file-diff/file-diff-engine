@@ -1,7 +1,12 @@
 import { Queue } from "bullmq";
 import type { FastifyPluginAsync } from "fastify";
 import { JobRepository } from "../db/repository";
-import { JobRequest } from "../types";
+import type {
+  ErrorResponse,
+  JobFilesResponse,
+  JobRequest,
+  JobSummary,
+} from "../types";
 import { getCommitShort } from "../utils/commit";
 
 const POSTGRES_UNIQUE_VIOLATION = "23505";
@@ -19,9 +24,12 @@ export function createJobRoutes(
     app.post<{ Body: JobRequest }>("/", async (request, reply) => {
       let { repo, commit } = request.body ?? {};
       if (!repo || !commit) {
+        const response: ErrorResponse = {
+          error: "Both 'repo' and 'commit' are required.",
+        };
         return reply
           .code(400)
-          .send({ error: "Both 'repo' and 'commit' are required." });
+          .send(response);
       }
 
       repo = repo.replace("https://github.com/", "").replace(".git", "").trim();
@@ -29,28 +37,31 @@ export function createJobRoutes(
 
       // Basic validation: repo should look like owner/repo
       if (!/^[\w.\-]+\/[\w.\-]+$/.test(repo)) {
-        return reply.code(400).send({
+        const response: ErrorResponse = {
           error:
             "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
-        });
+        };
+        return reply.code(400).send(response);
       }
 
       if (!/^[a-f0-9]{40}$/.test(commit)) {
-        return reply.code(400).send({
+        const response: ErrorResponse = {
           error:
             "Invalid commit format. Expected a 40-character hexadecimal commit SHA.",
-        });
+        };
+        return reply.code(400).send(response);
       }
 
       const jobId = commit;
       const existingJob = await jobRepo.getJob(jobId);
       if (existingJob) {
-        return reply.code(200).send({
+        const response: JobSummary = {
           id: existingJob.id,
           status: existingJob.status,
           commit: existingJob.commit,
           commitShort: existingJob.commitShort,
-        });
+        };
+        return reply.code(200).send(response);
       }
 
       try {
@@ -59,12 +70,13 @@ export function createJobRoutes(
         if ((error as { code?: string }).code === POSTGRES_UNIQUE_VIOLATION) {
           const duplicateJob = await jobRepo.getJob(jobId);
           if (duplicateJob) {
-            return reply.code(200).send({
+            const response: JobSummary = {
               id: duplicateJob.id,
               status: duplicateJob.status,
               commit: duplicateJob.commit,
               commitShort: duplicateJob.commitShort,
-            });
+            };
+            return reply.code(200).send(response);
           }
         }
 
@@ -83,12 +95,13 @@ export function createJobRoutes(
         }
       );
 
-      return reply.code(201).send({
+      const response: JobSummary = {
         id: jobId,
         status: "waiting",
         commit: jobId,
         commitShort: getCommitShort(jobId),
-      });
+      };
+      return reply.code(201).send(response);
     });
 
     /**
@@ -99,7 +112,8 @@ export function createJobRoutes(
       const { id } = request.params;
       const job = await jobRepo.getJob(id);
       if (!job) {
-        return reply.code(404).send({ error: "Job not found." });
+        const response: ErrorResponse = { error: "Job not found." };
+        return reply.code(404).send(response);
       }
       return reply.send(job);
     });
@@ -112,12 +126,13 @@ export function createJobRoutes(
       const { id } = request.params;
       const job = await jobRepo.getJob(id);
       if (!job) {
-        return reply.code(404).send({ error: "Job not found." });
+        const response: ErrorResponse = { error: "Job not found." };
+        return reply.code(404).send(response);
       }
 
       const files = await jobRepo.getFiles(id);
       // Do not change the structure of the response, as the frontend relies on it
-      return reply.send({
+      const response: JobFilesResponse = {
         jobId: job.id,
         commit: job.commit,
         commitShort: job.commitShort,
@@ -131,7 +146,8 @@ export function createJobRoutes(
           commit: f.file_last_commit,
           hash: f.file_git_hash,
         })),
-      });
+      };
+      return reply.send(response);
     });
   };
 }
