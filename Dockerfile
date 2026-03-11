@@ -14,15 +14,23 @@ FROM node:24-bookworm-slim
 
 WORKDIR /app
 
+ARG DIFFT_TAG_NAME=0.68.0-dev.1
+
+ADD https://github.com/file-diff/difftastic/releases/download/${DIFFT_TAG_NAME}/difft-${DIFFT_TAG_NAME}-x86_64-unknown-linux-gnu.tar.xz /tmp/difft.tar.xz
+
 # Install git and system CA certificates so TLS/SSL requests succeed
 RUN apt-get update \
-  && apt-get install -y git ca-certificates \
+  && apt-get install -y git ca-certificates xz-utils \
+  && tar -xJf /tmp/difft.tar.xz -C /tmp \
+  && install -m 0755 /tmp/difft /usr/local/bin/difft \
+  && rm -f /tmp/difft /tmp/difft.tar.xz \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
+ENV DIFFT_TAG_NAME=${DIFFT_TAG_NAME}
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=12986
