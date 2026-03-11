@@ -1,4 +1,7 @@
 import { Pool, type PoolConfig } from "pg";
+import {createLogger} from "../utils/logger";
+
+const logger = createLogger("pg-pool");
 
 export interface DatabaseConfig {
   pool?: Pool;
@@ -23,8 +26,8 @@ function createPool(): Pool {
 
   const postgresPass = process.env.POSTGRES_PASSWORD || "postgres";
   if (postgresPass == "postgres") {
-    console.warn(
-      "Warning: Using default PostgreSQL password. This is not recommended for production environments."
+    logger.warn(
+      "Warning: Using default PostgresSQL password. This is not recommended for production environments."
     );
   }
 
@@ -34,7 +37,7 @@ function createPool(): Pool {
     port: parseInt(process.env.POSTGRES_DB_PORT || "5432"),
     database: process.env.POSTGRES_DB || "file_diff_engine",
     user: process.env.POSTGRES_USER || "postgres",
-    password: process.env.POSTGRES_PASSWORD || "postgres",
+    password: postgresPass,
   });
 }
 
