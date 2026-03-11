@@ -49,15 +49,10 @@ escape_sql_literal() {
 export BUILD_VERSION="${BUILD_VERSION:-$(git rev-parse HEAD)}"
 export DB_PASSWORD="${DB_PASSWORD:-postgres}"
 
+docker compose down
+
 ensure_data_dir "${POSTGRES_DATA_DIR}" "70" "70"
 ensure_data_dir "${REDIS_DATA_DIR}" "999" "999"
 ensure_data_dir "${REPOSITORIES_DATA_DIR}" "649" "649"
 
-docker compose down
-docker compose up -d postgres redis
-wait_for_postgres
-ESCAPED_DB_PASSWORD="$(escape_sql_literal "${DB_PASSWORD}")"
-docker compose exec -T postgres \
-  psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
-  -c "ALTER USER postgres WITH PASSWORD '${ESCAPED_DB_PASSWORD}';"
 docker compose up -d --build app
