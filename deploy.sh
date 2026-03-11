@@ -47,7 +47,6 @@ escape_sql_literal() {
 }
 
 export BUILD_VERSION="${BUILD_VERSION:-$(git rev-parse HEAD)}"
-export DB_PASSWORD="${DB_PASSWORD:-postgres}"
 
 docker compose down
 
