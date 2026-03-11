@@ -42,11 +42,16 @@ describe("Job Routes", () => {
   let jobRepo: JobRepository;
   let app: FastifyInstance;
   let mockQueue: Queue;
+  let tempDirs: string[];
   const commitHash = "0123456789abcdef0123456789abcdef01234567";
   const fileHash = "1111111111111111111111111111111111111111";
   const originalTmpDir = process.env.TMP_DIR;
+  const originalDownloadRateLimitMax = process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX;
+  const originalDownloadRateLimitWindowMs =
+    process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS;
 
   beforeEach(async () => {
+    tempDirs = [];
     db = await createTestDatabase();
     jobRepo = new JobRepository(db);
 
@@ -65,6 +70,20 @@ describe("Job Routes", () => {
       delete process.env.TMP_DIR;
     } else {
       process.env.TMP_DIR = originalTmpDir;
+    }
+    if (originalDownloadRateLimitMax === undefined) {
+      delete process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX;
+    } else {
+      process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX = originalDownloadRateLimitMax;
+    }
+    if (originalDownloadRateLimitWindowMs === undefined) {
+      delete process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS;
+    } else {
+      process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS =
+        originalDownloadRateLimitWindowMs;
+    }
+    for (const tempDir of tempDirs) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
     }
     vi.restoreAllMocks();
     await app.close();
@@ -303,6 +322,7 @@ describe("Job Routes", () => {
 
   it("GET /api/jobs/:id/files/hash/:hash/download - should stream the gzipped file contents", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-download-"));
+    tempDirs.push(tmpDir);
     process.env.TMP_DIR = tmpDir;
     const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
     fs.mkdirSync(treeDir, { recursive: true });
@@ -333,8 +353,6 @@ describe("Job Routes", () => {
     expect(
       gunzipSync((response as unknown as { rawPayload: Buffer }).rawPayload).toString("utf8")
     ).toBe("hello from disk");
-
-    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("GET /api/jobs/:id/files/hash/:hash/download - should report when the hash is missing from the database", async () => {
@@ -353,6 +371,7 @@ describe("Job Routes", () => {
 
   it("GET /api/jobs/:id/files/hash/:hash/download - should report when the file is missing on disk", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-download-missing-"));
+    tempDirs.push(tmpDir);
     process.env.TMP_DIR = tmpDir;
 
     await jobRepo.createJob(commitHash, "owner/repo", commitHash);
@@ -389,7 +408,54 @@ describe("Job Routes", () => {
           "README.md"
         )}'`,
     });
+  });
 
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+  it("GET /api/jobs/:id/files/hash/:hash/download - should rate limit repeated download attempts", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-download-rate-limit-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+    process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX = "1";
+    process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS = "60000";
+    await app.close();
+    app = Fastify();
+    await app.register(createJobRoutes(mockQueue, jobRepo), {
+      prefix: "/api/jobs",
+    });
+
+    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+    fs.writeFileSync(path.join(treeDir, "README.md"), "hello from disk");
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 15,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+    ]);
+
+    const firstResponse = await app.inject({
+      method: "GET",
+      url: `/api/jobs/${commitHash}/files/hash/${fileHash}/download`,
+    });
+    expect(firstResponse.statusCode).toBe(200);
+
+    const secondResponse = await app.inject({
+      method: "GET",
+      url: `/api/jobs/${commitHash}/files/hash/${fileHash}/download`,
+    });
+
+    expect(secondResponse.statusCode).toBe(429);
+    expect(secondResponse.headers["retry-after"]).toBe("60");
+    expect(secondResponse.json()).toEqual({
+      statusCode: 429,
+      error: "Too Many Requests",
+      message: "Rate limit exceeded, retry in 1 minute",
+    });
   });
 });

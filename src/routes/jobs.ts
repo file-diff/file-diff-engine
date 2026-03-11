@@ -1,6 +1,8 @@
 import { Queue } from "bullmq";
+import rateLimit from "@fastify/rate-limit";
 import fs from "fs";
 import path from "path";
+import { pipeline } from "stream/promises";
 import type { FastifyPluginAsync } from "fastify";
 import { createGzip } from "zlib";
 import { JobRepository } from "../db/repository";
@@ -20,6 +22,8 @@ import { createLogger } from "../utils/logger";
 
 const POSTGRES_UNIQUE_VIOLATION = "23505";
 const logger = createLogger("job-routes");
+const DEFAULT_DOWNLOAD_RATE_LIMIT_MAX = 30;
+const DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS = 60_000;
 
 function normalizeRepo(repo: string): string {
   return repo.replace("https://github.com/", "").replace(".git", "").trim();
@@ -34,6 +38,18 @@ export function createJobRoutes(
   jobRepo: JobRepository
 ): FastifyPluginAsync {
   return async function registerJobRoutes(app) {
+    await app.register(rateLimit, { global: false });
+    const downloadRateLimit = app.rateLimit({
+      max: parsePositiveInteger(
+        process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX,
+        DEFAULT_DOWNLOAD_RATE_LIMIT_MAX
+      ),
+      timeWindow: parsePositiveInteger(
+        process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS,
+        DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS
+      ),
+    });
+
     /**
      * POST /api/jobs/resolve
      * Body: { "repo": "owner/repo", "ref": "main" }
@@ -262,6 +278,9 @@ export function createJobRoutes(
 
     app.get<{ Params: { id: string; hash: string } }>(
       "/:id/files/hash/:hash/download",
+      {
+        preHandler: downloadRateLimit,
+      },
       async (request, reply) => {
         const { id, hash } = request.params;
         const job = await jobRepo.getJob(id);
@@ -292,7 +311,9 @@ export function createJobRoutes(
           await fs.promises.access(filePath, fs.constants.R_OK);
         } catch (error) {
           const message =
-            error instanceof Error ? error.message : "Unknown file system error.";
+            error instanceof Error
+              ? error.message
+              : "Failed to check file accessibility on disk.";
           const response: ErrorResponse = {
             error:
               `File with hash '${hash}' was found in the database for job '${id}', ` +
@@ -308,13 +329,32 @@ export function createJobRoutes(
           filePath,
         });
 
-        reply.header("Content-Type", "application/octet-stream");
-        reply.header("Content-Encoding", "gzip");
-        reply.header(
-          "Content-Disposition",
-          `attachment; filename="${path.basename(file.fileName)}.gz"`
-        );
-        return reply.send(fs.createReadStream(filePath).pipe(createGzip()));
+        reply.hijack();
+        reply.raw.writeHead(200, {
+          "Content-Type": "application/octet-stream",
+          "Content-Encoding": "gzip",
+          "Content-Disposition": `attachment; filename="${getDownloadFilename(file.fileName)}"`,
+        });
+
+        try {
+          await pipeline(
+            fs.createReadStream(filePath),
+            createGzip(),
+            reply.raw
+          );
+        } catch (error) {
+          logger.error("Failed to stream gzipped file download", {
+            jobId: id,
+            hash,
+            fileName: file.fileName,
+            filePath,
+            error,
+          });
+          if (!reply.raw.destroyed) {
+            reply.raw.destroy(error instanceof Error ? error : undefined);
+          }
+        }
+        return reply;
       }
     );
   };
@@ -336,4 +376,28 @@ function resolveJobFilePath(jobId: string, storedPath: string): string {
   }
 
   return resolvedPath;
+}
+
+function getDownloadFilename(fileName: string): string {
+  const sanitizedBaseName = path
+    .basename(fileName)
+    .replace(/[^A-Za-z0-9._-]/g, "_");
+
+  return `${sanitizedBaseName || "file"}.gz`;
+}
+
+function parsePositiveInteger(
+  value: string | undefined,
+  fallback: number
+): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return parsed;
 }
