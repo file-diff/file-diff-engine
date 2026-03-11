@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { gunzipSync } from "zlib";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
@@ -320,7 +319,7 @@ describe("Job Routes", () => {
     expect(res.status).toBe(404);
   });
 
-  it("GET /api/jobs/:id/files/hash/:hash/download - should stream the gzipped file contents", async () => {
+  it("GET /api/jobs/:id/files/hash/:hash/download - should stream the file contents", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-download-"));
     tempDirs.push(tmpDir);
     process.env.TMP_DIR = tmpDir;
@@ -347,12 +346,12 @@ describe("Job Routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.headers["content-encoding"]).toBe("gzip");
+    expect(response.headers["content-encoding"]).toBeUndefined();
     expect(response.headers["content-type"]).toContain("application/octet-stream");
-    expect(response.headers["content-disposition"]).toContain('filename="README.md.gz"');
-    expect(
-      gunzipSync((response as unknown as { rawPayload: Buffer }).rawPayload).toString("utf8")
-    ).toBe("hello from disk");
+    expect(response.headers["content-disposition"]).toContain('filename="README.md"');
+    expect((response as unknown as { rawPayload: Buffer }).rawPayload.toString("utf8")).toBe(
+      "hello from disk"
+    );
   });
 
   it("GET /api/jobs/:id/files/hash/:hash/download - should report when the hash is missing from the database", async () => {
