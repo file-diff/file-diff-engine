@@ -243,6 +243,7 @@ export async function processRepository(
       record = {
         file_type: "d",
         file_name: relativePath,
+        file_disk_path: relativePath,
         file_size: 0,
         file_update_date: await updateDate,
         file_last_commit: await lastCommit,
@@ -264,6 +265,7 @@ export async function processRepository(
       record = {
         file_type: getFileTypeFromGitMode(gitEntry.mode, binary),
         file_name: relativePath,
+        file_disk_path: relativePath,
         file_size: stat.size,
         file_update_date: await updateDate,
         file_last_commit: await lastCommit,
@@ -294,6 +296,7 @@ function createInitialRecord(repoDir: string, entry: EntryInfo): FileRecord {
   return {
     file_type: getInitialFileType(entry.kind),
     file_name: path.relative(repoDir, entry.fullPath),
+    file_disk_path: path.relative(repoDir, entry.fullPath),
     file_size: 0,
     file_update_date: "",
     file_last_commit: "",

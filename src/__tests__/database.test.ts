@@ -42,6 +42,12 @@ describe("getDatabase", () => {
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining("CREATE TABLE IF NOT EXISTS jobs")
     );
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining("ADD COLUMN IF NOT EXISTS file_disk_path")
+    );
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining("CREATE INDEX IF NOT EXISTS idx_files_job_id_hash")
+    );
   });
 
   it("allows overriding the pool idle timeout when using DATABASE_URL", async () => {

@@ -151,4 +151,31 @@ describe("JobRepository", () => {
     const files = await repo.getFiles("job-5");
     expect(files).toEqual([]);
   });
+
+  it("should find a file by hash and expose its stored disk path", async () => {
+    await repo.createJob("job-7", "owner/repo", "main");
+    await repo.insertFiles("job-7", [
+      {
+        file_type: "t",
+        file_name: "docs/readme.txt",
+        file_disk_path: "docs/readme.txt",
+        file_size: 12,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: "1111111111111111111111111111111111111111",
+      },
+    ]);
+
+    const file = await repo.getFileByHash(
+      "job-7",
+      "1111111111111111111111111111111111111111"
+    );
+
+    expect(file).toEqual({
+      jobId: "job-7",
+      fileName: "docs/readme.txt",
+      fileDiskPath: "docs/readme.txt",
+      fileHash: "1111111111111111111111111111111111111111",
+    });
+  });
 });

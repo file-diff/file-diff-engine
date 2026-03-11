@@ -1,5 +1,8 @@
 import { Queue } from "bullmq";
+import fs from "fs";
+import path from "path";
 import type { FastifyPluginAsync } from "fastify";
+import { createGzip } from "zlib";
 import { JobRepository } from "../db/repository";
 import type {
   ErrorResponse,
@@ -13,8 +16,10 @@ import type {
 } from "../types";
 import * as repoProcessor from "../services/repoProcessor";
 import { getCommitShort } from "../utils/commit";
+import { createLogger } from "../utils/logger";
 
 const POSTGRES_UNIQUE_VIOLATION = "23505";
+const logger = createLogger("job-routes");
 
 function normalizeRepo(repo: string): string {
   return repo.replace("https://github.com/", "").replace(".git", "").trim();
@@ -254,5 +259,81 @@ export function createJobRoutes(
       };
       return reply.send(response);
     });
+
+    app.get<{ Params: { id: string; hash: string } }>(
+      "/:id/files/hash/:hash/download",
+      async (request, reply) => {
+        const { id, hash } = request.params;
+        const job = await jobRepo.getJob(id);
+        if (!job) {
+          const response: ErrorResponse = { error: "Job not found." };
+          return reply.code(404).send(response);
+        }
+
+        const file = await jobRepo.getFileByHash(id, hash);
+        if (!file) {
+          const response: ErrorResponse = {
+            error: `File with hash '${hash}' was not found for job '${id}' in the database.`,
+          };
+          return reply.code(404).send(response);
+        }
+
+        let filePath: string;
+        try {
+          filePath = resolveJobFilePath(id, file.fileDiskPath);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Invalid stored file path.";
+          const response: ErrorResponse = { error: message };
+          return reply.code(500).send(response);
+        }
+
+        try {
+          await fs.promises.access(filePath, fs.constants.R_OK);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unknown file system error.";
+          const response: ErrorResponse = {
+            error:
+              `File with hash '${hash}' was found in the database for job '${id}', ` +
+              `but the file is missing or unreadable on disk at '${filePath}'. ${message}`,
+          };
+          return reply.code(404).send(response);
+        }
+
+        logger.info("Streaming gzipped file download", {
+          jobId: id,
+          hash,
+          fileName: file.fileName,
+          filePath,
+        });
+
+        reply.header("Content-Type", "application/octet-stream");
+        reply.header("Content-Encoding", "gzip");
+        reply.header(
+          "Content-Disposition",
+          `attachment; filename="${path.basename(file.fileName)}.gz"`
+        );
+        return reply.send(fs.createReadStream(filePath).pipe(createGzip()));
+      }
+    );
   };
+}
+
+function resolveJobFilePath(jobId: string, storedPath: string): string {
+  const tmpDir = process.env.TMP_DIR || "tmp";
+  const jobRoot = path.resolve(tmpDir, `fde-${jobId}`, "tree");
+  const resolvedPath = path.resolve(jobRoot, storedPath);
+  const relativePath = path.relative(jobRoot, resolvedPath);
+
+  if (
+    relativePath.startsWith("..") ||
+    path.isAbsolute(relativePath)
+  ) {
+    throw new Error(
+      `Stored file path '${storedPath}' for job '${jobId}' resolves outside the job directory.`
+    );
+  }
+
+  return resolvedPath;
 }

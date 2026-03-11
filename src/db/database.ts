@@ -59,6 +59,7 @@ async function initSchema(db: DatabaseClient): Promise<void> {
       job_id TEXT NOT NULL,
       file_type TEXT NOT NULL,
       file_name TEXT NOT NULL,
+      file_disk_path TEXT NOT NULL DEFAULT '',
       file_size INTEGER NOT NULL DEFAULT 0,
       file_update_date TEXT NOT NULL DEFAULT '',
       file_last_commit TEXT NOT NULL DEFAULT '',
@@ -66,7 +67,15 @@ async function initSchema(db: DatabaseClient): Promise<void> {
       FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
     );
 
+    ALTER TABLE files
+    ADD COLUMN IF NOT EXISTS file_disk_path TEXT NOT NULL DEFAULT '';
+
+    UPDATE files
+    SET file_disk_path = file_name
+    WHERE file_disk_path = '';
+
     CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id);
+    CREATE INDEX IF NOT EXISTS idx_files_job_id_hash ON files(job_id, file_git_hash);
   `);
 }
 

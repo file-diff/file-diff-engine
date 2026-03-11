@@ -1,4 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { gunzipSync } from "zlib";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
@@ -39,6 +43,8 @@ describe("Job Routes", () => {
   let app: FastifyInstance;
   let mockQueue: Queue;
   const commitHash = "0123456789abcdef0123456789abcdef01234567";
+  const fileHash = "1111111111111111111111111111111111111111";
+  const originalTmpDir = process.env.TMP_DIR;
 
   beforeEach(async () => {
     db = await createTestDatabase();
@@ -55,6 +61,11 @@ describe("Job Routes", () => {
   });
 
   afterEach(async () => {
+    if (originalTmpDir === undefined) {
+      delete process.env.TMP_DIR;
+    } else {
+      process.env.TMP_DIR = originalTmpDir;
+    }
     vi.restoreAllMocks();
     await app.close();
     await db.end();
@@ -288,5 +299,97 @@ describe("Job Routes", () => {
   it("GET /api/jobs/:id/files - should return 404 for unknown job", async () => {
     const res = await makeRequest(app, "GET", "/api/jobs/unknown-id/files");
     expect(res.status).toBe(404);
+  });
+
+  it("GET /api/jobs/:id/files/hash/:hash/download - should stream the gzipped file contents", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-download-"));
+    process.env.TMP_DIR = tmpDir;
+    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+    fs.writeFileSync(path.join(treeDir, "README.md"), "hello from disk");
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 15,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+    ]);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/${commitHash}/files/hash/${fileHash}/download`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-encoding"]).toBe("gzip");
+    expect(response.headers["content-type"]).toContain("application/octet-stream");
+    expect(response.headers["content-disposition"]).toContain('filename="README.md.gz"');
+    expect(
+      gunzipSync((response as unknown as { rawPayload: Buffer }).rawPayload).toString("utf8")
+    ).toBe("hello from disk");
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("GET /api/jobs/:id/files/hash/:hash/download - should report when the hash is missing from the database", async () => {
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/${commitHash}/files/hash/${fileHash}/download`,
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: `File with hash '${fileHash}' was not found for job '${commitHash}' in the database.`,
+    });
+  });
+
+  it("GET /api/jobs/:id/files/hash/:hash/download - should report when the file is missing on disk", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-download-missing-"));
+    process.env.TMP_DIR = tmpDir;
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 15,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+    ]);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/${commitHash}/files/hash/${fileHash}/download`,
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error:
+        `File with hash '${fileHash}' was found in the database for job '${commitHash}', ` +
+        `but the file is missing or unreadable on disk at '${path.join(
+          tmpDir,
+          `fde-${commitHash}`,
+          "tree",
+          "README.md"
+        )}'. ENOENT: no such file or directory, access '${path.join(
+          tmpDir,
+          `fde-${commitHash}`,
+          "tree",
+          "README.md"
+        )}'`,
+    });
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 });

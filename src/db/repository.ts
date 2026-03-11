@@ -5,6 +5,13 @@ import { getCommitShort } from "../utils/commit";
 
 const logger = createLogger("repository");
 
+export interface FileLookupRecord {
+  jobId: string;
+  fileName: string;
+  fileDiskPath: string;
+  fileHash: string;
+}
+
 export class JobRepository {
   constructor(private db: DatabaseClient) {}
 
@@ -71,12 +78,13 @@ export class JobRepository {
       await client.query("BEGIN");
       for (const file of files) {
         await client.query(
-          `INSERT INTO files (job_id, file_type, file_name, file_size, file_update_date, file_last_commit, file_git_hash)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          `INSERT INTO files (job_id, file_type, file_name, file_disk_path, file_size, file_update_date, file_last_commit, file_git_hash)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
             jobId,
             file.file_type,
             file.file_name,
+            file.file_disk_path ?? file.file_name,
             file.file_size,
             file.file_update_date,
             file.file_last_commit,
@@ -99,13 +107,15 @@ export class JobRepository {
     const result = await this.db.query(
       `UPDATE files
        SET file_type = $1,
-           file_size = $2,
-           file_update_date = $3,
-           file_last_commit = $4,
-           file_git_hash = $5
-       WHERE job_id = $6 AND file_name = $7`,
+           file_disk_path = $2,
+           file_size = $3,
+           file_update_date = $4,
+           file_last_commit = $5,
+           file_git_hash = $6
+       WHERE job_id = $7 AND file_name = $8`,
       [
         file.file_type,
+        file.file_disk_path ?? file.file_name,
         file.file_size,
         file.file_update_date,
         file.file_last_commit,
@@ -129,6 +139,39 @@ export class JobRepository {
       [jobId]
     );
     return result.rows as FileRecord[];
+  }
+
+  async getFileByHash(
+    jobId: string,
+    hash: string
+  ): Promise<FileLookupRecord | undefined> {
+    const result = await this.db.query(
+      `SELECT job_id, file_name, file_disk_path, file_git_hash
+       FROM files
+       WHERE job_id = $1 AND file_git_hash = $2
+       ORDER BY id ASC
+       LIMIT 1`,
+      [jobId, hash]
+    );
+    const row = result.rows[0] as
+      | {
+          job_id: string;
+          file_name: string;
+          file_disk_path: string;
+          file_git_hash: string;
+        }
+      | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      jobId: row.job_id,
+      fileName: row.file_name,
+      fileDiskPath: row.file_disk_path,
+      fileHash: row.file_git_hash,
+    };
   }
 }
 
