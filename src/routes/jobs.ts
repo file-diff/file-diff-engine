@@ -4,7 +4,6 @@ import fs from "fs";
 import path from "path";
 import { pipeline } from "stream/promises";
 import type { FastifyPluginAsync } from "fastify";
-import { createGzip } from "zlib";
 import { JobRepository } from "../db/repository";
 import type {
   ErrorResponse,
@@ -322,7 +321,7 @@ export function createJobRoutes(
           return reply.code(404).send(response);
         }
 
-        logger.info("Streaming gzipped file download", {
+        logger.info("Streaming file download", {
           jobId: id,
           hash,
           fileName: file.fileName,
@@ -332,18 +331,16 @@ export function createJobRoutes(
         reply.hijack();
         reply.raw.writeHead(200, {
           "Content-Type": "application/octet-stream",
-          "Content-Encoding": "gzip",
           "Content-Disposition": `attachment; filename="${getDownloadFilename(file.fileName)}"`,
         });
 
         try {
           await pipeline(
             fs.createReadStream(filePath),
-            createGzip(),
             reply.raw
           );
         } catch (error) {
-          logger.error("Failed to stream gzipped file download", {
+          logger.error("Failed to stream file download", {
             jobId: id,
             hash,
             fileName: file.fileName,
@@ -383,7 +380,7 @@ function getDownloadFilename(fileName: string): string {
     .basename(fileName)
     .replace(/[^A-Za-z0-9._-]/g, "_");
 
-  return `${sanitizedBaseName || "file"}.gz`;
+  return sanitizedBaseName || "file";
 }
 
 function parsePositiveInteger(
