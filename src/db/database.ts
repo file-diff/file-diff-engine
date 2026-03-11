@@ -21,6 +21,13 @@ function createPool(): Pool {
     });
   }
 
+  const postgresPass = process.env.POSTGRES_PASSWORD || "postgres";
+  if (postgresPass == "postgres") {
+    console.warn(
+      "Warning: Using default PostgreSQL password. This is not recommended for production environments."
+    );
+  }
+
   return new Pool({
     ...baseConfig,
     host: process.env.POSTGRES_DB_HOST || "127.0.0.1",
