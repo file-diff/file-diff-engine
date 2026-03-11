@@ -23,11 +23,11 @@ function createPool(): Pool {
 
   return new Pool({
     ...baseConfig,
-    host: process.env.DB_HOST || "127.0.0.1",
-    port: parseInt(process.env.DB_PORT || "5432", 10),
-    database: process.env.DB_NAME || "file_diff_engine",
-    user: process.env.DB_USER || "postgres",
-    password: process.env.DB_PASSWORD || "postgres",
+    host: process.env.POSTGRES_DB_HOST || "127.0.0.1",
+    port: parseInt(process.env.POSTGRES_DB_PORT || "5432"),
+    database: process.env.POSTGRES_DB || "file_diff_engine",
+    user: process.env.POSTGRES_USER || "postgres",
+    password: process.env.POSTGRES_PASSWORD || "postgres",
   });
 }
 

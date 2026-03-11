@@ -13,11 +13,11 @@ services:
       PORT: 12986
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: file_diff_engine
-      DB_USER: postgres
-      DB_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB_HOST: postgres
+      POSTGRES_DB_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-file_diff_engine}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       TMP_DIR: /app/tmp
     ports:
       - "12986:12986"
@@ -26,9 +26,9 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: file_diff_engine
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-file_diff_engine}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
     ports:
