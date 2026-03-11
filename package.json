@@ -24,6 +24,7 @@
   "homepage": "https://github.com/file-diff/file-diff-engine#readme",
   "dependencies": {
     "@fastify/cors": "^11.2.0",
+    "@fastify/rate-limit": "^10.3.0",
     "bullmq": "^5.70.4",
     "fastify": "^5.8.2",
     "ioredis": "^5.10.0",

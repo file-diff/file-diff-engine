@@ -4,6 +4,8 @@ export interface FileRecord {
   file_type: "d" | "t" | "b" | "x" | "s";
   /** File name with path relative to the repo root */
   file_name: string;
+  /** File location relative to the checked-out repo root on disk */
+  file_disk_path?: string;
   /** Size in bytes */
   file_size: number;
   /** ISO-8601 date of last modification according to git */

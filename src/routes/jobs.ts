@@ -1,5 +1,10 @@
 import { Queue } from "bullmq";
+import rateLimit from "@fastify/rate-limit";
+import fs from "fs";
+import path from "path";
+import { pipeline } from "stream/promises";
 import type { FastifyPluginAsync } from "fastify";
+import { createGzip } from "zlib";
 import { JobRepository } from "../db/repository";
 import type {
   ErrorResponse,
@@ -13,8 +18,12 @@ import type {
 } from "../types";
 import * as repoProcessor from "../services/repoProcessor";
 import { getCommitShort } from "../utils/commit";
+import { createLogger } from "../utils/logger";
 
 const POSTGRES_UNIQUE_VIOLATION = "23505";
+const logger = createLogger("job-routes");
+const DEFAULT_DOWNLOAD_RATE_LIMIT_MAX = 30;
+const DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS = 60_000;
 
 function normalizeRepo(repo: string): string {
   return repo.replace("https://github.com/", "").replace(".git", "").trim();
@@ -29,6 +38,18 @@ export function createJobRoutes(
   jobRepo: JobRepository
 ): FastifyPluginAsync {
   return async function registerJobRoutes(app) {
+    await app.register(rateLimit, { global: false });
+    const downloadRateLimit = app.rateLimit({
+      max: parsePositiveInteger(
+        process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX,
+        DEFAULT_DOWNLOAD_RATE_LIMIT_MAX
+      ),
+      timeWindow: parsePositiveInteger(
+        process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS,
+        DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS
+      ),
+    });
+
     /**
      * POST /api/jobs/resolve
      * Body: { "repo": "owner/repo", "ref": "main" }
@@ -254,5 +275,129 @@ export function createJobRoutes(
       };
       return reply.send(response);
     });
+
+    app.get<{ Params: { id: string; hash: string } }>(
+      "/:id/files/hash/:hash/download",
+      {
+        preHandler: downloadRateLimit,
+      },
+      async (request, reply) => {
+        const { id, hash } = request.params;
+        const job = await jobRepo.getJob(id);
+        if (!job) {
+          const response: ErrorResponse = { error: "Job not found." };
+          return reply.code(404).send(response);
+        }
+
+        const file = await jobRepo.getFileByHash(id, hash);
+        if (!file) {
+          const response: ErrorResponse = {
+            error: `File with hash '${hash}' was not found for job '${id}' in the database.`,
+          };
+          return reply.code(404).send(response);
+        }
+
+        let filePath: string;
+        try {
+          filePath = resolveJobFilePath(id, file.fileDiskPath);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Invalid stored file path.";
+          const response: ErrorResponse = { error: message };
+          return reply.code(500).send(response);
+        }
+
+        try {
+          await fs.promises.access(filePath, fs.constants.R_OK);
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to check file accessibility on disk.";
+          const response: ErrorResponse = {
+            error:
+              `File with hash '${hash}' was found in the database for job '${id}', ` +
+              `but the file is missing or unreadable on disk at '${filePath}'. ${message}`,
+          };
+          return reply.code(404).send(response);
+        }
+
+        logger.info("Streaming gzipped file download", {
+          jobId: id,
+          hash,
+          fileName: file.fileName,
+          filePath,
+        });
+
+        reply.hijack();
+        reply.raw.writeHead(200, {
+          "Content-Type": "application/octet-stream",
+          "Content-Encoding": "gzip",
+          "Content-Disposition": `attachment; filename="${getDownloadFilename(file.fileName)}"`,
+        });
+
+        try {
+          await pipeline(
+            fs.createReadStream(filePath),
+            createGzip(),
+            reply.raw
+          );
+        } catch (error) {
+          logger.error("Failed to stream gzipped file download", {
+            jobId: id,
+            hash,
+            fileName: file.fileName,
+            filePath,
+            error,
+          });
+          if (!reply.raw.destroyed) {
+            reply.raw.destroy(error instanceof Error ? error : undefined);
+          }
+        }
+        return reply;
+      }
+    );
   };
+}
+
+function resolveJobFilePath(jobId: string, storedPath: string): string {
+  const tmpDir = process.env.TMP_DIR || "tmp";
+  const jobRoot = path.resolve(tmpDir, `fde-${jobId}`, "tree");
+  const resolvedPath = path.resolve(jobRoot, storedPath);
+  const relativePath = path.relative(jobRoot, resolvedPath);
+
+  if (
+    relativePath.startsWith("..") ||
+    path.isAbsolute(relativePath)
+  ) {
+    throw new Error(
+      `Stored file path '${storedPath}' for job '${jobId}' resolves outside the job directory.`
+    );
+  }
+
+  return resolvedPath;
+}
+
+function getDownloadFilename(fileName: string): string {
+  const sanitizedBaseName = path
+    .basename(fileName)
+    .replace(/[^A-Za-z0-9._-]/g, "_");
+
+  return `${sanitizedBaseName || "file"}.gz`;
+}
+
+function parsePositiveInteger(
+  value: string | undefined,
+  fallback: number
+): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return parsed;
 }

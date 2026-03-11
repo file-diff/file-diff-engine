@@ -40,34 +40,50 @@ export async function getDatabase(
 }
 
 async function initSchema(db: DatabaseClient): Promise<void> {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS jobs (
-      id TEXT PRIMARY KEY,
-      repo TEXT NOT NULL,
-      commit TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'waiting',
-      progress DOUBLE PRECISION NOT NULL DEFAULT 0,
-      total_files INTEGER NOT NULL DEFAULT 0,
-      processed_files INTEGER NOT NULL DEFAULT 0,
-      error TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
+  await db.query("BEGIN");
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS jobs (
+        id TEXT PRIMARY KEY,
+        repo TEXT NOT NULL,
+        commit TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'waiting',
+        progress DOUBLE PRECISION NOT NULL DEFAULT 0,
+        total_files INTEGER NOT NULL DEFAULT 0,
+        processed_files INTEGER NOT NULL DEFAULT 0,
+        error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
 
-    CREATE TABLE IF NOT EXISTS files (
-      id BIGSERIAL PRIMARY KEY,
-      job_id TEXT NOT NULL,
-      file_type TEXT NOT NULL,
-      file_name TEXT NOT NULL,
-      file_size INTEGER NOT NULL DEFAULT 0,
-      file_update_date TEXT NOT NULL DEFAULT '',
-      file_last_commit TEXT NOT NULL DEFAULT '',
-      file_git_hash TEXT NOT NULL DEFAULT '',
-      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
-    );
+      CREATE TABLE IF NOT EXISTS files (
+        id BIGSERIAL PRIMARY KEY,
+        job_id TEXT NOT NULL,
+        file_type TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        file_disk_path TEXT NOT NULL DEFAULT '',
+        file_size INTEGER NOT NULL DEFAULT 0,
+        file_update_date TEXT NOT NULL DEFAULT '',
+        file_last_commit TEXT NOT NULL DEFAULT '',
+        file_git_hash TEXT NOT NULL DEFAULT '',
+        FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+      );
 
-    CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id);
-  `);
+      ALTER TABLE files
+      ADD COLUMN IF NOT EXISTS file_disk_path TEXT NOT NULL DEFAULT '';
+
+      UPDATE files
+      SET file_disk_path = file_name
+      WHERE file_disk_path = '';
+
+      CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id);
+      CREATE INDEX IF NOT EXISTS idx_files_job_id_hash ON files(job_id, file_git_hash);
+    `);
+    await db.query("COMMIT");
+  } catch (error) {
+    await db.query("ROLLBACK");
+    throw error;
+  }
 }
 
 function parseNonNegativeInteger(
