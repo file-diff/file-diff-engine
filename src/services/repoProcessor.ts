@@ -300,7 +300,7 @@ export async function processRepository(
 }
 
 function getRepositoryCacheDir(repoUrl: string, workDir: string): string {
-  const cacheKey = createHash("sha1").update(repoUrl).digest("hex");
+  const cacheKey = createHash("sha256").update(repoUrl).digest("hex");
   return path.join(path.dirname(path.resolve(workDir)), "repo-cache", cacheKey);
 }
 
