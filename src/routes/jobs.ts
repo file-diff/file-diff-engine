@@ -9,12 +9,16 @@ import type {
   ErrorResponse,
   ListRefsRequest,
   ListRefsResponse,
+  ListOrganizationRepositoriesResponse,
   JobFilesResponse,
   JobRequest,
   ResolveCommitRequest,
   ResolveCommitResponse,
+  ResolvePullRequestRequest,
+  ResolvePullRequestResponse,
   JobSummary,
 } from "../types";
+import * as githubApi from "../services/githubApi";
 import * as repoProcessor from "../services/repoProcessor";
 import { getCommitShort } from "../utils/commit";
 import { createLogger } from "../utils/logger";
@@ -30,6 +34,10 @@ function normalizeRepo(repo: string): string {
 
 function isValidRepo(repo: string): boolean {
   return /^[\w.\-]+\/[\w.\-]+$/.test(repo);
+}
+
+function isValidOrganization(organization: string): boolean {
+  return /^[\w.\-]+$/.test(organization);
 }
 
 export function createJobRoutes(
@@ -101,6 +109,39 @@ export function createJobRoutes(
     });
 
     /**
+     * POST /api/jobs/pull-request/resolve
+     * Body: { "pullRequestUrl": "https://github.com/owner/repo/pull/123" }
+     * Resolves a GitHub pull request into source and target commits.
+     */
+    app.post<{ Body: ResolvePullRequestRequest }>(
+      "/pull-request/resolve",
+      async (request, reply) => {
+        const pullRequestUrl = request.body?.pullRequestUrl?.trim();
+        if (!pullRequestUrl) {
+          const response: ErrorResponse = {
+            error: "Field 'pullRequestUrl' is required.",
+          };
+          return reply.code(400).send(response);
+        }
+
+        try {
+          const response: ResolvePullRequestResponse =
+            await githubApi.resolvePullRequest(pullRequestUrl);
+          return reply.code(200).send(response);
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Unable to resolve GitHub pull request.";
+          const response: ErrorResponse = { error: message };
+          const statusCode =
+            error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+          return reply.code(statusCode).send(response);
+        }
+      }
+    );
+
+    /**
      * POST /api/jobs/refs
      * Body: { "repo": "owner/repo" }
      * Lists available branch and tag refs for a repository.
@@ -140,6 +181,45 @@ export function createJobRoutes(
         return reply.code(500).send(response);
       }
     });
+
+    /**
+     * GET /api/jobs/organizations/:organization/repositories
+     * Lists repositories in a GitHub organization.
+     */
+    app.get<{ Params: { organization: string } }>(
+      "/organizations/:organization/repositories",
+      async (request, reply) => {
+        const organization = request.params.organization?.trim();
+        if (!organization) {
+          const response: ErrorResponse = {
+            error: "Field 'organization' is required.",
+          };
+          return reply.code(400).send(response);
+        }
+
+        if (!isValidOrganization(organization)) {
+          const response: ErrorResponse = {
+            error: "Invalid organization format.",
+          };
+          return reply.code(400).send(response);
+        }
+
+        try {
+          const response: ListOrganizationRepositoriesResponse =
+            await githubApi.listOrganizationRepositories(organization);
+          return reply.code(200).send(response);
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Unable to list organization repositories.";
+          const response: ErrorResponse = { error: message };
+          const statusCode =
+            error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+          return reply.code(statusCode).send(response);
+        }
+      }
+    );
 
     /**
      * POST /api/jobs
