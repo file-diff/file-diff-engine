@@ -15,9 +15,9 @@ import type {
   ResolveCommitRequest,
   ResolveCommitResponse,
   ResolvePullRequestRequest,
+  ResolvePullRequestResponse,
   JobSummary,
 } from "../types";
-import type { ResolvePullRequestResponse } from "../types";
 import * as githubApi from "../services/githubApi";
 import * as repoProcessor from "../services/repoProcessor";
 import { getCommitShort } from "../utils/commit";

@@ -14,7 +14,7 @@ describe("githubApi", () => {
 
   it("parsePullRequestUrl rejects non-pull-request URLs", () => {
     expect(() => parsePullRequestUrl("https://github.com/file-diff/file-diff-engine"))
-      .toThrowError(GitHubApiError);
+      .toThrow(GitHubApiError);
     expect(() => parsePullRequestUrl("https://github.example.com/file-diff/file-diff-engine/pull/42"))
       .toThrow("Invalid pull request URL. Expected a full GitHub pull request URL.");
   });
