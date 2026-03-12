@@ -221,6 +221,8 @@ describe("repoProcessor – local clone simulation", () => {
     const testDir = path.join(os.tmpdir(), `fde-commit-test-${Date.now()}`);
     const repoDir = path.join(testDir, "origin");
     const workDir = path.join(testDir, "work");
+    const cacheDir = path.join(workDir, "cache");
+    const treeDir = path.join(workDir, "tree");
 
     try {
       createTestRepo(repoDir);
@@ -239,6 +241,10 @@ describe("repoProcessor – local clone simulation", () => {
         workDir
       );
 
+      expect(fs.existsSync(cacheDir)).toBe(true);
+      expect(fs.existsSync(path.join(cacheDir, ".git"))).toBe(true);
+      expect(fs.existsSync(path.join(cacheDir, "hello.txt"))).toBe(false);
+      expect(fs.readFileSync(path.join(treeDir, "hello.txt"), "utf8")).toBe("Hello World\n");
       expect(records.some((record) => record.file_name === "later.txt")).toBe(false);
       expect(records.some((record) => record.file_name === "hello.txt")).toBe(true);
     } finally {

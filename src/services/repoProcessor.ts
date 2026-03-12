@@ -207,14 +207,17 @@ export async function processRepository(
 ): Promise<FileRecord[]> {
   logger.debug("Starting repository processing", { repo, commit, workDir });
   const repoUrl = getRepositoryUrl(repo);
+  const cacheDir = path.join(workDir, "cache");
   const cloneDir = path.join(workDir, "tree");
 
-  logger.debug("Using clone directory", { cloneDir });
-  fs.mkdirSync(cloneDir, { recursive: true });
+  logger.debug("Using repository directories", { cacheDir, cloneDir });
+  fs.mkdirSync(workDir, { recursive: true });
+  fs.rmSync(cacheDir, { recursive: true, force: true });
+  fs.rmSync(cloneDir, { recursive: true, force: true });
 
-  await runGitCommand(cloneDir, ["init"]);
-  await runGitCommand(cloneDir, ["remote", "add", "origin", repoUrl]);
-  await runGitCommand(cloneDir, ["fetch", "--depth=1", "origin", commit]);
+  await runGitCommand(workDir, ["clone", "--no-checkout", repoUrl, cacheDir]);
+  await runGitCommand(cacheDir, ["fetch", "--depth=1", "origin", commit]);
+  fs.cpSync(cacheDir, cloneDir, { recursive: true });
   await runGitCommand(cloneDir, [
     "-c",
     "advice.detachedHead=false",
