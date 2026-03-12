@@ -31,7 +31,7 @@ describe("createApp", () => {
 
     const response = await app.inject({
       method: "OPTIONS",
-      url: "/health",
+      url: "/api/health",
       headers: {
         origin: "https://frontend.example",
         "access-control-request-method": "GET",
@@ -58,7 +58,7 @@ describe("createApp", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/version",
+      url: "/api/version",
     });
 
     expect(response.statusCode).toBe(200);

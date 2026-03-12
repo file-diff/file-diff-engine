@@ -50,8 +50,8 @@ describe("JobRepository", () => {
     await repo.createJob("job-3", "owner/repo", "main");
     await repo.updateJobProgress("job-3", 5, 10);
     const job = await repo.getJob("job-3");
-    expect(job!.processed_files).toBe(5);
-    expect(job!.total_files).toBe(10);
+    expect(job!.processedFiles).toBe(5);
+    expect(job!.totalFiles).toBe(10);
     expect(job!.progress).toBe(50);
   });
 
