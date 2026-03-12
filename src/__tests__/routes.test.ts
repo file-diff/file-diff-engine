@@ -6,6 +6,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
 import { createJobRoutes } from "../routes/jobs";
+import { difftCommandRunner } from "../routes/jobs/downloadRoutes";
 import { Queue } from "bullmq";
 import type {
   ListRefsResponse,
@@ -47,6 +48,7 @@ describe("Job Routes", () => {
   let tempDirs: string[];
   const commitHash = "0123456789abcdef0123456789abcdef01234567";
   const fileHash = "1111111111111111111111111111111111111111";
+  const otherFileHash = "2222222222222222222222222222222222222222";
   const originalTmpDir = process.env.TMP_DIR;
   const originalDownloadRateLimitMax = process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX;
   const originalDownloadRateLimitWindowMs =
@@ -576,6 +578,165 @@ describe("Job Routes", () => {
       statusCode: 429,
       error: "Too Many Requests",
       message: "Rate limit exceeded, retry in 1 minute",
+    });
+  });
+
+  it("GET /api/jobs/:id/files/hash/:leftHash/diff/:rightHash - should return difft JSON output", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-difft-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+
+    const leftPath = path.join(treeDir, "README.md");
+    const rightPath = path.join(treeDir, "README.next.md");
+    fs.writeFileSync(leftPath, "hello from disk");
+    fs.writeFileSync(rightPath, "hello from difft");
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 15,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+      {
+        file_type: "t",
+        file_name: "README.next.md",
+        file_disk_path: "README.next.md",
+        file_size: 16,
+        file_update_date: "2024-01-02T00:00:00Z",
+        file_last_commit: "def456",
+        file_git_hash: otherFileHash,
+      },
+    ]);
+
+    const diffPayload = { status: "different", changes: [{ line: 1 }] };
+    const execFileSpy = vi
+      .spyOn(difftCommandRunner, "execFile")
+      .mockImplementation((...args: unknown[]) => {
+        const callback = args[args.length - 1] as (
+          error: (Error & { code?: number; stdout?: string }) | null,
+          stdout: string,
+          stderr: string
+        ) => void;
+        callback(
+          Object.assign(new Error("files differ"), {
+            code: 1,
+            stdout: JSON.stringify(diffPayload),
+          }),
+          JSON.stringify(diffPayload),
+          ""
+        );
+        return {} as ReturnType<typeof difftCommandRunner.execFile>;
+      });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/${commitHash}/files/hash/${fileHash}/diff/${otherFileHash}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(diffPayload);
+    expect(execFileSpy).toHaveBeenCalledWith(
+      "difft",
+      ["--display", "json", leftPath, rightPath],
+      { maxBuffer: 10 * 1024 * 1024 },
+      expect.any(Function)
+    );
+  });
+
+  it("GET /api/jobs/:id/files/hash/:leftHash/diff/:rightHash - should report when a hash is missing from the database", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-difft-missing-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+    fs.writeFileSync(path.join(treeDir, "README.md"), "hello from disk");
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 15,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+    ]);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/${commitHash}/files/hash/${fileHash}/diff/${otherFileHash}`,
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: `File with hash '${otherFileHash}' was not found for job '${commitHash}' in the database.`,
+    });
+  });
+
+  it("GET /api/jobs/:id/files/hash/:leftHash/diff/:rightHash - should report difft execution failures", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-difft-error-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+    fs.writeFileSync(path.join(treeDir, "README.md"), "hello from disk");
+    fs.writeFileSync(path.join(treeDir, "README.next.md"), "hello from difft");
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 15,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+      {
+        file_type: "t",
+        file_name: "README.next.md",
+        file_disk_path: "README.next.md",
+        file_size: 16,
+        file_update_date: "2024-01-02T00:00:00Z",
+        file_last_commit: "def456",
+        file_git_hash: otherFileHash,
+      },
+    ]);
+
+    vi.spyOn(difftCommandRunner, "execFile").mockImplementation((...args: unknown[]) => {
+      const callback = args[args.length - 1] as (
+        error: (Error & { code?: string }) | null,
+        stdout: string,
+        stderr: string
+      ) => void;
+      callback(
+        Object.assign(new Error("spawn difft ENOENT"), {
+          code: "ENOENT",
+        }),
+        "",
+        ""
+      );
+      return {} as ReturnType<typeof difftCommandRunner.execFile>;
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/${commitHash}/files/hash/${fileHash}/diff/${otherFileHash}`,
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      error: "Failed to run difft command. spawn difft ENOENT",
     });
   });
 });

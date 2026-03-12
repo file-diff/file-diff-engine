@@ -613,6 +613,57 @@ Rate-limited response example:
 }
 ```
 
+---
+
+### `GET /api/jobs/:id/files/hash/:leftHash/diff/:rightHash`
+
+Runs `difft --display json` against two files that belong to the same processed job and returns the parsed JSON result.
+
+#### Path arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Job ID / commit SHA |
+| `leftHash` | `string` | Yes | Git blob hash of the left-hand file |
+| `rightHash` | `string` | Yes | Git blob hash of the right-hand file |
+
+#### Success response
+
+Status: `200 OK`
+
+Response body:
+
+- Parsed JSON emitted by `difft --display json`
+
+#### Error response
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `error` | `string` | Error message |
+
+Common statuses:
+
+- `404 Not Found` when the job does not exist
+- `404 Not Found` when either file hash does not exist for the job
+- `404 Not Found` when either file is missing or unreadable on disk
+- `500 Internal Server Error` when the stored file path is invalid or the `difft` command fails
+
+#### Example
+
+```bash
+curl -L \
+  https://your-host.example.com/api/jobs/0123456789abcdef0123456789abcdef01234567/files/hash/1111111111111111111111111111111111111111/diff/2222222222222222222222222222222222222222
+```
+
+Example response:
+
+```json
+{
+  "status": "different",
+  "changes": []
+}
+```
+
 ## Typical usage flow
 
 ### Resolve a branch or tag, then create a job
@@ -623,6 +674,7 @@ Rate-limited response example:
 4. Poll `GET /api/jobs/:id` until `status` becomes `completed` or `failed`.
 5. Call `GET /api/jobs/:id/files` to inspect processed file metadata.
 6. Call `GET /api/jobs/:id/files/hash/:hash/download` to download a specific file by hash.
+7. Call `GET /api/jobs/:id/files/hash/:leftHash/diff/:rightHash` to compare two processed files by blob hash.
 
 ### Resolve a pull request, then compare source and target commits externally
 
