@@ -32,6 +32,12 @@ export interface ResolveCommitRequest {
   ref: string;
 }
 
+/** Payload sent when resolving a GitHub pull request URL. */
+export interface ResolvePullRequestRequest {
+  /** Full GitHub pull request URL */
+  pullRequestUrl: string;
+}
+
 /** Payload sent when listing Git refs for a repository. */
 export interface ListRefsRequest {
   /** GitHub repository in owner/repo format */
@@ -62,6 +68,16 @@ export interface ResolveCommitResponse {
   commitShort: string;
 }
 
+/** Response payload when resolving a GitHub pull request URL. */
+export interface ResolvePullRequestResponse {
+  repo: string;
+  repositoryUrl: string;
+  sourceCommit: string;
+  sourceCommitShort: string;
+  targetCommit: string;
+  targetCommitShort: string;
+}
+
 /** Supported Git ref types exposed by the API. */
 export type GitRefType = "branch" | "tag";
 
@@ -78,6 +94,19 @@ export interface GitRefSummary {
 export interface ListRefsResponse {
   repo: string;
   refs: GitRefSummary[];
+}
+
+/** Response entry when listing repositories for a GitHub organization. */
+export interface OrganizationRepositorySummary {
+  name: string;
+  repo: string;
+  repositoryUrl: string;
+}
+
+/** Response payload when listing repositories for a GitHub organization. */
+export interface ListOrganizationRepositoriesResponse {
+  organization: string;
+  repositories: OrganizationRepositorySummary[];
 }
 
 /** Response when querying a job. */

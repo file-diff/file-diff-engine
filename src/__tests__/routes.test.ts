@@ -9,12 +9,15 @@ import { createJobRoutes } from "../routes/jobs";
 import { Queue } from "bullmq";
 import type {
   ListRefsResponse,
+  ListOrganizationRepositoriesResponse,
   JobFilesResponse,
   JobInfo,
   JobSummary,
   ResolveCommitResponse,
+  ResolvePullRequestResponse,
 } from "../types";
 import { createTestDatabase } from "./helpers/testDatabase";
+import * as githubApi from "../services/githubApi";
 import * as repoProcessor from "../services/repoProcessor";
 
 async function makeRequest(
@@ -196,6 +199,124 @@ describe("Job Routes", () => {
     expect(res.status).toBe(500);
     expect(res.body).toEqual({
       error: "Unable to list refs for repository 'https://github.com/facebook/react.git'.",
+    });
+  });
+
+  it("POST /api/jobs/pull-request/resolve - should resolve a pull request URL", async () => {
+    const resolvePullRequestSpy = vi
+      .spyOn(githubApi, "resolvePullRequest")
+      .mockResolvedValue({
+        repo: "facebook/react",
+        repositoryUrl: "https://github.com/facebook/react",
+        sourceCommit: commitHash,
+        sourceCommitShort: commitHash.slice(0, 7),
+        targetCommit: fileHash,
+        targetCommitShort: fileHash.slice(0, 7),
+      });
+
+    const res = await makeRequest(app, "POST", "/api/jobs/pull-request/resolve", {
+      pullRequestUrl: " https://github.com/facebook/react/pull/123 ",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<ResolvePullRequestResponse>({
+      repo: "facebook/react",
+      repositoryUrl: "https://github.com/facebook/react",
+      sourceCommit: commitHash,
+      sourceCommitShort: commitHash.slice(0, 7),
+      targetCommit: fileHash,
+      targetCommitShort: fileHash.slice(0, 7),
+    });
+    expect(resolvePullRequestSpy).toHaveBeenCalledWith(
+      "https://github.com/facebook/react/pull/123"
+    );
+  });
+
+  it("POST /api/jobs/pull-request/resolve - should reject missing pullRequestUrl", async () => {
+    const res = await makeRequest(app, "POST", "/api/jobs/pull-request/resolve", {});
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Field 'pullRequestUrl' is required.",
+    });
+  });
+
+  it("POST /api/jobs/pull-request/resolve - should surface GitHub API errors", async () => {
+    vi.spyOn(githubApi, "resolvePullRequest").mockRejectedValue(
+      new githubApi.GitHubApiError(
+        "Invalid pull request URL. Expected a full GitHub pull request URL.",
+        400
+      )
+    );
+
+    const res = await makeRequest(app, "POST", "/api/jobs/pull-request/resolve", {
+      pullRequestUrl: "not-a-url",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Invalid pull request URL. Expected a full GitHub pull request URL.",
+    });
+  });
+
+  it("GET /api/jobs/organizations/:organization/repositories - should list repositories", async () => {
+    const listOrganizationRepositoriesSpy = vi
+      .spyOn(githubApi, "listOrganizationRepositories")
+      .mockResolvedValue({
+        organization: "facebook",
+        repositories: [
+          {
+            name: "react",
+            repo: "facebook/react",
+            repositoryUrl: "https://github.com/facebook/react",
+          },
+        ],
+      });
+
+    const res = await makeRequest(
+      app,
+      "GET",
+      "/api/jobs/organizations/facebook/repositories"
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<ListOrganizationRepositoriesResponse>({
+      organization: "facebook",
+      repositories: [
+        {
+          name: "react",
+          repo: "facebook/react",
+          repositoryUrl: "https://github.com/facebook/react",
+        },
+      ],
+    });
+    expect(listOrganizationRepositoriesSpy).toHaveBeenCalledWith("facebook");
+  });
+
+  it("GET /api/jobs/organizations/:organization/repositories - should reject invalid organization", async () => {
+    const res = await makeRequest(
+      app,
+      "GET",
+      "/api/jobs/organizations/facebook/react/repositories"
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("GET /api/jobs/organizations/:organization/repositories - should surface GitHub API errors", async () => {
+    vi.spyOn(githubApi, "listOrganizationRepositories").mockRejectedValue(
+      new githubApi.GitHubApiError("GitHub organization 'missing-org' was not found.", 404)
+    );
+
+    const res = await makeRequest(
+      app,
+      "GET",
+      "/api/jobs/organizations/missing-org/repositories"
+    );
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({
+      error: "GitHub organization 'missing-org' was not found.",
     });
   });
 
