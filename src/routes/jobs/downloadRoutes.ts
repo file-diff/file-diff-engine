@@ -16,21 +16,21 @@ export function registerDownloadRoutes(
   app: FastifyInstance,
   jobRepo: JobRepository
 ): void {
-  const downloadRateLimit = app.rateLimit({
-    max: parsePositiveInteger(
-      process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX,
-      DEFAULT_DOWNLOAD_RATE_LIMIT_MAX
-    ),
-    timeWindow: parsePositiveInteger(
-      process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS,
-      DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS
-    ),
-  });
-
   app.get<{ Params: { id: string; hash: string } }>(
     "/:id/files/hash/:hash/download",
     {
-      preHandler: downloadRateLimit,
+      config: {
+        rateLimit: {
+          max: parsePositiveInteger(
+            process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX,
+            DEFAULT_DOWNLOAD_RATE_LIMIT_MAX
+          ),
+          timeWindow: parsePositiveInteger(
+            process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS,
+            DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS
+          ),
+        },
+      },
     },
     async (request, reply) => {
       const { id, hash } = request.params;
