@@ -6,7 +6,7 @@ API reference: [API.md](./API.md)
 
 ## Storage tree
 
-The worker stores repository data under `TMP_DIR` (or `tmp` when `TMP_DIR` is not set).
+The worker stores repository data under `TMP_DIR` (or the relative `tmp/` directory under the service working directory when `TMP_DIR` is not set).
 
 Each job gets its own working directory:
 
@@ -37,7 +37,7 @@ The processing flow is:
 
 1. Build the repository URL from the requested `owner/repo`.
 2. Hash that URL and use it as the cache directory name.
-3. If the cache does not exist yet, run `git clone --no-checkout <repoUrl> <cacheDir>`.
+3. If the cache does not exist yet, run `git clone --no-checkout <repoUrl> <cacheDir>` so the cache keeps Git metadata without checking out a working tree there.
 4. Run `git fetch --depth=1 origin <commit>` inside the cache to fetch the requested commit.
 5. Copy the cache directory to `TMP_DIR/fde-<jobId>/tree/`.
 6. Run `git checkout --detach FETCH_HEAD` inside `tree/` so the job works with the exact requested commit.
