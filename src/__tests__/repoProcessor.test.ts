@@ -221,6 +221,10 @@ describe("repoProcessor – local clone simulation", () => {
     const testDir = path.join(os.tmpdir(), `fde-commit-test-${Date.now()}`);
     const repoDir = path.join(testDir, "origin");
     const workDir = path.join(testDir, "work");
+    const treeDir = path.join(workDir, "tree");
+    const secondWorkDir = path.join(testDir, "work-second");
+    const secondTreeDir = path.join(secondWorkDir, "tree");
+    const cacheRoot = path.join(testDir, "repo-cache");
 
     try {
       createTestRepo(repoDir);
@@ -239,8 +243,30 @@ describe("repoProcessor – local clone simulation", () => {
         workDir
       );
 
+      const [cacheEntry] = fs.readdirSync(cacheRoot);
+      const cacheDir = path.join(cacheRoot, cacheEntry);
+
+      expect(cacheEntry).toBeTruthy();
+      expect(fs.existsSync(path.join(cacheDir, ".git"))).toBe(true);
+      expect(fs.existsSync(path.join(cacheDir, "hello.txt"))).toBe(false);
+      expect(fs.readFileSync(path.join(treeDir, "hello.txt"), "utf8")).toBe("Hello World\n");
       expect(records.some((record) => record.file_name === "later.txt")).toBe(false);
       expect(records.some((record) => record.file_name === "hello.txt")).toBe(true);
+
+      const cacheSentinel = path.join(cacheDir, ".git", "cache-sentinel");
+      fs.writeFileSync(cacheSentinel, "keep");
+
+      const secondRecords = await processRepository(
+        `file://${repoDir}`,
+        initialCommit,
+        secondWorkDir
+      );
+
+      expect(fs.existsSync(cacheSentinel)).toBe(true);
+      expect(fs.readFileSync(path.join(secondTreeDir, "hello.txt"), "utf8")).toBe(
+        "Hello World\n"
+      );
+      expect(secondRecords.some((record) => record.file_name === "later.txt")).toBe(false);
     } finally {
       fs.rmSync(testDir, { recursive: true, force: true });
     }

@@ -35,7 +35,9 @@ describe("repoProcessor git error handling", () => {
         thrown = err;
       }
       expect(thrown).toBeInstanceOf(Error);
-      expect((thrown as Error).message).toContain("Git command failed: git init");
+      expect((thrown as Error).message).toContain(
+        "Git command failed: git clone --no-checkout"
+      );
       expect((thrown as Error).message).toContain(
         "stderr: fatal: repository not found"
       );

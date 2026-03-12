@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { createHash } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { FileRecord, type GitRefSummary } from "../types";
@@ -207,14 +208,25 @@ export async function processRepository(
 ): Promise<FileRecord[]> {
   logger.debug("Starting repository processing", { repo, commit, workDir });
   const repoUrl = getRepositoryUrl(repo);
+  const cacheDir = getRepositoryCacheDir(repoUrl, workDir);
   const cloneDir = path.join(workDir, "tree");
 
-  logger.debug("Using clone directory", { cloneDir });
-  fs.mkdirSync(cloneDir, { recursive: true });
+  logger.debug("Using repository directories", { cacheDir, cloneDir });
+  fs.mkdirSync(workDir, { recursive: true });
+  fs.rmSync(cloneDir, { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
 
-  await runGitCommand(cloneDir, ["init"]);
-  await runGitCommand(cloneDir, ["remote", "add", "origin", repoUrl]);
-  await runGitCommand(cloneDir, ["fetch", "--depth=1", "origin", commit]);
+  if (!fs.existsSync(path.join(cacheDir, ".git"))) {
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+    await runGitCommand(path.dirname(cacheDir), [
+      "clone",
+      "--no-checkout",
+      repoUrl,
+      cacheDir,
+    ]);
+  }
+  await runGitCommand(cacheDir, ["fetch", "--depth=1", "origin", commit]);
+  fs.cpSync(cacheDir, cloneDir, { recursive: true });
   await runGitCommand(cloneDir, [
     "-c",
     "advice.detachedHead=false",
@@ -285,6 +297,11 @@ export async function processRepository(
     totalRecords: records.length,
   });
   return records;
+}
+
+function getRepositoryCacheDir(repoUrl: string, workDir: string): string {
+  const cacheKey = createHash("sha256").update(repoUrl).digest("hex");
+  return path.join(path.dirname(path.resolve(workDir)), "repo-cache", cacheKey);
 }
 
 interface EntryInfo {
