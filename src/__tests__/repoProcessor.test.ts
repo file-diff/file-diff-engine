@@ -271,4 +271,57 @@ describe("repoProcessor – local clone simulation", () => {
       fs.rmSync(testDir, { recursive: true, force: true });
     }
   });
+
+  it("should keep serving a cached commit after a force push rewrites the branch", async () => {
+    const testDir = path.join(os.tmpdir(), `fde-force-push-test-${Date.now()}`);
+    const repoDir = path.join(testDir, "repo");
+    const originDir = path.join(testDir, "origin.git");
+    const workDir = path.join(testDir, "work");
+    const secondWorkDir = path.join(testDir, "work-second");
+    const secondTreeDir = path.join(secondWorkDir, "tree");
+
+    try {
+      createTestRepo(repoDir);
+      const branchName = execSync("git branch --show-current", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+      const initialCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      execSync(`git clone --bare ${repoDir} ${originDir}`);
+      execSync(`git remote add origin ${originDir}`, { cwd: repoDir });
+
+      const firstRecords = await processRepository(
+        `file://${originDir}`,
+        initialCommit,
+        workDir
+      );
+
+      execSync("git checkout --orphan rewritten", { cwd: repoDir });
+      execSync("git rm -rf .", { cwd: repoDir });
+      fs.writeFileSync(path.join(repoDir, "rewritten.txt"), "rewritten\n");
+      execSync("git add rewritten.txt", { cwd: repoDir });
+      execSync('git commit -m "rewritten history"', { cwd: repoDir });
+      execSync(`git push --force origin HEAD:${branchName}`, { cwd: repoDir });
+
+      const secondRecords = await processRepository(
+        `file://${originDir}`,
+        initialCommit,
+        secondWorkDir
+      );
+
+      expect(firstRecords.some((record) => record.file_name === "hello.txt")).toBe(true);
+      expect(secondRecords.some((record) => record.file_name === "hello.txt")).toBe(true);
+      expect(secondRecords.some((record) => record.file_name === "rewritten.txt")).toBe(false);
+      expect(fs.readFileSync(path.join(secondTreeDir, "hello.txt"), "utf8")).toBe(
+        "Hello World\n"
+      );
+      expect(fs.existsSync(path.join(secondTreeDir, "rewritten.txt"))).toBe(false);
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
 });
