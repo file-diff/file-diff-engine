@@ -47,3 +47,7 @@ As a result:
 - `repo-cache/` is reused across jobs for the same repository URL
 - `tree/` is job-specific and contains the files that the API serves from disk
 - stored file paths are relative to the `tree/` directory
+- jobs resolve refs to full commit SHAs first, so the worker fetches/checks out an exact commit instead of trusting a moving branch tip
+- once a commit has been fetched into `repo-cache/`, later force-pushes or branch resets do not rewrite that cached object data
+- the shared cache stores Git metadata only, not a checked-out working tree
+- every job gets its own detached checkout, so weird remote-side changes cannot mutate an already-prepared job tree
