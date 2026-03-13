@@ -178,4 +178,49 @@ describe("JobRepository", () => {
       fileHash: "1111111111111111111111111111111111111111",
     });
   });
+
+  it("should find files by hash across jobs", async () => {
+    const sharedHash = "3333333333333333333333333333333333333333";
+    await repo.createJob("job-8", "owner/repo", "main");
+    await repo.createJob("job-9", "owner/repo", "feature");
+    await repo.insertFiles("job-8", [
+      {
+        file_type: "t",
+        file_name: "docs/left.txt",
+        file_disk_path: "docs/left.txt",
+        file_size: 12,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: sharedHash,
+      },
+    ]);
+    await repo.insertFiles("job-9", [
+      {
+        file_type: "t",
+        file_name: "docs/right.txt",
+        file_disk_path: "docs/right.txt",
+        file_size: 16,
+        file_update_date: "2024-01-02T00:00:00Z",
+        file_last_commit: "def456",
+        file_git_hash: sharedHash,
+      },
+    ]);
+
+    const files = await repo.getFilesByHash(sharedHash);
+
+    expect(files).toEqual([
+      {
+        jobId: "job-8",
+        fileName: "docs/left.txt",
+        fileDiskPath: "docs/left.txt",
+        fileHash: sharedHash,
+      },
+      {
+        jobId: "job-9",
+        fileName: "docs/right.txt",
+        fileDiskPath: "docs/right.txt",
+        fileHash: sharedHash,
+      },
+    ]);
+  });
 });

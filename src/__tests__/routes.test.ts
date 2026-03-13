@@ -581,19 +581,23 @@ describe("Job Routes", () => {
     });
   });
 
-  it("GET /api/jobs/:id/files/hash/:leftHash/diff/:rightHash - should return difft JSON output", async () => {
+  it("GET /api/jobs/files/hash/:leftHash/diff/:rightHash - should return difft JSON output across jobs", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-difft-"));
     tempDirs.push(tmpDir);
     process.env.TMP_DIR = tmpDir;
-    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
-    fs.mkdirSync(treeDir, { recursive: true });
+    const otherCommitHash = "89abcdef012345670123456789abcdef01234567";
+    const leftTreeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    const rightTreeDir = path.join(tmpDir, `fde-${otherCommitHash}`, "tree");
+    fs.mkdirSync(leftTreeDir, { recursive: true });
+    fs.mkdirSync(rightTreeDir, { recursive: true });
 
-    const leftPath = path.join(treeDir, "README.md");
-    const rightPath = path.join(treeDir, "README.next.md");
+    const leftPath = path.join(leftTreeDir, "README.md");
+    const rightPath = path.join(rightTreeDir, "README.next.md");
     fs.writeFileSync(leftPath, "hello from disk");
     fs.writeFileSync(rightPath, "hello from difft");
 
     await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.createJob(otherCommitHash, "owner/repo", otherCommitHash);
     await jobRepo.insertFiles(commitHash, [
       {
         file_type: "t",
@@ -604,6 +608,8 @@ describe("Job Routes", () => {
         file_last_commit: "abc123",
         file_git_hash: fileHash,
       },
+    ]);
+    await jobRepo.insertFiles(otherCommitHash, [
       {
         file_type: "t",
         file_name: "README.next.md",
@@ -637,7 +643,7 @@ describe("Job Routes", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: `/api/jobs/${commitHash}/files/hash/${fileHash}/diff/${otherFileHash}`,
+      url: `/api/jobs/files/hash/${fileHash}/diff/${otherFileHash}`,
     });
 
     expect(response.statusCode).toBe(200);
@@ -650,7 +656,7 @@ describe("Job Routes", () => {
     );
   });
 
-  it("GET /api/jobs/:id/files/hash/:leftHash/diff/:rightHash - should report when a hash is missing from the database", async () => {
+  it("GET /api/jobs/files/hash/:leftHash/diff/:rightHash - should report when a hash is missing from the database", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-difft-missing-"));
     tempDirs.push(tmpDir);
     process.env.TMP_DIR = tmpDir;
@@ -673,16 +679,16 @@ describe("Job Routes", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: `/api/jobs/${commitHash}/files/hash/${fileHash}/diff/${otherFileHash}`,
+      url: `/api/jobs/files/hash/${fileHash}/diff/${otherFileHash}`,
     });
 
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({
-      error: `File with hash '${otherFileHash}' was not found for job '${commitHash}' in the database.`,
+      error: `File with hash '${otherFileHash}' was not found in the database.`,
     });
   });
 
-  it("GET /api/jobs/:id/files/hash/:leftHash/diff/:rightHash - should report difft execution failures", async () => {
+  it("GET /api/jobs/files/hash/:leftHash/diff/:rightHash - should report difft execution failures", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-difft-error-"));
     tempDirs.push(tmpDir);
     process.env.TMP_DIR = tmpDir;
@@ -731,7 +737,7 @@ describe("Job Routes", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: `/api/jobs/${commitHash}/files/hash/${fileHash}/diff/${otherFileHash}`,
+      url: `/api/jobs/files/hash/${fileHash}/diff/${otherFileHash}`,
     });
 
     expect(response.statusCode).toBe(500);

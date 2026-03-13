@@ -173,6 +173,32 @@ export class JobRepository {
       fileHash: row.file_git_hash,
     };
   }
+
+  async getFilesByHash(hash: string): Promise<FileLookupRecord[]> {
+    const result = await this.db.query(
+      `SELECT job_id, file_name, file_disk_path, file_git_hash
+       FROM files
+       WHERE file_git_hash = $1
+       ORDER BY id ASC`,
+      [hash]
+    );
+
+    return result.rows.map((row) => {
+      const file = row as {
+        job_id: string;
+        file_name: string;
+        file_disk_path: string;
+        file_git_hash: string;
+      };
+
+      return {
+        jobId: file.job_id,
+        fileName: file.file_name,
+        fileDiskPath: file.file_disk_path,
+        fileHash: file.file_git_hash,
+      };
+    });
+  }
 }
 
 function toIsoString(value: unknown): string {

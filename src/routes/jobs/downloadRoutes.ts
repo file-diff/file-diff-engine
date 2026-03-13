@@ -3,7 +3,7 @@ import * as childProcess from "child_process";
 import { pipeline } from "stream/promises";
 import type { FastifyInstance } from "fastify";
 import { JobRepository, type FileLookupRecord } from "../../db/repository";
-import type { ErrorResponse, JobInfo } from "../../types";
+import type { ErrorResponse } from "../../types";
 import {
   DEFAULT_DOWNLOAD_RATE_LIMIT_MAX,
   DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS,
@@ -14,7 +14,6 @@ import {
 } from "./shared";
 
 interface ResolvedJobFile {
-  job: JobInfo;
   file: FileLookupRecord;
   filePath: string;
 }
@@ -120,24 +119,25 @@ export function registerDownloadRoutes(
     }
   );
 
-  app.get<{ Params: { id: string; leftHash: string; rightHash: string } }>(
-    "/:id/files/hash/:leftHash/diff/:rightHash",
+  app.get<{ Params: { leftHash: string; rightHash: string } }>(
+    "/files/hash/:leftHash/diff/:rightHash",
     async (request, reply) => {
-      const { id, leftHash, rightHash } = request.params;
-      const leftFileResult = await resolveAccessibleJobFile(jobRepo, id, leftHash);
+      const { leftHash, rightHash } = request.params;
+      const leftFileResult = await resolveAccessibleFileByHash(jobRepo, leftHash);
       if ("statusCode" in leftFileResult) {
         return reply.code(leftFileResult.statusCode).send(leftFileResult.response);
       }
 
-      const rightFileResult = await resolveAccessibleJobFile(jobRepo, id, rightHash);
+      const rightFileResult = await resolveAccessibleFileByHash(jobRepo, rightHash);
       if ("statusCode" in rightFileResult) {
         return reply.code(rightFileResult.statusCode).send(rightFileResult.response);
       }
 
-      logger.info("Running difft for job files", {
-        jobId: id,
+      logger.info("Running difft for files by hash", {
         leftHash,
         rightHash,
+        leftJobId: leftFileResult.file.jobId,
+        rightJobId: rightFileResult.file.jobId,
         leftFileName: leftFileResult.file.fileName,
         rightFileName: rightFileResult.file.fileName,
       });
@@ -155,59 +155,65 @@ export function registerDownloadRoutes(
   );
 }
 
-async function resolveAccessibleJobFile(
+async function resolveAccessibleFileByHash(
   jobRepo: JobRepository,
-  jobId: string,
   hash: string
 ): Promise<ResolvedJobFile | FileLookupErrorResult> {
-  const job = await jobRepo.getJob(jobId);
-  if (!job) {
-    return {
-      statusCode: 404,
-      response: { error: "Job not found." },
-    };
-  }
-
-  const file = await jobRepo.getFileByHash(jobId, hash);
-  if (!file) {
+  const files = await jobRepo.getFilesByHash(hash);
+  if (files.length === 0) {
     return {
       statusCode: 404,
       response: {
-        error: `File with hash '${hash}' was not found for job '${jobId}' in the database.`,
+        error: `File with hash '${hash}' was not found in the database.`,
       },
     };
   }
 
-  let filePath: string;
-  try {
-    filePath = resolveJobFilePath(jobId, file.fileDiskPath);
-  } catch (error) {
-    return {
-      statusCode: 500,
-      response: {
-        error: error instanceof Error ? error.message : "Invalid stored file path.",
-      },
-    };
+  let fileAccessFailure: FileLookupErrorResult | undefined;
+
+  for (const file of files) {
+    let filePath: string;
+    try {
+      filePath = resolveJobFilePath(file.jobId, file.fileDiskPath);
+    } catch (error) {
+      if (!fileAccessFailure) {
+        fileAccessFailure = {
+          statusCode: 500,
+          response: {
+            error: error instanceof Error ? error.message : "Invalid stored file path.",
+          },
+        };
+      }
+      continue;
+    }
+
+    try {
+      await fs.promises.access(filePath, fs.constants.R_OK);
+      return { file, filePath };
+    } catch (error) {
+      if (!fileAccessFailure) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to check file accessibility on disk.";
+        fileAccessFailure = {
+          statusCode: 404,
+          response: {
+            error:
+              `File with hash '${hash}' was found in the database for job '${file.jobId}', ` +
+              `but the file is missing or unreadable on disk at '${filePath}'. ${message}`,
+          },
+        };
+      }
+    }
   }
 
-  try {
-    await fs.promises.access(filePath, fs.constants.R_OK);
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to check file accessibility on disk.";
-    return {
-      statusCode: 404,
-      response: {
-        error:
-          `File with hash '${hash}' was found in the database for job '${jobId}', ` +
-          `but the file is missing or unreadable on disk at '${filePath}'. ${message}`,
-      },
-    };
-  }
-
-  return { job, file, filePath };
+  return fileAccessFailure ?? {
+    statusCode: 500,
+    response: {
+      error: `Unexpected file lookup state for hash '${hash}'.`,
+    },
+  };
 }
 
 async function runDifftJson(leftFilePath: string, rightFilePath: string): Promise<unknown> {
