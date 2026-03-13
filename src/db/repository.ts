@@ -56,6 +56,31 @@ export class JobRepository {
     );
   }
 
+  async resetJobForRetry(id: string): Promise<void> {
+    const client = await this.db.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM files WHERE job_id = $1", [id]);
+      await client.query(
+        `UPDATE jobs
+         SET status = 'waiting',
+             progress = 0,
+             total_files = 0,
+             processed_files = 0,
+             error = NULL,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [id]
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async updateJobProgress(
     id: string,
     processedFiles: number,

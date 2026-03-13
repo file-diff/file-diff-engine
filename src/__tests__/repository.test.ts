@@ -55,6 +55,33 @@ describe("JobRepository", () => {
     expect(job!.progress).toBe(50);
   });
 
+  it("should reset a failed job for retry", async () => {
+    await repo.createJob("job-retry", "owner/repo", "main");
+    await repo.updateJobStatus("job-retry", "failed", "Something went wrong");
+    await repo.updateJobProgress("job-retry", 2, 4);
+    await repo.insertFiles("job-retry", [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_size: 50,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: "deadbeef",
+      },
+    ]);
+
+    await repo.resetJobForRetry("job-retry");
+
+    const job = await repo.getJob("job-retry");
+    expect(job).toBeDefined();
+    expect(job!.status).toBe("waiting");
+    expect(job!.error).toBeUndefined();
+    expect(job!.processedFiles).toBe(0);
+    expect(job!.totalFiles).toBe(0);
+    expect(job!.progress).toBe(0);
+    expect(await repo.getFiles("job-retry")).toEqual([]);
+  });
+
   it("should insert and retrieve files", async () => {
     await repo.createJob("job-4", "owner/repo", "main");
     const files: FileRecord[] = [
