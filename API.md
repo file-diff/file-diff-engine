@@ -615,15 +615,14 @@ Rate-limited response example:
 
 ---
 
-### `GET /api/jobs/:id/files/hash/:leftHash/diff/:rightHash`
+### `GET /api/jobs/files/hash/:leftHash/diff/:rightHash`
 
-Runs `difft --display json` against two files that belong to the same processed job and returns the parsed JSON result.
+Runs `difft --display json` against two files found in the database by their hashes and returns the parsed JSON result.
 
 #### Path arguments
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | `string` | Yes | Job ID / commit SHA |
 | `leftHash` | `string` | Yes | Git blob hash of the left-hand file |
 | `rightHash` | `string` | Yes | Git blob hash of the right-hand file |
 
@@ -643,8 +642,7 @@ Response body:
 
 Common statuses:
 
-- `404 Not Found` when the job does not exist
-- `404 Not Found` when either file hash does not exist for the job
+- `404 Not Found` when either file hash does not exist in the database
 - `404 Not Found` when either file is missing or unreadable on disk
 - `500 Internal Server Error` when the stored file path is invalid or the `difft` command fails
 
@@ -652,7 +650,7 @@ Common statuses:
 
 ```bash
 curl -L \
-  https://your-host.example.com/api/jobs/0123456789abcdef0123456789abcdef01234567/files/hash/1111111111111111111111111111111111111111/diff/2222222222222222222222222222222222222222
+  https://your-host.example.com/api/jobs/files/hash/1111111111111111111111111111111111111111/diff/2222222222222222222222222222222222222222
 ```
 
 Example response:
