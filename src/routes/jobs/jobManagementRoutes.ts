@@ -98,13 +98,13 @@ export function registerJobManagementRoutes(
       throw error;
     }
 
-    await enqueueJob(queue, jobId, repo, jobId);
+    await enqueueJob(queue, jobId, repo, commit);
 
     const response: JobSummary = {
       id: jobId,
       status: "waiting",
-      commit: jobId,
-      commitShort: getCommitShort(jobId),
+      commit,
+      commitShort: getCommitShort(commit),
     };
     return reply.code(201).send(response);
   });
