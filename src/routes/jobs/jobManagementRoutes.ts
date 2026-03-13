@@ -56,6 +56,20 @@ export function registerJobManagementRoutes(
     const jobId = commit;
     const existingJob = await jobRepo.getJob(jobId);
     if (existingJob) {
+      if (existingJob.status === "failed") {
+        await jobRepo.resetJobForRetry(jobId);
+        await removeQueuedJob(queue, jobId);
+        await enqueueJob(queue, existingJob.id, existingJob.repo, existingJob.commit);
+
+        const response: JobSummary = {
+          id: existingJob.id,
+          status: "waiting",
+          commit: existingJob.commit,
+          commitShort: existingJob.commitShort,
+        };
+        return reply.code(200).send(response);
+      }
+
       const response: JobSummary = {
         id: existingJob.id,
         status: existingJob.status,
@@ -84,17 +98,7 @@ export function registerJobManagementRoutes(
       throw error;
     }
 
-    await queue.add(
-      "process-repo",
-      {
-        jobId,
-        repoName: repo,
-        commit: jobId,
-      },
-      {
-        jobId,
-      }
-    );
+    await enqueueJob(queue, jobId, repo, jobId);
 
     const response: JobSummary = {
       id: jobId,
@@ -150,4 +154,30 @@ export function registerJobManagementRoutes(
     };
     return reply.send(response);
   });
+}
+
+async function enqueueJob(
+  queue: Queue,
+  jobId: string,
+  repoName: string,
+  commit: string
+): Promise<void> {
+  await queue.add(
+    "process-repo",
+    {
+      jobId,
+      repoName,
+      commit,
+    },
+    {
+      jobId,
+    }
+  );
+}
+
+async function removeQueuedJob(queue: Queue, jobId: string): Promise<void> {
+  const queuedJob = await queue.getJob(jobId);
+  if (queuedJob) {
+    await queuedJob.remove();
+  }
 }

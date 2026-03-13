@@ -385,7 +385,7 @@ If a job already exists for the same commit hash, the existing job summary is re
 Status:
 
 - `201 Created` for a newly created job
-- `200 OK` when an existing job for the same commit is reused
+- `200 OK` when an existing job for the same commit is reused, including when a failed job is reset to `waiting` and started again
 
 | Field | Type | Description |
 | --- | --- | --- |

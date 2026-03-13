@@ -61,6 +61,7 @@ describe("Job Routes", () => {
 
     mockQueue = {
       add: vi.fn().mockResolvedValue({}),
+      getJob: vi.fn().mockResolvedValue(undefined),
     } as unknown as Queue;
 
     app = Fastify();
@@ -365,6 +366,63 @@ describe("Job Routes", () => {
       commitShort: commitHash.slice(0, 7),
     });
     expect(mockQueue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST /api/jobs - should restart a failed job for the same commit", async () => {
+    await jobRepo.createJob(commitHash, "facebook/react", commitHash);
+    await jobRepo.updateJobStatus(commitHash, "failed", "Something went wrong");
+    await jobRepo.updateJobProgress(commitHash, 2, 4);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_size: 50,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: "deadbeef",
+      },
+    ]);
+
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const queueWithGetJob = mockQueue as unknown as {
+      add: ReturnType<typeof vi.fn>;
+      getJob: ReturnType<typeof vi.fn>;
+    };
+    queueWithGetJob.getJob.mockResolvedValue({ remove });
+
+    const res = await makeRequest(app, "POST", "/api/jobs", {
+      repo: "facebook/react",
+      commit: commitHash,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<JobSummary>({
+      id: commitHash,
+      status: "waiting",
+      commit: commitHash,
+      commitShort: commitHash.slice(0, 7),
+    });
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(queueWithGetJob.add).toHaveBeenCalledWith(
+      "process-repo",
+      {
+        jobId: commitHash,
+        repoName: "facebook/react",
+        commit: commitHash,
+      },
+      {
+        jobId: commitHash,
+      }
+    );
+
+    const restartedJob = await jobRepo.getJob(commitHash);
+    expect(restartedJob).toBeDefined();
+    expect(restartedJob!.status).toBe("waiting");
+    expect(restartedJob!.error).toBeUndefined();
+    expect(restartedJob!.processedFiles).toBe(0);
+    expect(restartedJob!.totalFiles).toBe(0);
+    expect(restartedJob!.progress).toBe(0);
+    expect(await jobRepo.getFiles(commitHash)).toEqual([]);
   });
 
   it("POST /api/jobs - should reject missing fields", async () => {
