@@ -209,9 +209,9 @@ async function resolveAccessibleFileByHash(
   }
 
   return fileAccessFailure ?? {
-    statusCode: 404,
+    statusCode: 500,
     response: {
-      error: `File with hash '${hash}' exists in the database but is not accessible on disk.`,
+      error: `Unexpected file lookup state for hash '${hash}'.`,
     },
   };
 }
