@@ -225,15 +225,8 @@ export async function processRepository(
       cacheDir,
     ]);
   }
-  await runGitCommand(cacheDir, ["fetch", "--depth=1", "origin", commit]);
   fs.cpSync(cacheDir, cloneDir, { recursive: true });
-  await runGitCommand(cloneDir, [
-    "-c",
-    "advice.detachedHead=false",
-    "checkout",
-    "--detach",
-    "FETCH_HEAD",
-  ]);
+  await checkoutCommit(cloneDir, commit);
 
   // Gather all file/directory entries (excluding .git)
   const entries = getAllEntries(cloneDir);
@@ -297,6 +290,23 @@ export async function processRepository(
     totalRecords: records.length,
   });
   return records;
+}
+
+async function checkoutCommit(repoDir: string, commit: string): Promise<void> {
+  const checkoutArgs = [
+    "-c",
+    "advice.detachedHead=false",
+    "checkout",
+    "--detach",
+    commit,
+  ];
+
+  try {
+    await runGitCommand(repoDir, checkoutArgs);
+  } catch {
+    await runGitCommand(repoDir, ["fetch", "--depth=1", "origin", commit]);
+    await runGitCommand(repoDir, checkoutArgs);
+  }
 }
 
 function getRepositoryCacheDir(repoUrl: string, workDir: string): string {
