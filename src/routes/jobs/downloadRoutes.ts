@@ -1,7 +1,14 @@
 import fs from "fs";
+import path from "path";
 import * as childProcess from "child_process";
 import { pipeline } from "stream/promises";
 import type { FastifyInstance } from "fastify";
+import {
+  bundledLanguagesInfo,
+  codeToTokens,
+  type BundledLanguage,
+  type SpecialLanguage,
+} from "shiki";
 import { JobRepository, type FileLookupRecord } from "../../db/repository";
 import type { ErrorResponse } from "../../types";
 import {
@@ -26,6 +33,21 @@ interface FileLookupErrorResult {
 export const difftCommandRunner = {
   execFile: childProcess.execFile,
 };
+
+export const shikiTokenizer = {
+  codeToTokens,
+};
+
+const SHIKI_THEME = "github-light";
+const shikiLanguagesByAlias = new Map<string, BundledLanguage>();
+
+for (const language of bundledLanguagesInfo) {
+  const languageId = language.id as BundledLanguage;
+  shikiLanguagesByAlias.set(language.id.toLowerCase(), languageId);
+  for (const alias of language.aliases ?? []) {
+    shikiLanguagesByAlias.set(alias.toLowerCase(), languageId);
+  }
+}
 
 export function registerDownloadRoutes(
   app: FastifyInstance,
@@ -148,6 +170,36 @@ export function registerDownloadRoutes(
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to run difft command.";
+        const response: ErrorResponse = { error: message };
+        return reply.code(500).send(response);
+      }
+    }
+  );
+
+  app.get<{ Params: { hash: string } }>(
+    "/files/hash/:hash/tokenize",
+    async (request, reply) => {
+      const { hash } = request.params;
+      const fileResult = await resolveAccessibleFileByHash(jobRepo, hash);
+      if ("statusCode" in fileResult) {
+        return reply.code(fileResult.statusCode).send(fileResult.response);
+      }
+
+      logger.info("Running shiki tokenization for file by hash", {
+        hash,
+        jobId: fileResult.file.jobId,
+        fileName: fileResult.file.fileName,
+      });
+
+      try {
+        const tokens = await runShikiTokenization(
+          fileResult.filePath,
+          fileResult.file.fileName
+        );
+        return reply.send(tokens);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to tokenize file with shiki.";
         const response: ErrorResponse = { error: message };
         return reply.code(500).send(response);
       }
@@ -282,4 +334,28 @@ function parseDifftJson(
       error instanceof Error ? error.message : "Unknown JSON parsing error.";
     throw new Error(`Failed to parse difft JSON output. ${message}`);
   }
+}
+
+async function runShikiTokenization(
+  filePath: string,
+  fileName: string
+): Promise<unknown> {
+  const fileContents = await fs.promises.readFile(filePath, "utf8");
+  return shikiTokenizer.codeToTokens(fileContents, {
+    lang: inferShikiLanguage(fileName),
+    theme: SHIKI_THEME,
+  });
+}
+
+function inferShikiLanguage(fileName: string): BundledLanguage | SpecialLanguage {
+  const baseName = path.basename(fileName).toLowerCase();
+  const extension = path.extname(baseName).slice(1);
+  const dotfileName = baseName.startsWith(".") ? baseName.slice(1) : "";
+
+  return (
+    shikiLanguagesByAlias.get(baseName) ??
+    shikiLanguagesByAlias.get(extension) ??
+    shikiLanguagesByAlias.get(dotfileName) ??
+    "text"
+  );
 }

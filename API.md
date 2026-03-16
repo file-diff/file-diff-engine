@@ -615,6 +615,65 @@ Rate-limited response example:
 
 ---
 
+### `GET /api/jobs/files/hash/:hash/tokenize`
+
+Runs Shiki tokenization for a file found in the database by its hash and returns the JSON token payload.
+
+#### Path arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `hash` | `string` | Yes | Git blob hash of the file to tokenize |
+
+#### Success response
+
+Status: `200 OK`
+
+Response body:
+
+- JSON emitted by Shiki tokenization, including token lines and theme metadata
+
+#### Error response
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `error` | `string` | Error message |
+
+Common statuses:
+
+- `404 Not Found` when the file hash does not exist in the database
+- `404 Not Found` when the file is missing or unreadable on disk
+- `500 Internal Server Error` when the stored file path is invalid or Shiki tokenization fails
+
+#### Example
+
+```bash
+curl -L \
+  https://your-host.example.com/api/jobs/files/hash/1111111111111111111111111111111111111111/tokenize
+```
+
+Example response:
+
+```json
+{
+  "tokens": [
+    [
+      {
+        "content": "#",
+        "offset": 0,
+        "color": "#24292e",
+        "fontStyle": 0
+      }
+    ]
+  ],
+  "fg": "#24292e",
+  "bg": "#fff",
+  "themeName": "github-light"
+}
+```
+
+---
+
 ### `GET /api/jobs/files/hash/:leftHash/diff/:rightHash`
 
 Runs `difft --display json` against two files found in the database by their hashes and returns the parsed JSON result.
@@ -672,7 +731,8 @@ Example response:
 4. Poll `GET /api/jobs/:id` until `status` becomes `completed` or `failed`.
 5. Call `GET /api/jobs/:id/files` to inspect processed file metadata.
 6. Call `GET /api/jobs/:id/files/hash/:hash/download` to download a specific file by hash.
-7. Call `GET /api/jobs/:id/files/hash/:leftHash/diff/:rightHash` to compare two processed files by blob hash.
+7. Call `GET /api/jobs/files/hash/:hash/tokenize` to fetch Shiki JSON tokens for a processed file by blob hash.
+8. Call `GET /api/jobs/files/hash/:leftHash/diff/:rightHash` to compare two processed files by blob hash.
 
 ### Resolve a pull request, then compare source and target commits externally
 
