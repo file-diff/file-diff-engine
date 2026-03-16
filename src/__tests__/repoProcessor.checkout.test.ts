@@ -34,17 +34,18 @@ describe("repoProcessor checkout isolation", () => {
     let fetchedInClone = false;
 
     execFileMock.mockImplementation((file, args, options, callback) => {
+      const [command, firstArg, secondArg, thirdArg, fourthArg] = args;
       const cwd = options.cwd;
       gitCalls.push({ cwd, args: [...args] });
 
-      if (args[0] === "clone") {
+      if (command === "clone") {
         const targetDir = args[args.length - 1];
         fs.mkdirSync(path.join(targetDir, ".git"), { recursive: true });
         callback(null, "", "");
         return {} as ReturnType<typeof execFileMock>;
       }
 
-      if (args[0] === "fetch") {
+      if (command === "fetch") {
         if (cwd === cloneDir) {
           fetchedInClone = true;
         }
@@ -53,10 +54,10 @@ describe("repoProcessor checkout isolation", () => {
       }
 
       if (
-        args[0] === "-c" &&
-        args[2] === "checkout" &&
-        args[3] === "--detach" &&
-        args[4] === commit &&
+        command === "-c" &&
+        secondArg === "checkout" &&
+        thirdArg === "--detach" &&
+        fourthArg === commit &&
         !fetchedInClone
       ) {
         callback(
@@ -117,7 +118,9 @@ describe("repoProcessor checkout isolation", () => {
     let cloneCalls = 0;
 
     execFileMock.mockImplementation((file, args, options, callback) => {
-      if (args[0] === "clone") {
+      const [command] = args;
+
+      if (command === "clone") {
         cloneCalls += 1;
         const targetDir = args[args.length - 1];
         setTimeout(() => {

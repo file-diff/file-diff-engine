@@ -284,6 +284,11 @@ export async function processRepository(
   return records;
 }
 
+/**
+ * Checks out an exact commit in a per-job clone. If the commit is not already
+ * present in the copied cache, it fetches that commit into the private clone
+ * and retries the checkout there.
+ */
 async function checkoutCommit(repoDir: string, commit: string): Promise<void> {
   const checkoutArgs = [
     "-c",
@@ -301,6 +306,11 @@ async function checkoutCommit(repoDir: string, commit: string): Promise<void> {
   }
 }
 
+/**
+ * Ensures the shared repository cache exists before a job copies it into its
+ * private working tree. Cache initialization is serialized to avoid concurrent
+ * clone attempts for the same repository.
+ */
 async function ensureRepositoryCache(repoUrl: string, cacheDir: string): Promise<void> {
   if (fs.existsSync(path.join(cacheDir, ".git"))) {
     return;
@@ -322,6 +332,12 @@ async function ensureRepositoryCache(repoUrl: string, cacheDir: string): Promise
   });
 }
 
+/**
+ * Acquires a directory-based lock, runs the supplied action, and releases the
+ * lock afterward. Throws if the lock cannot be acquired within the configured
+ * timeout window. If a process exits unexpectedly while holding the lock, the
+ * stale lock directory may need to be removed manually.
+ */
 async function withDirectoryLock(
   lockDir: string,
   action: () => Promise<void>
@@ -339,7 +355,9 @@ async function withDirectoryLock(
       }
 
       if (Date.now() - startedAt >= CACHE_LOCK_TIMEOUT_MS) {
-        throw new Error(`Timed out waiting for repository cache lock '${lockDir}'.`);
+        throw new Error(
+          `Timed out waiting for repository cache lock '${lockDir}'. Remove the lock directory if no repository initialization is still running.`
+        );
       }
 
       await delay(CACHE_LOCK_RETRY_MS);
