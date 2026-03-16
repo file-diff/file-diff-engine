@@ -9,6 +9,8 @@ import { createLogger } from "../utils/logger";
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger("repo-processor");
+const CACHE_LOCK_RETRY_MS = 50;
+const CACHE_LOCK_TIMEOUT_MS = 10_000;
 
 /**
  * Helper to run git commands in a working directory and return stdout (trimmed).
@@ -214,17 +216,7 @@ export async function processRepository(
   logger.debug("Using repository directories", { cacheDir, cloneDir });
   fs.mkdirSync(workDir, { recursive: true });
   fs.rmSync(cloneDir, { recursive: true, force: true });
-  fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
-
-  if (!fs.existsSync(path.join(cacheDir, ".git"))) {
-    fs.rmSync(cacheDir, { recursive: true, force: true });
-    await runGitCommand(path.dirname(cacheDir), [
-      "clone",
-      "--no-checkout",
-      repoUrl,
-      cacheDir,
-    ]);
-  }
+  await ensureRepositoryCache(repoUrl, cacheDir);
   fs.cpSync(cacheDir, cloneDir, { recursive: true });
   await checkoutCommit(cloneDir, commit);
 
@@ -307,6 +299,64 @@ async function checkoutCommit(repoDir: string, commit: string): Promise<void> {
     await runGitCommand(repoDir, ["fetch", "--depth=1", "origin", commit]);
     await runGitCommand(repoDir, checkoutArgs);
   }
+}
+
+async function ensureRepositoryCache(repoUrl: string, cacheDir: string): Promise<void> {
+  if (fs.existsSync(path.join(cacheDir, ".git"))) {
+    return;
+  }
+
+  fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
+  await withDirectoryLock(`${cacheDir}.lock`, async () => {
+    if (fs.existsSync(path.join(cacheDir, ".git"))) {
+      return;
+    }
+
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+    await runGitCommand(path.dirname(cacheDir), [
+      "clone",
+      "--no-checkout",
+      repoUrl,
+      cacheDir,
+    ]);
+  });
+}
+
+async function withDirectoryLock(
+  lockDir: string,
+  action: () => Promise<void>
+): Promise<void> {
+  const startedAt = Date.now();
+
+  while (true) {
+    try {
+      fs.mkdirSync(lockDir);
+      break;
+    } catch (error) {
+      const lockError = error as NodeJS.ErrnoException;
+      if (lockError.code !== "EEXIST") {
+        throw error;
+      }
+
+      if (Date.now() - startedAt >= CACHE_LOCK_TIMEOUT_MS) {
+        throw new Error(`Timed out waiting for repository cache lock '${lockDir}'.`);
+      }
+
+      await delay(CACHE_LOCK_RETRY_MS);
+    }
+  }
+
+  try {
+    await action();
+  } finally {
+    fs.rmSync(lockDir, { recursive: true, force: true });
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function getRepositoryCacheDir(repoUrl: string, workDir: string): string {

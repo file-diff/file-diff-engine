@@ -101,4 +101,48 @@ describe("repoProcessor checkout isolation", () => {
       fs.rmSync(testDir, { recursive: true, force: true });
     }
   });
+
+  it("initializes the shared cache only once when two jobs start together", async () => {
+    const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-cache-lock-test-"));
+    const repoUrl = "https://github.com/file-diff/sample-data.git";
+    const baseCommit = "27ba26cb68a9cdb5a30e587eb73a56b6c42b5acf";
+    const headCommit = "456f07a4cca5e77bc9c1ee9a6903349deb6060a3";
+    const firstWorkDir = path.join(testDir, "first");
+    const secondWorkDir = path.join(testDir, "second");
+    const cacheDir = path.join(
+      testDir,
+      "repo-cache",
+      createHash("sha256").update(repoUrl).digest("hex")
+    );
+    let cloneCalls = 0;
+
+    execFileMock.mockImplementation((file, args, options, callback) => {
+      if (args[0] === "clone") {
+        cloneCalls += 1;
+        const targetDir = args[args.length - 1];
+        setTimeout(() => {
+          fs.mkdirSync(path.join(targetDir, ".git"), { recursive: true });
+          callback(null, "", "");
+        }, 50);
+        return {} as ReturnType<typeof execFileMock>;
+      }
+
+      callback(null, "", "");
+      return {} as ReturnType<typeof execFileMock>;
+    });
+
+    try {
+      await expect(
+        Promise.all([
+          processRepository(repoUrl, baseCommit, firstWorkDir),
+          processRepository(repoUrl, headCommit, secondWorkDir),
+        ])
+      ).resolves.toEqual([[], []]);
+
+      expect(cloneCalls).toBe(1);
+      expect(fs.existsSync(path.join(cacheDir, ".git"))).toBe(true);
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
 });
