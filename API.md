@@ -633,6 +633,95 @@ Response body:
 
 - JSON emitted by Shiki tokenization, including token lines and theme metadata
 
+#### How tokenization works
+
+When you call this endpoint, the server:
+
+1. Looks up the file by Git blob hash in the database.
+2. Reads the stored file from disk as UTF-8 text.
+3. Infers the Shiki language from the filename:
+   - exact basename first, for names such as `Dockerfile`
+   - file extension next, for names such as `index.ts`
+   - dotfile name next, for names such as `.gitignore`
+   - falls back to plain `text` when no bundled Shiki language matches
+4. Calls Shiki with the `github-light` theme.
+5. Returns a JSON object where `tokens` is an array of lines, and each line is an array of token objects.
+
+Each token object includes:
+
+- `content`: the exact text fragment for that token
+- `offset`: the zero-based character offset within the line
+- `color`: the resolved theme color for that token
+- `fontStyle`: the Shiki font-style bitmask for that token
+
+For example, this Markdown file:
+
+```md
+# Hello from Shiki
+```
+
+is tokenized as a single Markdown heading token on the first line. An abridged response looks like:
+
+```json
+{
+  "tokens": [
+    [
+      {
+        "content": "# Hello from Shiki",
+        "offset": 0,
+        "color": "#005CC5",
+        "fontStyle": 2
+      }
+    ],
+    []
+  ],
+  "fg": "#24292e",
+  "bg": "#fff",
+  "themeName": "github-light",
+  "grammarState": {
+    "lang": "markdown",
+    "theme": "github-light"
+  }
+}
+```
+
+For a TypeScript file named `example.ts`, tokens are usually split more finely. This source:
+
+```ts
+const total = 1 + 2;
+```
+
+produces separate tokens for the keyword, identifier, operators, whitespace, and numbers. An abridged response looks like:
+
+```json
+{
+  "tokens": [
+    [
+      { "content": "const", "offset": 0, "color": "#D73A49", "fontStyle": 0 },
+      { "content": " ", "offset": 5, "color": "#24292E", "fontStyle": 0 },
+      { "content": "total", "offset": 6, "color": "#005CC5", "fontStyle": 0 },
+      { "content": " ", "offset": 11, "color": "#24292E", "fontStyle": 0 },
+      { "content": "=", "offset": 12, "color": "#D73A49", "fontStyle": 0 },
+      { "content": " ", "offset": 13, "color": "#24292E", "fontStyle": 0 },
+      { "content": "1", "offset": 14, "color": "#005CC5", "fontStyle": 0 },
+      { "content": " ", "offset": 15, "color": "#24292E", "fontStyle": 0 },
+      { "content": "+", "offset": 16, "color": "#D73A49", "fontStyle": 0 },
+      { "content": " ", "offset": 17, "color": "#24292E", "fontStyle": 0 },
+      { "content": "2", "offset": 18, "color": "#005CC5", "fontStyle": 0 },
+      { "content": ";", "offset": 19, "color": "#24292E", "fontStyle": 0 }
+    ],
+    []
+  ],
+  "fg": "#24292e",
+  "bg": "#fff",
+  "themeName": "github-light",
+  "grammarState": {
+    "lang": "typescript",
+    "theme": "github-light"
+  }
+}
+```
+
 #### Error response
 
 | Field | Type | Description |
