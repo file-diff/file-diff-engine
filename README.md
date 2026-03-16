@@ -3,6 +3,13 @@
 https://filediff.org
 
 API reference: [API.md](./API.md)
+OpenAPI document: [`/openapi.json`](./docs/openapi/openapi.json)
+OpenAPI website: [`/openapi`](./docs/openapi/index.html)
+
+## OpenAPI assets
+
+- Run `npm run generate:openapi-site` to regenerate the static OpenAPI website under `docs/openapi/`.
+- Use the sample Python client at [`examples/python_client.py`](./examples/python_client.py) as a starting point for integrations.
 
 ## Storage tree
 

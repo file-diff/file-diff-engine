@@ -2,6 +2,8 @@
 
 This document describes the HTTP endpoints exposed by the file-diff-engine service, including request arguments, response fields, and example usage.
 
+Machine-readable OpenAPI bindings are available from `/openapi.json`, and a generated HTML reference is available from `/openapi`.
+
 ## Base URL
 
 All endpoints below are relative to your deployed API base URL, for example:

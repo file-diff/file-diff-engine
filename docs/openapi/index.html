@@ -1,0 +1,1849 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>File Diff Engine API - OpenAPI</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f8fb;
+        --card: #ffffff;
+        --border: #d9e1ec;
+        --text: #1f2937;
+        --muted: #5f6b7a;
+        --accent: #2563eb;
+        --get: #0f766e;
+        --post: #7c3aed;
+        --code-bg: #0f172a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+        min-height: 100vh;
+      }
+      nav {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow: auto;
+        padding: 24px;
+        border-right: 1px solid var(--border);
+        background: #fff;
+      }
+      nav h1 {
+        margin: 0 0 8px;
+        font-size: 1.35rem;
+      }
+      nav p {
+        margin: 0 0 16px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      nav ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 8px;
+      }
+      nav li a {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--card);
+      }
+      main {
+        padding: 32px;
+        display: grid;
+        gap: 20px;
+      }
+      .hero, .endpoint, .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+      }
+      .hero p, .endpoint p, .panel p {
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 16px;
+      }
+      .badge, .method {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        padding: 0.3rem 0.7rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .badge {
+        background: #eff6ff;
+        color: #1d4ed8;
+      }
+      .method.get { background: #ccfbf1; color: var(--get); }
+      .method.post { background: #ede9fe; color: var(--post); }
+      .endpoint header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 14px;
+      }
+      .endpoint h2 {
+        margin: 0;
+        font-size: 1.15rem;
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+      @media (min-width: 1000px) {
+        .grid.two {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      h3, h4 {
+        margin: 0 0 8px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+      code, pre {
+        font-family: "SFMono-Regular", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      pre {
+        margin: 0;
+        padding: 14px;
+        overflow: auto;
+        background: var(--code-bg);
+        color: #e2e8f0;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        line-height: 1.5;
+      }
+      .inline-code {
+        padding: 0.15rem 0.4rem;
+        border-radius: 8px;
+        background: #e5e7eb;
+      }
+      .response-list {
+        display: grid;
+        gap: 14px;
+      }
+      .response-card {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 16px;
+        background: #fff;
+      }
+      .response-card h4 {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      @media (max-width: 900px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        nav {
+          position: static;
+          height: auto;
+          border-right: 0;
+          border-bottom: 1px solid var(--border);
+        }
+        main {
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <nav>
+        <h1>File Diff Engine API</h1>
+        <p>OpenAPI bindings for the file-diff-engine HTTP service. This contract covers repository discovery, job orchestration, file download, tokenization, and diff operations.</p>
+        <p><strong>JSON:</strong> <a href="./openapi.json">./openapi.json</a></p>
+        <ul><li><a href="#get-api-health"><span class="method get">GET</span><span>/api/health</span></a></li><li><a href="#get-api-version"><span class="method get">GET</span><span>/api/version</span></a></li><li><a href="#post-api-jobs-resolve"><span class="method post">POST</span><span>/api/jobs/resolve</span></a></li><li><a href="#post-api-jobs-pull-request-resolve"><span class="method post">POST</span><span>/api/jobs/pull-request/resolve</span></a></li><li><a href="#post-api-jobs-refs"><span class="method post">POST</span><span>/api/jobs/refs</span></a></li><li><a href="#get-api-jobs-organizations-organization-repositories"><span class="method get">GET</span><span>/api/jobs/organizations/{organization}/repositories</span></a></li><li><a href="#post-api-jobs"><span class="method post">POST</span><span>/api/jobs</span></a></li><li><a href="#get-api-jobs-id"><span class="method get">GET</span><span>/api/jobs/{id}</span></a></li><li><a href="#get-api-jobs-id-files"><span class="method get">GET</span><span>/api/jobs/{id}/files</span></a></li><li><a href="#get-api-jobs-id-files-hash-hash-download"><span class="method get">GET</span><span>/api/jobs/{id}/files/hash/{hash}/download</span></a></li><li><a href="#get-api-jobs-files-hash-hash-tokenize"><span class="method get">GET</span><span>/api/jobs/files/hash/{hash}/tokenize</span></a></li><li><a href="#get-api-jobs-files-hash-lefthash-diff-righthash"><span class="method get">GET</span><span>/api/jobs/files/hash/{leftHash}/diff/{rightHash}</span></a></li></ul>
+      </nav>
+      <main>
+        <section class="hero">
+          <h2>OpenAPI bindings</h2>
+          <p>OpenAPI bindings for the file-diff-engine HTTP service. This contract covers repository discovery, job orchestration, file download, tokenization, and diff operations.</p>
+          <div class="badges">
+            <span class="badge">OpenAPI 3.1.0</span>
+            <span class="badge">Example deployment base URL: https://your-host.example.com</span>
+          </div>
+        </section>
+        <section class="panel">
+          <h3>Components</h3>
+          <p>This service publishes a machine-readable contract at <a href="./openapi.json">./openapi.json</a> and a generated static website view built from the same source document.</p>
+          <div class="grid two">
+            <div>
+              <h4>Tags</h4>
+              <table>
+                <thead><tr><th>Name</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><code>system</code></td><td>Service health and build metadata endpoints.</td></tr><tr><td><code>discovery</code></td><td>Resolve refs, pull requests, and repository metadata before creating jobs.</td></tr><tr><td><code>jobs</code></td><td>Create jobs and inspect processed repository metadata.</td></tr><tr><td><code>files</code></td><td>Download files and derive secondary artifacts from processed file blobs.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h4>Schemas</h4>
+              <pre>{
+  &quot;ErrorResponse&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;error&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;error&quot;
+    ]
+  },
+  &quot;RateLimitErrorResponse&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;statusCode&quot;: {
+        &quot;type&quot;: &quot;integer&quot;
+      },
+      &quot;error&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;message&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;statusCode&quot;,
+      &quot;error&quot;,
+      &quot;message&quot;
+    ]
+  },
+  &quot;HealthResponse&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;status&quot;: {
+        &quot;const&quot;: &quot;ok&quot;
+      },
+      &quot;message&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;status&quot;,
+      &quot;message&quot;
+    ]
+  },
+  &quot;VersionResponse&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;version&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;version&quot;
+    ]
+  },
+  &quot;ResolveCommitRequest&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;repo&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;ref&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;repo&quot;,
+      &quot;ref&quot;
+    ]
+  },
+  &quot;ResolveCommitResponse&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;repo&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;ref&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;commit&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;pattern&quot;: &quot;^[a-f0-9]{40}$&quot;
+      },
+      &quot;commitShort&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;repo&quot;,
+      &quot;ref&quot;,
+      &quot;commit&quot;,
+      &quot;commitShort&quot;
+    ]
+  },
+  &quot;ResolvePullRequestRequest&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;pullRequestUrl&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;format&quot;: &quot;uri&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;pullRequestUrl&quot;
+    ]
+  },
+  &quot;ResolvePullRequestResponse&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;repo&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;repositoryUrl&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;format&quot;: &quot;uri&quot;
+      },
+      &quot;sourceCommit&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;pattern&quot;: &quot;^[a-f0-9]{40}$&quot;
+      },
+      &quot;sourceCommitShort&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;targetCommit&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;pattern&quot;: &quot;^[a-f0-9]{40}$&quot;
+      },
+      &quot;targetCommitShort&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;repo&quot;,
+      &quot;repositoryUrl&quot;,
+      &quot;sourceCommit&quot;,
+      &quot;sourceCommitShort&quot;,
+      &quot;targetCommit&quot;,
+      &quot;targetCommitShort&quot;
+    ]
+  },
+  &quot;ListRefsRequest&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;repo&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;repo&quot;
+    ]
+  },
+  &quot;GitRefSummary&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;name&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;ref&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;type&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;enum&quot;: [
+          &quot;branch&quot;,
+          &quot;tag&quot;
+        ]
+      },
+      &quot;commit&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;pattern&quot;: &quot;^[a-f0-9]{40}$&quot;
+      },
+      &quot;commitShort&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;name&quot;,
+      &quot;ref&quot;,
+      &quot;type&quot;,
+      &quot;commit&quot;,
+      &quot;commitShort&quot;
+    ]
+  },
+  &quot;ListRefsResponse&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;repo&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;refs&quot;: {
+        &quot;type&quot;: &quot;array&quot;,
+        &quot;items&quot;: {
+          &quot;$ref&quot;: &quot;#/components/schemas/GitRefSummary&quot;
+        }
+      }
+    },
+    &quot;required&quot;: [
+      &quot;repo&quot;,
+      &quot;refs&quot;
+    ]
+  },
+  &quot;OrganizationRepositorySummary&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;name&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;repo&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;repositoryUrl&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;format&quot;: &quot;uri&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;name&quot;,
+      &quot;repo&quot;,
+      &quot;repositoryUrl&quot;
+    ]
+  },
+  &quot;ListOrganizationRepositoriesResponse&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;organization&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;repositories&quot;: {
+        &quot;type&quot;: &quot;array&quot;,
+        &quot;items&quot;: {
+          &quot;$ref&quot;: &quot;#/components/schemas/OrganizationRepositorySummary&quot;
+        }
+      }
+    },
+    &quot;required&quot;: [
+      &quot;organization&quot;,
+      &quot;repositories&quot;
+    ]
+  },
+  &quot;JobRequest&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;repo&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;commit&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;pattern&quot;: &quot;^[a-f0-9]{40}$&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;repo&quot;,
+      &quot;commit&quot;
+    ]
+  },
+  &quot;JobStatus&quot;: {
+    &quot;type&quot;: &quot;string&quot;,
+    &quot;enum&quot;: [
+      &quot;waiting&quot;,
+      &quot;active&quot;,
+      &quot;completed&quot;,
+      &quot;failed&quot;
+    ]
+  },
+  &quot;JobSummary&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;id&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;status&quot;: {
+        &quot;$ref&quot;: &quot;#/components/schemas/JobStatus&quot;
+      },
+      &quot;commit&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;pattern&quot;: &quot;^[a-f0-9]{40}$&quot;
+      },
+      &quot;commitShort&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;id&quot;,
+      &quot;status&quot;,
+      &quot;commit&quot;,
+      &quot;commitShort&quot;
+    ]
+  },
+  &quot;JobInfo&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;id&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;repo&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;commit&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;pattern&quot;: &quot;^[a-f0-9]{40}$&quot;
+      },
+      &quot;commitShort&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;status&quot;: {
+        &quot;$ref&quot;: &quot;#/components/schemas/JobStatus&quot;
+      },
+      &quot;progress&quot;: {
+        &quot;type&quot;: &quot;number&quot;
+      },
+      &quot;totalFiles&quot;: {
+        &quot;type&quot;: &quot;integer&quot;
+      },
+      &quot;processedFiles&quot;: {
+        &quot;type&quot;: &quot;integer&quot;
+      },
+      &quot;error&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;createdAt&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;format&quot;: &quot;date-time&quot;
+      },
+      &quot;updatedAt&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;format&quot;: &quot;date-time&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;id&quot;,
+      &quot;repo&quot;,
+      &quot;commit&quot;,
+      &quot;commitShort&quot;,
+      &quot;status&quot;,
+      &quot;progress&quot;,
+      &quot;totalFiles&quot;,
+      &quot;processedFiles&quot;,
+      &quot;createdAt&quot;,
+      &quot;updatedAt&quot;
+    ]
+  },
+  &quot;JobFileSummary&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;t&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;enum&quot;: [
+          &quot;d&quot;,
+          &quot;t&quot;,
+          &quot;b&quot;,
+          &quot;x&quot;,
+          &quot;s&quot;
+        ]
+      },
+      &quot;path&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;s&quot;: {
+        &quot;type&quot;: &quot;integer&quot;
+      },
+      &quot;update&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;format&quot;: &quot;date-time&quot;
+      },
+      &quot;commit&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;hash&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;t&quot;,
+      &quot;path&quot;,
+      &quot;s&quot;,
+      &quot;update&quot;,
+      &quot;commit&quot;,
+      &quot;hash&quot;
+    ]
+  },
+  &quot;JobFilesResponse&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: false,
+    &quot;properties&quot;: {
+      &quot;jobId&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;commit&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;pattern&quot;: &quot;^[a-f0-9]{40}$&quot;
+      },
+      &quot;commitShort&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;status&quot;: {
+        &quot;$ref&quot;: &quot;#/components/schemas/JobStatus&quot;
+      },
+      &quot;progress&quot;: {
+        &quot;type&quot;: &quot;number&quot;
+      },
+      &quot;files&quot;: {
+        &quot;type&quot;: &quot;array&quot;,
+        &quot;items&quot;: {
+          &quot;$ref&quot;: &quot;#/components/schemas/JobFileSummary&quot;
+        }
+      }
+    },
+    &quot;required&quot;: [
+      &quot;jobId&quot;,
+      &quot;commit&quot;,
+      &quot;commitShort&quot;,
+      &quot;status&quot;,
+      &quot;progress&quot;,
+      &quot;files&quot;
+    ]
+  },
+  &quot;ShikiToken&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: true,
+    &quot;properties&quot;: {
+      &quot;content&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;offset&quot;: {
+        &quot;type&quot;: &quot;integer&quot;
+      },
+      &quot;color&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;fontStyle&quot;: {
+        &quot;type&quot;: &quot;integer&quot;
+      }
+    }
+  },
+  &quot;ShikiTokenizationResponse&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: true,
+    &quot;properties&quot;: {
+      &quot;tokens&quot;: {
+        &quot;type&quot;: &quot;array&quot;,
+        &quot;items&quot;: {
+          &quot;type&quot;: &quot;array&quot;,
+          &quot;items&quot;: {
+            &quot;$ref&quot;: &quot;#/components/schemas/ShikiToken&quot;
+          }
+        }
+      },
+      &quot;fg&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;bg&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      },
+      &quot;themeName&quot;: {
+        &quot;type&quot;: &quot;string&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;tokens&quot;
+    ]
+  },
+  &quot;DifftResponse&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;additionalProperties&quot;: true,
+    &quot;description&quot;: &quot;Raw parsed JSON returned by `difft --display json`.&quot;
+  }
+}</pre>
+            </div>
+          </div>
+        </section>
+        <section id="get-api-health" class="endpoint">
+    <header>
+      <span class="method get">GET</span>
+      <h2><code>/api/health</code></h2>
+      <span class="badge">system</span>
+    </header>
+    <p><strong>Health check</strong></p>
+    <p>Checks whether the API process is running and able to respond.</p>
+    
+    
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Health check response.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/HealthResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;status&quot;: &quot;ok&quot;,
+  &quot;message&quot;: &quot;API is healthy&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section><section id="get-api-version" class="endpoint">
+    <header>
+      <span class="method get">GET</span>
+      <h2><code>/api/version</code></h2>
+      <span class="badge">system</span>
+    </header>
+    <p><strong>Build version</strong></p>
+    <p>Returns the configured build version string, or `dev` when not set.</p>
+    
+    
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Build version response.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/VersionResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;version&quot;: &quot;2026.03.10+abc1234&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section><section id="post-api-jobs-resolve" class="endpoint">
+    <header>
+      <span class="method post">POST</span>
+      <h2><code>/api/jobs/resolve</code></h2>
+      <span class="badge">discovery</span>
+    </header>
+    <p><strong>Resolve a git ref</strong></p>
+    <p>Resolves a branch, tag, or commit-like ref into a full 40-character commit SHA for a repository.</p>
+    
+    <div class="panel">
+            <h3>Request body</h3>
+            <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ResolveCommitRequest&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;repo&quot;: &quot;facebook/react&quot;,
+  &quot;ref&quot;: &quot;main&quot;
+}</pre>
+        </div>
+      </div>
+          </div>
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Resolved commit details.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ResolveCommitResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;repo&quot;: &quot;facebook/react&quot;,
+  &quot;ref&quot;: &quot;main&quot;,
+  &quot;commit&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;,
+  &quot;commitShort&quot;: &quot;0123456&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 400</span>
+                <span class="muted">Missing or invalid request fields.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 404</span>
+                <span class="muted">The provided ref could not be resolved.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 500</span>
+                <span class="muted">Unexpected repository resolution failure.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section><section id="post-api-jobs-pull-request-resolve" class="endpoint">
+    <header>
+      <span class="method post">POST</span>
+      <h2><code>/api/jobs/pull-request/resolve</code></h2>
+      <span class="badge">discovery</span>
+    </header>
+    <p><strong>Resolve a GitHub pull request</strong></p>
+    <p>Resolves a full GitHub pull request URL into source and target commit hashes.</p>
+    
+    <div class="panel">
+            <h3>Request body</h3>
+            <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ResolvePullRequestRequest&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;pullRequestUrl&quot;: &quot;https://github.com/facebook/react/pull/123&quot;
+}</pre>
+        </div>
+      </div>
+          </div>
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Resolved pull request commit information.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ResolvePullRequestResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;repo&quot;: &quot;facebook/react&quot;,
+  &quot;repositoryUrl&quot;: &quot;https://github.com/facebook/react&quot;,
+  &quot;sourceCommit&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;,
+  &quot;sourceCommitShort&quot;: &quot;0123456&quot;,
+  &quot;targetCommit&quot;: &quot;1111111111111111111111111111111111111111&quot;,
+  &quot;targetCommitShort&quot;: &quot;1111111&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 400</span>
+                <span class="muted">Missing or malformed pull request URL.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 404</span>
+                <span class="muted">GitHub resource not found.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 500</span>
+                <span class="muted">Unexpected GitHub API failure.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section><section id="post-api-jobs-refs" class="endpoint">
+    <header>
+      <span class="method post">POST</span>
+      <h2><code>/api/jobs/refs</code></h2>
+      <span class="badge">discovery</span>
+    </header>
+    <p><strong>List repository refs</strong></p>
+    <p>Lists available branches and tags for a repository.</p>
+    
+    <div class="panel">
+            <h3>Request body</h3>
+            <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ListRefsRequest&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;repo&quot;: &quot;facebook/react&quot;
+}</pre>
+        </div>
+      </div>
+          </div>
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Available branches and tags.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ListRefsResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;repo&quot;: &quot;facebook/react&quot;,
+  &quot;refs&quot;: [
+    {
+      &quot;name&quot;: &quot;main&quot;,
+      &quot;ref&quot;: &quot;refs/heads/main&quot;,
+      &quot;type&quot;: &quot;branch&quot;,
+      &quot;commit&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;,
+      &quot;commitShort&quot;: &quot;0123456&quot;
+    },
+    {
+      &quot;name&quot;: &quot;v1.0.0&quot;,
+      &quot;ref&quot;: &quot;refs/tags/v1.0.0&quot;,
+      &quot;type&quot;: &quot;tag&quot;,
+      &quot;commit&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;,
+      &quot;commitShort&quot;: &quot;0123456&quot;
+    }
+  ]
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 400</span>
+                <span class="muted">Missing or invalid repository identifier.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 500</span>
+                <span class="muted">Repository refs could not be listed.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section><section id="get-api-jobs-organizations-organization-repositories" class="endpoint">
+    <header>
+      <span class="method get">GET</span>
+      <h2><code>/api/jobs/organizations/{organization}/repositories</code></h2>
+      <span class="badge">discovery</span>
+    </header>
+    <p><strong>List organization repositories</strong></p>
+    <p>Lists repositories visible within a GitHub organization.</p>
+    <div class="panel">
+            <h3>Parameters</h3>
+            <table>
+              <thead>
+                <tr><th>Name</th><th>In</th><th>Required</th><th>Description</th><th>Schema</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                        <td><code>organization</code></td>
+                        <td>path</td>
+                        <td>Yes</td>
+                        <td>GitHub organization name.</td>
+                        <td><code>string</code></td>
+                      </tr>
+              </tbody>
+            </table>
+          </div>
+    
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Repositories visible for the organization.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ListOrganizationRepositoriesResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;organization&quot;: &quot;facebook&quot;,
+  &quot;repositories&quot;: [
+    {
+      &quot;name&quot;: &quot;react&quot;,
+      &quot;repo&quot;: &quot;facebook/react&quot;,
+      &quot;repositoryUrl&quot;: &quot;https://github.com/facebook/react&quot;
+    }
+  ]
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 400</span>
+                <span class="muted">Missing or invalid organization name.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 404</span>
+                <span class="muted">Organization not found.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 500</span>
+                <span class="muted">Unexpected GitHub API failure.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section><section id="post-api-jobs" class="endpoint">
+    <header>
+      <span class="method post">POST</span>
+      <h2><code>/api/jobs</code></h2>
+      <span class="badge">jobs</span>
+    </header>
+    <p><strong>Create or reuse a processing job</strong></p>
+    <p>Creates a new repository-processing job for a specific commit. If the commit already exists, the existing job summary is returned.</p>
+    
+    <div class="panel">
+            <h3>Request body</h3>
+            <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/JobRequest&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;repo&quot;: &quot;facebook/react&quot;,
+  &quot;commit&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;
+}</pre>
+        </div>
+      </div>
+          </div>
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Existing job summary reused.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/JobSummary&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 201</span>
+                <span class="muted">New job created.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/JobSummary&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;id&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;,
+  &quot;status&quot;: &quot;waiting&quot;,
+  &quot;commit&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;,
+  &quot;commitShort&quot;: &quot;0123456&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 400</span>
+                <span class="muted">Missing or invalid repository or commit fields.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section><section id="get-api-jobs-id" class="endpoint">
+    <header>
+      <span class="method get">GET</span>
+      <h2><code>/api/jobs/{id}</code></h2>
+      <span class="badge">jobs</span>
+    </header>
+    <p><strong>Get job details</strong></p>
+    <p>Returns status and progress for a previously created job.</p>
+    <div class="panel">
+            <h3>Parameters</h3>
+            <table>
+              <thead>
+                <tr><th>Name</th><th>In</th><th>Required</th><th>Description</th><th>Schema</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                        <td><code>id</code></td>
+                        <td>path</td>
+                        <td>Yes</td>
+                        <td>Job ID / commit SHA.</td>
+                        <td><code>string</code></td>
+                      </tr>
+              </tbody>
+            </table>
+          </div>
+    
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Job details.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/JobInfo&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;id&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;,
+  &quot;repo&quot;: &quot;facebook/react&quot;,
+  &quot;commit&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;,
+  &quot;commitShort&quot;: &quot;0123456&quot;,
+  &quot;status&quot;: &quot;completed&quot;,
+  &quot;progress&quot;: 100,
+  &quot;totalFiles&quot;: 4321,
+  &quot;processedFiles&quot;: 4321,
+  &quot;createdAt&quot;: &quot;2026-03-16T00:00:00.000Z&quot;,
+  &quot;updatedAt&quot;: &quot;2026-03-16T00:02:30.000Z&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 404</span>
+                <span class="muted">Job not found.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section><section id="get-api-jobs-id-files" class="endpoint">
+    <header>
+      <span class="method get">GET</span>
+      <h2><code>/api/jobs/{id}/files</code></h2>
+      <span class="badge">jobs</span>
+    </header>
+    <p><strong>List processed files</strong></p>
+    <p>Returns compact metadata for files processed for a job.</p>
+    <div class="panel">
+            <h3>Parameters</h3>
+            <table>
+              <thead>
+                <tr><th>Name</th><th>In</th><th>Required</th><th>Description</th><th>Schema</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                        <td><code>id</code></td>
+                        <td>path</td>
+                        <td>Yes</td>
+                        <td>Job ID / commit SHA.</td>
+                        <td><code>string</code></td>
+                      </tr>
+              </tbody>
+            </table>
+          </div>
+    
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Processed file metadata.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/JobFilesResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;jobId&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;,
+  &quot;commit&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;,
+  &quot;commitShort&quot;: &quot;0123456&quot;,
+  &quot;status&quot;: &quot;completed&quot;,
+  &quot;progress&quot;: 100,
+  &quot;files&quot;: [
+    {
+      &quot;t&quot;: &quot;t&quot;,
+      &quot;path&quot;: &quot;README.md&quot;,
+      &quot;s&quot;: 1234,
+      &quot;update&quot;: &quot;2026-03-16T00:00:00.000Z&quot;,
+      &quot;commit&quot;: &quot;0123456789abcdef0123456789abcdef01234567&quot;,
+      &quot;hash&quot;: &quot;2222222222222222222222222222222222222222&quot;
+    }
+  ]
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 404</span>
+                <span class="muted">Job not found.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section><section id="get-api-jobs-id-files-hash-hash-download" class="endpoint">
+    <header>
+      <span class="method get">GET</span>
+      <h2><code>/api/jobs/{id}/files/hash/{hash}/download</code></h2>
+      <span class="badge">files</span>
+    </header>
+    <p><strong>Download a processed file</strong></p>
+    <p>Streams the binary contents of a file belonging to a processed job by its git blob hash.</p>
+    <div class="panel">
+            <h3>Parameters</h3>
+            <table>
+              <thead>
+                <tr><th>Name</th><th>In</th><th>Required</th><th>Description</th><th>Schema</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                        <td><code>id</code></td>
+                        <td>path</td>
+                        <td>Yes</td>
+                        <td>Job ID / commit SHA.</td>
+                        <td><code>string</code></td>
+                      </tr><tr>
+                        <td><code>hash</code></td>
+                        <td>path</td>
+                        <td>Yes</td>
+                        <td>Git blob hash for the requested file.</td>
+                        <td><code>string</code></td>
+                      </tr>
+              </tbody>
+            </table>
+          </div>
+    
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Binary file contents.</span>
+              </h4>
+              <p><strong>Headers</strong></p><pre>{
+  &quot;Content-Disposition&quot;: {
+    &quot;description&quot;: &quot;Attachment file name derived from stored metadata.&quot;,
+    &quot;schema&quot;: {
+      &quot;type&quot;: &quot;string&quot;
+    }
+  }
+}</pre>
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/octet-stream</h4>
+          <pre>{
+  &quot;type&quot;: &quot;string&quot;,
+  &quot;format&quot;: &quot;binary&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 404</span>
+                <span class="muted">Job or file hash not found.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 429</span>
+                <span class="muted">Download rate limit exceeded.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/RateLimitErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;statusCode&quot;: 429,
+  &quot;error&quot;: &quot;Too Many Requests&quot;,
+  &quot;message&quot;: &quot;Rate limit exceeded, retry in 1 minute&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 500</span>
+                <span class="muted">Invalid stored path or other unexpected file access error.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section><section id="get-api-jobs-files-hash-hash-tokenize" class="endpoint">
+    <header>
+      <span class="method get">GET</span>
+      <h2><code>/api/jobs/files/hash/{hash}/tokenize</code></h2>
+      <span class="badge">files</span>
+    </header>
+    <p><strong>Tokenize a file with Shiki</strong></p>
+    <p>Loads a processed file by blob hash and returns the JSON token payload emitted by Shiki.</p>
+    <div class="panel">
+            <h3>Parameters</h3>
+            <table>
+              <thead>
+                <tr><th>Name</th><th>In</th><th>Required</th><th>Description</th><th>Schema</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                        <td><code>hash</code></td>
+                        <td>path</td>
+                        <td>Yes</td>
+                        <td>Git blob hash for the file to tokenize.</td>
+                        <td><code>string</code></td>
+                      </tr>
+              </tbody>
+            </table>
+          </div>
+    
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Shiki tokenization payload.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ShikiTokenizationResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;tokens&quot;: [
+    [
+      {
+        &quot;content&quot;: &quot;#&quot;,
+        &quot;offset&quot;: 0,
+        &quot;color&quot;: &quot;#24292e&quot;,
+        &quot;fontStyle&quot;: 0
+      }
+    ]
+  ],
+  &quot;fg&quot;: &quot;#24292e&quot;,
+  &quot;bg&quot;: &quot;#fff&quot;,
+  &quot;themeName&quot;: &quot;github-light&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 404</span>
+                <span class="muted">File hash not found or file unavailable on disk.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 500</span>
+                <span class="muted">Invalid stored path or tokenization failure.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section><section id="get-api-jobs-files-hash-lefthash-diff-righthash" class="endpoint">
+    <header>
+      <span class="method get">GET</span>
+      <h2><code>/api/jobs/files/hash/{leftHash}/diff/{rightHash}</code></h2>
+      <span class="badge">files</span>
+    </header>
+    <p><strong>Diff two files by hash</strong></p>
+    <p>Runs `difft --display json` for two processed files located by git blob hash and returns the parsed JSON result.</p>
+    <div class="panel">
+            <h3>Parameters</h3>
+            <table>
+              <thead>
+                <tr><th>Name</th><th>In</th><th>Required</th><th>Description</th><th>Schema</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                        <td><code>leftHash</code></td>
+                        <td>path</td>
+                        <td>Yes</td>
+                        <td>Git blob hash for the left-hand file.</td>
+                        <td><code>string</code></td>
+                      </tr><tr>
+                        <td><code>rightHash</code></td>
+                        <td>path</td>
+                        <td>Yes</td>
+                        <td>Git blob hash for the right-hand file.</td>
+                        <td><code>string</code></td>
+                      </tr>
+              </tbody>
+            </table>
+          </div>
+    
+    <div class="panel">
+      <h3>Responses</h3>
+      <div class="response-list">
+        <article class="response-card">
+              <h4>
+                <span>Status 200</span>
+                <span class="muted">Parsed `difft` JSON output.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/DifftResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;status&quot;: &quot;different&quot;,
+  &quot;changes&quot;: []
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 404</span>
+                <span class="muted">Either file hash was not found or the file is unavailable on disk.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article><article class="response-card">
+              <h4>
+                <span>Status 500</span>
+                <span class="muted">Invalid stored path or `difft` execution failure.</span>
+              </h4>
+              
+              <div class="grid two" style="margin-top: 12px;">
+        <div>
+          <h4>application/json</h4>
+          <pre>{
+  &quot;$ref&quot;: &quot;#/components/schemas/ErrorResponse&quot;
+}</pre>
+        </div>
+        <div>
+          <h4>Example</h4>
+          <pre>{
+  &quot;note&quot;: &quot;No example supplied for this media type.&quot;
+}</pre>
+        </div>
+      </div>
+            </article>
+      </div>
+    </div>
+  </section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -68,4 +68,48 @@ describe("createApp", () => {
 
     await app.close();
   });
+
+  it("publishes an OpenAPI document", async () => {
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/openapi.json",
+      headers: {
+        host: "api.example.test",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      openapi: "3.1.0",
+      info: {
+        title: "File Diff Engine API",
+      },
+      servers: [
+        {
+          url: "http://api.example.test",
+          description: "Current API server",
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it("renders an OpenAPI website", async () => {
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/openapi",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/html");
+    expect(response.body).toContain("OpenAPI bindings");
+    expect(response.body).toContain("/api/jobs/resolve");
+
+    await app.close();
+  });
 });

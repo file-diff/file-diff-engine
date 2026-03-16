@@ -6,6 +6,7 @@ import {
   type DatabaseClient,
   type DatabaseConfig,
 } from "./db/database";
+import { getOpenApiDocument, renderOpenApiHtml } from "./openapi";
 import { JobRepository } from "./db/repository";
 import { createJobRoutes } from "./routes/jobs";
 import { createQueue } from "./services/queue";
@@ -51,6 +52,15 @@ export async function createApp(
   app.get("/api/version", async () => {
     const response: VersionResponse = { version: buildVersion };
     return response;
+  });
+  app.get("/openapi.json", async (request, reply) => {
+    const host = request.headers.host;
+    const baseUrl = host ? `${request.protocol}://${host}` : undefined;
+    return reply.send(getOpenApiDocument(baseUrl));
+  });
+  app.get("/openapi", async (_request, reply) => {
+    reply.type("text/html; charset=utf-8");
+    return reply.send(renderOpenApiHtml(getOpenApiDocument(), "/openapi.json"));
   });
 
   return { app, queue, db, jobRepo };

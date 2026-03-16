@@ -1,0 +1,1258 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "File Diff Engine API",
+    "version": "1.0.0",
+    "description": "OpenAPI bindings for the file-diff-engine HTTP service. This contract covers repository discovery, job orchestration, file download, tokenization, and diff operations."
+  },
+  "servers": [
+    {
+      "url": "https://your-host.example.com",
+      "description": "Example deployment base URL"
+    }
+  ],
+  "tags": [
+    {
+      "name": "system",
+      "description": "Service health and build metadata endpoints."
+    },
+    {
+      "name": "discovery",
+      "description": "Resolve refs, pull requests, and repository metadata before creating jobs."
+    },
+    {
+      "name": "jobs",
+      "description": "Create jobs and inspect processed repository metadata."
+    },
+    {
+      "name": "files",
+      "description": "Download files and derive secondary artifacts from processed file blobs."
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health check",
+        "description": "Checks whether the API process is running and able to respond.",
+        "responses": {
+          "200": {
+            "description": "Health check response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "message": "API is healthy"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/version": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Build version",
+        "description": "Returns the configured build version string, or `dev` when not set.",
+        "responses": {
+          "200": {
+            "description": "Build version response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionResponse"
+                },
+                "example": {
+                  "version": "2026.03.10+abc1234"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/resolve": {
+      "post": {
+        "tags": [
+          "discovery"
+        ],
+        "summary": "Resolve a git ref",
+        "description": "Resolves a branch, tag, or commit-like ref into a full 40-character commit SHA for a repository.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveCommitRequest"
+              },
+              "example": {
+                "repo": "facebook/react",
+                "ref": "main"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved commit details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveCommitResponse"
+                },
+                "example": {
+                  "repo": "facebook/react",
+                  "ref": "main",
+                  "commit": "0123456789abcdef0123456789abcdef01234567",
+                  "commitShort": "0123456"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid request fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The provided ref could not be resolved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected repository resolution failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/pull-request/resolve": {
+      "post": {
+        "tags": [
+          "discovery"
+        ],
+        "summary": "Resolve a GitHub pull request",
+        "description": "Resolves a full GitHub pull request URL into source and target commit hashes.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolvePullRequestRequest"
+              },
+              "example": {
+                "pullRequestUrl": "https://github.com/facebook/react/pull/123"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved pull request commit information.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvePullRequestResponse"
+                },
+                "example": {
+                  "repo": "facebook/react",
+                  "repositoryUrl": "https://github.com/facebook/react",
+                  "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
+                  "sourceCommitShort": "0123456",
+                  "targetCommit": "1111111111111111111111111111111111111111",
+                  "targetCommitShort": "1111111"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or malformed pull request URL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "GitHub resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected GitHub API failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/refs": {
+      "post": {
+        "tags": [
+          "discovery"
+        ],
+        "summary": "List repository refs",
+        "description": "Lists available branches and tags for a repository.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListRefsRequest"
+              },
+              "example": {
+                "repo": "facebook/react"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Available branches and tags.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListRefsResponse"
+                },
+                "example": {
+                  "repo": "facebook/react",
+                  "refs": [
+                    {
+                      "name": "main",
+                      "ref": "refs/heads/main",
+                      "type": "branch",
+                      "commit": "0123456789abcdef0123456789abcdef01234567",
+                      "commitShort": "0123456"
+                    },
+                    {
+                      "name": "v1.0.0",
+                      "ref": "refs/tags/v1.0.0",
+                      "type": "tag",
+                      "commit": "0123456789abcdef0123456789abcdef01234567",
+                      "commitShort": "0123456"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid repository identifier.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Repository refs could not be listed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/organizations/{organization}/repositories": {
+      "get": {
+        "tags": [
+          "discovery"
+        ],
+        "summary": "List organization repositories",
+        "description": "Lists repositories visible within a GitHub organization.",
+        "parameters": [
+          {
+            "name": "organization",
+            "in": "path",
+            "required": true,
+            "description": "GitHub organization name.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "facebook"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repositories visible for the organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOrganizationRepositoriesResponse"
+                },
+                "example": {
+                  "organization": "facebook",
+                  "repositories": [
+                    {
+                      "name": "react",
+                      "repo": "facebook/react",
+                      "repositoryUrl": "https://github.com/facebook/react"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid organization name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected GitHub API failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Create or reuse a processing job",
+        "description": "Creates a new repository-processing job for a specific commit. If the commit already exists, the existing job summary is returned.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobRequest"
+              },
+              "example": {
+                "repo": "facebook/react",
+                "commit": "0123456789abcdef0123456789abcdef01234567"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing job summary reused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSummary"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New job created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSummary"
+                },
+                "example": {
+                  "id": "0123456789abcdef0123456789abcdef01234567",
+                  "status": "waiting",
+                  "commit": "0123456789abcdef0123456789abcdef01234567",
+                  "commitShort": "0123456"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid repository or commit fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{id}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Get job details",
+        "description": "Returns status and progress for a previously created job.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Job ID / commit SHA.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobInfo"
+                },
+                "example": {
+                  "id": "0123456789abcdef0123456789abcdef01234567",
+                  "repo": "facebook/react",
+                  "commit": "0123456789abcdef0123456789abcdef01234567",
+                  "commitShort": "0123456",
+                  "status": "completed",
+                  "progress": 100,
+                  "totalFiles": 4321,
+                  "processedFiles": 4321,
+                  "createdAt": "2026-03-16T00:00:00.000Z",
+                  "updatedAt": "2026-03-16T00:02:30.000Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{id}/files": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "List processed files",
+        "description": "Returns compact metadata for files processed for a job.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Job ID / commit SHA.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Processed file metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobFilesResponse"
+                },
+                "example": {
+                  "jobId": "0123456789abcdef0123456789abcdef01234567",
+                  "commit": "0123456789abcdef0123456789abcdef01234567",
+                  "commitShort": "0123456",
+                  "status": "completed",
+                  "progress": 100,
+                  "files": [
+                    {
+                      "t": "t",
+                      "path": "README.md",
+                      "s": 1234,
+                      "update": "2026-03-16T00:00:00.000Z",
+                      "commit": "0123456789abcdef0123456789abcdef01234567",
+                      "hash": "2222222222222222222222222222222222222222"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{id}/files/hash/{hash}/download": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Download a processed file",
+        "description": "Streams the binary contents of a file belonging to a processed job by its git blob hash.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Job ID / commit SHA.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "0123456789abcdef0123456789abcdef01234567"
+          },
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "description": "Git blob hash for the requested file.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "2222222222222222222222222222222222222222"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Binary file contents.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "Attachment file name derived from stored metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job or file hash not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Download rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                },
+                "example": {
+                  "statusCode": 429,
+                  "error": "Too Many Requests",
+                  "message": "Rate limit exceeded, retry in 1 minute"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid stored path or other unexpected file access error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/files/hash/{hash}/tokenize": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Tokenize a file with Shiki",
+        "description": "Loads a processed file by blob hash and returns the JSON token payload emitted by Shiki.",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "description": "Git blob hash for the file to tokenize.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "2222222222222222222222222222222222222222"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Shiki tokenization payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShikiTokenizationResponse"
+                },
+                "example": {
+                  "tokens": [
+                    [
+                      {
+                        "content": "#",
+                        "offset": 0,
+                        "color": "#24292e",
+                        "fontStyle": 0
+                      }
+                    ]
+                  ],
+                  "fg": "#24292e",
+                  "bg": "#fff",
+                  "themeName": "github-light"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File hash not found or file unavailable on disk.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid stored path or tokenization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/files/hash/{leftHash}/diff/{rightHash}": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Diff two files by hash",
+        "description": "Runs `difft --display json` for two processed files located by git blob hash and returns the parsed JSON result.",
+        "parameters": [
+          {
+            "name": "leftHash",
+            "in": "path",
+            "required": true,
+            "description": "Git blob hash for the left-hand file.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "2222222222222222222222222222222222222222"
+          },
+          {
+            "name": "rightHash",
+            "in": "path",
+            "required": true,
+            "description": "Git blob hash for the right-hand file.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "1111111111111111111111111111111111111111"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Parsed `difft` JSON output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DifftResponse"
+                },
+                "example": {
+                  "status": "different",
+                  "changes": []
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Either file hash was not found or the file is unavailable on disk.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid stored path or `difft` execution failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "RateLimitErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "statusCode": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message"
+        ]
+      },
+      "HealthResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ]
+      },
+      "VersionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
+      "ResolveCommitRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "ref"
+        ]
+      },
+      "ResolveCommitResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "commitShort": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "ref",
+          "commit",
+          "commitShort"
+        ]
+      },
+      "ResolvePullRequestRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "pullRequestUrl": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "pullRequestUrl"
+        ]
+      },
+      "ResolvePullRequestResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "repositoryUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "sourceCommit": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "sourceCommitShort": {
+            "type": "string"
+          },
+          "targetCommit": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "targetCommitShort": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "repositoryUrl",
+          "sourceCommit",
+          "sourceCommitShort",
+          "targetCommit",
+          "targetCommitShort"
+        ]
+      },
+      "ListRefsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "repo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo"
+        ]
+      },
+      "GitRefSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "branch",
+              "tag"
+            ]
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "commitShort": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "ref",
+          "type",
+          "commit",
+          "commitShort"
+        ]
+      },
+      "ListRefsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitRefSummary"
+            }
+          }
+        },
+        "required": [
+          "repo",
+          "refs"
+        ]
+      },
+      "OrganizationRepositorySummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "repositoryUrl": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "name",
+          "repo",
+          "repositoryUrl"
+        ]
+      },
+      "ListOrganizationRepositoriesResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "organization": {
+            "type": "string"
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationRepositorySummary"
+            }
+          }
+        },
+        "required": [
+          "organization",
+          "repositories"
+        ]
+      },
+      "JobRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          }
+        },
+        "required": [
+          "repo",
+          "commit"
+        ]
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "waiting",
+          "active",
+          "completed",
+          "failed"
+        ]
+      },
+      "JobSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "commitShort": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "commit",
+          "commitShort"
+        ]
+      },
+      "JobInfo": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "commitShort": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "progress": {
+            "type": "number"
+          },
+          "totalFiles": {
+            "type": "integer"
+          },
+          "processedFiles": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "repo",
+          "commit",
+          "commitShort",
+          "status",
+          "progress",
+          "totalFiles",
+          "processedFiles",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "JobFileSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "t": {
+            "type": "string",
+            "enum": [
+              "d",
+              "t",
+              "b",
+              "x",
+              "s"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "s": {
+            "type": "integer"
+          },
+          "update": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "path",
+          "s",
+          "update",
+          "commit",
+          "hash"
+        ]
+      },
+      "JobFilesResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "commitShort": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "progress": {
+            "type": "number"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobFileSummary"
+            }
+          }
+        },
+        "required": [
+          "jobId",
+          "commit",
+          "commitShort",
+          "status",
+          "progress",
+          "files"
+        ]
+      },
+      "ShikiToken": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "color": {
+            "type": "string"
+          },
+          "fontStyle": {
+            "type": "integer"
+          }
+        }
+      },
+      "ShikiTokenizationResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "tokens": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ShikiToken"
+              }
+            }
+          },
+          "fg": {
+            "type": "string"
+          },
+          "bg": {
+            "type": "string"
+          },
+          "themeName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tokens"
+        ]
+      },
+      "DifftResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Raw parsed JSON returned by `difft --display json`."
+      }
+    }
+  }
+}
