@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -268,6 +268,58 @@ describe("repoProcessor – local clone simulation", () => {
       );
       expect(secondRecords.some((record) => record.file_name === "later.txt")).toBe(false);
     } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should checkout the requested commit even if FETCH_HEAD changes after copying the cache", async () => {
+    const testDir = path.join(os.tmpdir(), `fde-fetch-head-test-${Date.now()}`);
+    const repoDir = path.join(testDir, "origin");
+    const workDir = path.join(testDir, "work");
+    const treeDir = path.join(workDir, "tree");
+
+    try {
+      createTestRepo(repoDir);
+      const initialCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      fs.writeFileSync(path.join(repoDir, "later.txt"), "later\n");
+      execSync("git add later.txt", { cwd: repoDir });
+      execSync('git commit -m "later commit"', { cwd: repoDir });
+      const laterCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      const originalCpSync = fs.cpSync;
+      const cpSyncSpy = vi.spyOn(fs, "cpSync").mockImplementation((...args) => {
+        originalCpSync(...args);
+
+        const [, destination] = args;
+        if (destination !== treeDir) {
+          return;
+        }
+
+        const fetchHeadPath = path.join(treeDir, ".git", "FETCH_HEAD");
+        const fetchHead = fs.readFileSync(fetchHeadPath, "utf8");
+        fs.writeFileSync(fetchHeadPath, fetchHead.replace(initialCommit, laterCommit));
+      });
+
+      const records = await processRepository(
+        `file://${repoDir}`,
+        initialCommit,
+        workDir
+      );
+
+      expect(cpSyncSpy).toHaveBeenCalled();
+      expect(fs.readFileSync(path.join(treeDir, "hello.txt"), "utf8")).toBe("Hello World\n");
+      expect(fs.existsSync(path.join(treeDir, "later.txt"))).toBe(false);
+      expect(records.some((record) => record.file_name === "hello.txt")).toBe(true);
+      expect(records.some((record) => record.file_name === "later.txt")).toBe(false);
+    } finally {
+      vi.restoreAllMocks();
       fs.rmSync(testDir, { recursive: true, force: true });
     }
   });

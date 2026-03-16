@@ -232,7 +232,7 @@ export async function processRepository(
     "advice.detachedHead=false",
     "checkout",
     "--detach",
-    "FETCH_HEAD",
+    commit,
   ]);
 
   // Gather all file/directory entries (excluding .git)
