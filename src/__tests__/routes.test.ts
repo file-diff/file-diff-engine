@@ -838,10 +838,149 @@ describe("Job Routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
+      themeName: "github-dark",
+      fg: expect.any(String),
+      bg: expect.any(String),
+      tokens: expect.any(Array),
+    });
+  });
+
+  it("GET /api/jobs/files/hash/:hash/tokenize - should allow overriding the shiki theme", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-shiki-theme-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+
+    const filePath = path.join(treeDir, "README.md");
+    fs.writeFileSync(filePath, "# Hello from Shiki\n");
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 19,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+    ]);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/files/hash/${fileHash}/tokenize?theme=github-light`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
       themeName: "github-light",
       fg: expect.any(String),
       bg: expect.any(String),
       tokens: expect.any(Array),
+    });
+  });
+
+  it("GET /api/jobs/files/hash/:hash/tokenize - should allow overriding the shiki language and support auto detection", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-shiki-language-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+
+    const filePath = path.join(treeDir, "README.md");
+    fs.writeFileSync(filePath, "# Hello from Shiki\n");
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 19,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+    ]);
+
+    const autoResponse = await app.inject({
+      method: "GET",
+      url: `/api/jobs/files/hash/${fileHash}/tokenize?language=auto`,
+    });
+    const overrideResponse = await app.inject({
+      method: "GET",
+      url: `/api/jobs/files/hash/${fileHash}/tokenize?language=javascript`,
+    });
+    const autoTokens = autoResponse.json() as {
+      themeName: string;
+      tokens: Array<Array<{ content: string; color: string; fontStyle: number }>>;
+    };
+    const overrideTokens = overrideResponse.json() as {
+      themeName: string;
+      tokens: Array<Array<{ content: string; color: string; fontStyle: number }>>;
+    };
+
+    expect(autoResponse.statusCode).toBe(200);
+    expect(overrideResponse.statusCode).toBe(200);
+    expect(autoTokens).toMatchObject({
+      themeName: "github-dark",
+    });
+    expect(autoTokens.tokens[0]?.[0]).toMatchObject({
+      content: "# Hello from Shiki",
+      color: "#79B8FF",
+      fontStyle: 2,
+    });
+    expect(overrideTokens).toMatchObject({
+      themeName: "github-dark",
+    });
+    expect(overrideTokens.tokens[0]?.[0]).toMatchObject({
+      content: "# Hello from Shiki",
+      color: "#E1E4E8",
+      fontStyle: 0,
+    });
+  });
+
+  it("GET /api/jobs/files/hash/:hash/tokenize - should reject unsupported shiki query options", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-shiki-invalid-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+
+    const filePath = path.join(treeDir, "README.md");
+    fs.writeFileSync(filePath, "# Hello from Shiki\n");
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 19,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+    ]);
+
+    const themeResponse = await app.inject({
+      method: "GET",
+      url: `/api/jobs/files/hash/${fileHash}/tokenize?theme=not-a-theme`,
+    });
+    const languageResponse = await app.inject({
+      method: "GET",
+      url: `/api/jobs/files/hash/${fileHash}/tokenize?language=not-a-language`,
+    });
+
+    expect(themeResponse.statusCode).toBe(400);
+    expect(themeResponse.json()).toEqual({
+      error: "Unsupported shiki theme 'not-a-theme'.",
+    });
+    expect(languageResponse.statusCode).toBe(400);
+    expect(languageResponse.json()).toEqual({
+      error: "Unsupported shiki language 'not-a-language'.",
     });
   });
 

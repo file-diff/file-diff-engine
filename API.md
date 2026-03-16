@@ -625,6 +625,13 @@ Runs Shiki tokenization for a file found in the database by its hash and returns
 | --- | --- | --- | --- |
 | `hash` | `string` | Yes | Git blob hash of the file to tokenize |
 
+#### Query arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `theme` | `string` | No | Bundled Shiki theme to use. Defaults to `github-dark`. |
+| `language` | `string` | No | Override the Shiki language for highlighting. Use `auto` to autodetect from the file name. Defaults to `auto`. |
+
 #### Success response
 
 Status: `200 OK`
@@ -641,6 +648,7 @@ Response body:
 
 Common statuses:
 
+- `400 Bad Request` when `theme` or `language` is not a supported Shiki option
 - `404 Not Found` when the file hash does not exist in the database
 - `404 Not Found` when the file is missing or unreadable on disk
 - `500 Internal Server Error` when the stored file path is invalid or Shiki tokenization fails
@@ -649,7 +657,7 @@ Common statuses:
 
 ```bash
 curl -L \
-  https://your-host.example.com/api/jobs/files/hash/1111111111111111111111111111111111111111/tokenize
+  'https://your-host.example.com/api/jobs/files/hash/1111111111111111111111111111111111111111/tokenize?theme=github-dark&language=auto'
 ```
 
 Example response:
@@ -661,14 +669,14 @@ Example response:
       {
         "content": "#",
         "offset": 0,
-        "color": "#24292e",
+        "color": "#e1e4e8",
         "fontStyle": 0
       }
     ]
   ],
-  "fg": "#24292e",
-  "bg": "#fff",
-  "themeName": "github-light"
+  "fg": "#e1e4e8",
+  "bg": "#24292e",
+  "themeName": "github-dark"
 }
 ```
 
