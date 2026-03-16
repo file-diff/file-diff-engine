@@ -5,8 +5,10 @@ import { pipeline } from "stream/promises";
 import type { FastifyInstance } from "fastify";
 import {
   bundledLanguagesInfo,
+  bundledThemesInfo,
   codeToTokens,
   type BundledLanguage,
+  type BundledTheme,
   type SpecialLanguage,
 } from "shiki";
 import { JobRepository, type FileLookupRecord } from "../../db/repository";
@@ -38,8 +40,20 @@ export const shikiTokenizer = {
   codeToTokens,
 };
 
-const SHIKI_THEME = "github-light";
+interface ShikiTokenizationOptions {
+  language: BundledLanguage | SpecialLanguage;
+  theme: BundledTheme;
+}
+
+interface TokenizeQuerystring {
+  language?: string;
+  theme?: string;
+}
+
+const AUTO_SHIKI_LANGUAGE = "auto";
+const DEFAULT_SHIKI_THEME = "github-dark";
 const shikiLanguagesByAlias = new Map<string, BundledLanguage>();
+const shikiThemesByAlias = new Map<string, BundledTheme>();
 
 for (const language of bundledLanguagesInfo) {
   const languageId = language.id as BundledLanguage;
@@ -47,6 +61,10 @@ for (const language of bundledLanguagesInfo) {
   for (const alias of language.aliases ?? []) {
     shikiLanguagesByAlias.set(alias.toLowerCase(), languageId);
   }
+}
+
+for (const theme of bundledThemesInfo) {
+  shikiThemesByAlias.set(theme.id.toLowerCase(), theme.id as BundledTheme);
 }
 
 export function registerDownloadRoutes(
@@ -176,7 +194,7 @@ export function registerDownloadRoutes(
     }
   );
 
-  app.get<{ Params: { hash: string } }>(
+  app.get<{ Params: { hash: string }; Querystring: TokenizeQuerystring }>(
     "/files/hash/:hash/tokenize",
     async (request, reply) => {
       const { hash } = request.params;
@@ -185,17 +203,29 @@ export function registerDownloadRoutes(
         return reply.code(fileResult.statusCode).send(fileResult.response);
       }
 
+      let tokenizationOptions: ShikiTokenizationOptions;
+      try {
+        tokenizationOptions = resolveShikiTokenizationOptions(
+          fileResult.file.fileName,
+          request.query
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Invalid shiki tokenization options.";
+        const response: ErrorResponse = { error: message };
+        return reply.code(400).send(response);
+      }
+
       logger.info("Running shiki tokenization for file by hash", {
         hash,
         jobId: fileResult.file.jobId,
         fileName: fileResult.file.fileName,
+        language: tokenizationOptions.language,
+        theme: tokenizationOptions.theme,
       });
 
       try {
-        const tokens = await runShikiTokenization(
-          fileResult.filePath,
-          fileResult.file.fileName
-        );
+        const tokens = await runShikiTokenization(fileResult.filePath, tokenizationOptions);
         return reply.send(tokens);
       } catch (error) {
         const message =
@@ -338,13 +368,58 @@ function parseDifftJson(
 
 async function runShikiTokenization(
   filePath: string,
-  fileName: string
+  tokenizationOptions: ShikiTokenizationOptions
 ): Promise<unknown> {
   const fileContents = await fs.promises.readFile(filePath, "utf8");
   return shikiTokenizer.codeToTokens(fileContents, {
-    lang: inferShikiLanguage(fileName),
-    theme: SHIKI_THEME,
+    lang: tokenizationOptions.language,
+    theme: tokenizationOptions.theme,
   });
+}
+
+function resolveShikiTokenizationOptions(
+  fileName: string,
+  query: TokenizeQuerystring
+): ShikiTokenizationOptions {
+  return {
+    language: resolveShikiLanguage(fileName, query.language),
+    theme: resolveShikiTheme(query.theme),
+  };
+}
+
+function resolveShikiTheme(theme: string | undefined): BundledTheme {
+  const normalizedTheme = theme?.trim().toLowerCase();
+  if (!normalizedTheme) {
+    return DEFAULT_SHIKI_THEME;
+  }
+
+  const bundledTheme = shikiThemesByAlias.get(normalizedTheme);
+  if (!bundledTheme) {
+    throw new Error(`Unsupported shiki theme '${theme}'.`);
+  }
+
+  return bundledTheme;
+}
+
+function resolveShikiLanguage(
+  fileName: string,
+  language: string | undefined
+): BundledLanguage | SpecialLanguage {
+  const normalizedLanguage = language?.trim().toLowerCase();
+  if (!normalizedLanguage || normalizedLanguage === AUTO_SHIKI_LANGUAGE) {
+    return inferShikiLanguage(fileName);
+  }
+
+  if (normalizedLanguage === "text") {
+    return "text";
+  }
+
+  const bundledLanguage = shikiLanguagesByAlias.get(normalizedLanguage);
+  if (!bundledLanguage) {
+    throw new Error(`Unsupported shiki language '${language}'.`);
+  }
+
+  return bundledLanguage;
 }
 
 function inferShikiLanguage(fileName: string): BundledLanguage | SpecialLanguage {
