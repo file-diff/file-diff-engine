@@ -29,6 +29,7 @@
     "fastify": "^5.8.2",
     "ioredis": "^5.10.0",
     "pg": "^8.20.0",
+    "shiki": "^4.0.2",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

@@ -6,7 +6,10 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
 import { createJobRoutes } from "../routes/jobs";
-import { difftCommandRunner } from "../routes/jobs/downloadRoutes";
+import {
+  difftCommandRunner,
+  shikiTokenizer,
+} from "../routes/jobs/downloadRoutes";
 import { Queue } from "bullmq";
 import type {
   ListRefsResponse,
@@ -801,6 +804,94 @@ describe("Job Routes", () => {
     expect(response.statusCode).toBe(500);
     expect(response.json()).toEqual({
       error: "Failed to run difft command. spawn difft ENOENT",
+    });
+  });
+
+  it("GET /api/jobs/files/hash/:hash/tokenize - should return shiki JSON tokens for a file hash", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-shiki-success-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+
+    const filePath = path.join(treeDir, "README.md");
+    const fileContents = "# Hello from Shiki\n";
+    fs.writeFileSync(filePath, fileContents);
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: fileContents.length,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+    ]);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/files/hash/${fileHash}/tokenize`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      themeName: "github-light",
+      fg: expect.any(String),
+      bg: expect.any(String),
+      tokens: expect.any(Array),
+    });
+  });
+
+  it("GET /api/jobs/files/hash/:hash/tokenize - should report when a hash is missing from the database", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/files/hash/${fileHash}/tokenize`,
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: `File with hash '${fileHash}' was not found in the database.`,
+    });
+  });
+
+  it("GET /api/jobs/files/hash/:hash/tokenize - should report shiki tokenization failures", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-shiki-error-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+
+    const filePath = path.join(treeDir, "README.md");
+    fs.writeFileSync(filePath, "# Hello from Shiki\n");
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 19,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+    ]);
+
+    vi.spyOn(shikiTokenizer, "codeToTokens").mockRejectedValue(
+      new Error("shiki tokenization failed")
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/files/hash/${fileHash}/tokenize`,
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      error: "shiki tokenization failed",
     });
   });
 });
