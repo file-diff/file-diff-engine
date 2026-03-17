@@ -367,6 +367,58 @@ Example response:
 
 ---
 
+### `GET /api/jobs/cache`
+
+Lists git cache folders currently present on disk under the configured temporary directory.
+
+#### Request arguments
+
+None.
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `count` | `number` | Number of git cache folders found on disk |
+| `totalSize` | `number` | Total size in bytes across all git cache folders |
+| `folders` | `array` | Per-folder size details |
+
+Each `folders` entry contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | Cache folder name |
+| `size` | `number` | Folder size in bytes |
+
+#### Example
+
+```bash
+curl -X GET https://your-host.example.com/api/jobs/cache
+```
+
+Example response:
+
+```json
+{
+  "count": 2,
+  "totalSize": 123456,
+  "folders": [
+    {
+      "name": "0f4c2f...",
+      "size": 45678
+    },
+    {
+      "name": "b93d17...",
+      "size": 77778
+    }
+  ]
+}
+```
+
+---
+
 ### `POST /api/jobs`
 
 Creates a new repository-processing job for a specific commit.

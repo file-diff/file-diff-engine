@@ -12,6 +12,7 @@ import {
 } from "../routes/jobs/downloadRoutes";
 import { Queue } from "bullmq";
 import type {
+  GitCacheStatsResponse,
   ListRefsResponse,
   ListOrganizationRepositoriesResponse,
   JobFilesResponse,
@@ -323,6 +324,55 @@ describe("Job Routes", () => {
     expect(res.status).toBe(404);
     expect(res.body).toEqual({
       error: "GitHub organization 'missing-org' was not found.",
+    });
+  });
+
+  it("GET /api/jobs/cache - should list git cache folders and their sizes from disk", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-cache-stats-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+
+    const cacheRoot = path.join(tmpDir, "repo-cache");
+    const firstCacheDir = path.join(cacheRoot, "aaa-cache");
+    const secondCacheDir = path.join(cacheRoot, "bbb-cache");
+
+    fs.mkdirSync(path.join(firstCacheDir, ".git"), { recursive: true });
+    fs.mkdirSync(path.join(secondCacheDir, "objects"), { recursive: true });
+    fs.writeFileSync(path.join(firstCacheDir, ".git", "HEAD"), "ref: main\n");
+    fs.writeFileSync(path.join(secondCacheDir, "objects", "pack"), "1234567");
+    fs.writeFileSync(path.join(cacheRoot, "ignore.txt"), "ignored");
+
+    const res = await makeRequest(app, "GET", "/api/jobs/cache");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<GitCacheStatsResponse>({
+      count: 2,
+      totalSize: 17,
+      folders: [
+        {
+          name: "aaa-cache",
+          size: 10,
+        },
+        {
+          name: "bbb-cache",
+          size: 7,
+        },
+      ],
+    });
+  });
+
+  it("GET /api/jobs/cache - should return empty stats when the cache folder is missing", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-cache-empty-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+
+    const res = await makeRequest(app, "GET", "/api/jobs/cache");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<GitCacheStatsResponse>({
+      count: 0,
+      totalSize: 0,
+      folders: [],
     });
   });
 

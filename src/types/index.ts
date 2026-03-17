@@ -109,6 +109,19 @@ export interface ListOrganizationRepositoriesResponse {
   repositories: OrganizationRepositorySummary[];
 }
 
+/** Response entry when listing git cache folders on disk. */
+export interface GitCacheFolderSummary {
+  name: string;
+  size: number;
+}
+
+/** Response payload when listing git cache folders on disk. */
+export interface GitCacheStatsResponse {
+  count: number;
+  totalSize: number;
+  folders: GitCacheFolderSummary[];
+}
+
 /** Response when querying a job. */
 export interface JobInfo {
   id: string;

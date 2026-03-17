@@ -1,6 +1,9 @@
+import fs from "fs";
+import path from "path";
 import type { FastifyInstance } from "fastify";
 import type {
   ErrorResponse,
+  GitCacheStatsResponse,
   ListRefsRequest,
   ListRefsResponse,
   ListOrganizationRepositoriesResponse,
@@ -178,4 +181,56 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
       }
     }
   );
+
+  /**
+   * GET /api/jobs/cache
+   * Lists git cache folders and their sizes from disk.
+   */
+  app.get("/cache", async (_request, reply) => {
+    const response: GitCacheStatsResponse = getGitCacheStats();
+    return reply.code(200).send(response);
+  });
+}
+
+function getGitCacheStats(): GitCacheStatsResponse {
+  const tmpDir = path.resolve(process.env.TMP_DIR || "tmp");
+  const cacheRoot = path.join(tmpDir, "repo-cache");
+
+  if (!fs.existsSync(cacheRoot)) {
+    return {
+      count: 0,
+      totalSize: 0,
+      folders: [],
+    };
+  }
+
+  const folders = fs
+    .readdirSync(cacheRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const folderPath = path.join(cacheRoot, entry.name);
+      return {
+        name: entry.name,
+        size: getDirectorySize(folderPath),
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  return {
+    count: folders.length,
+    totalSize: folders.reduce((sum, folder) => sum + folder.size, 0),
+    folders,
+  };
+}
+
+function getDirectorySize(dirPath: string): number {
+  return fs.readdirSync(dirPath, { withFileTypes: true }).reduce((size, entry) => {
+    const entryPath = path.join(dirPath, entry.name);
+
+    if (entry.isDirectory()) {
+      return size + getDirectorySize(entryPath);
+    }
+
+    return size + fs.lstatSync(entryPath).size;
+  }, 0);
 }
