@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Queue } from "bullmq";
 import {
@@ -24,6 +25,9 @@ export interface AppContext {
   jobRepo: JobRepository;
 }
 
+const DEFAULT_STATS_RATE_LIMIT_MAX = 60;
+const DEFAULT_STATS_RATE_LIMIT_WINDOW_MS = 60_000;
+
 export async function createApp(
   deps?: Partial<AppDependencies>
 ): Promise<AppContext> {
@@ -34,6 +38,7 @@ export async function createApp(
     credentials: true,
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
   });
+  await app.register(rateLimit, { global: false });
 
   const queue = deps?.queue ?? createQueue();
   const db = deps?.db ?? (await getDatabase(deps?.dbConfig));
@@ -52,10 +57,21 @@ export async function createApp(
     const response: VersionResponse = { version: buildVersion };
     return response;
   });
-  app.get("/api/stats", async () => {
-    const response: StatsResponse = await jobRepo.getStats();
-    return response;
-  });
+  app.get(
+    "/api/stats",
+    {
+      config: {
+        rateLimit: {
+          max: DEFAULT_STATS_RATE_LIMIT_MAX,
+          timeWindow: DEFAULT_STATS_RATE_LIMIT_WINDOW_MS,
+        },
+      },
+    },
+    async () => {
+      const response: StatsResponse = await jobRepo.getStats();
+      return response;
+    }
+  );
 
   return { app, queue, db, jobRepo };
 }
