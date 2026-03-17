@@ -29,28 +29,19 @@ describe("createApp", () => {
     await db.end();
   });
 
-  it("responds to health checks with permissive CORS headers", async () => {
+  it("does not add CORS headers to health checks", async () => {
     const { app } = await createApp({ db, queue: mockQueue });
 
     const response = await app.inject({
-      method: "OPTIONS",
+      method: "GET",
       url: "/api/health",
       headers: {
         origin: "https://frontend.example",
-        "access-control-request-method": "GET",
-        "access-control-request-headers": "X-Requested-With, Content-Type",
       },
     });
 
-    expect(response.statusCode).toBe(204);
-    expect(response.headers["access-control-allow-origin"]).toBe(
-      "https://frontend.example"
-    );
-    expect(response.headers["access-control-allow-credentials"]).toBe("true");
-    expect(response.headers["access-control-allow-methods"]).toContain("GET");
-    expect(response.headers["access-control-allow-headers"]).toContain(
-      "X-Requested-With"
-    );
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["access-control-allow-origin"]).toBeUndefined();
 
     await app.close();
   });

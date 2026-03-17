@@ -1,4 +1,3 @@
-import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Queue } from "bullmq";
@@ -33,11 +32,6 @@ export async function createApp(
 ): Promise<AppContext> {
   const app = Fastify();
   const buildVersion = process.env.BUILD_VERSION || "dev";
-  await app.register(cors, {
-    origin: true,
-    credentials: true,
-    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
-  });
 
   const queue = deps?.queue ?? createQueue();
   const db = deps?.db ?? (await getDatabase(deps?.dbConfig));
