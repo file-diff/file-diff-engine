@@ -144,6 +144,13 @@ export interface JobFilesResponse {
   files: JobFileSummary[];
 }
 
+/** Aggregate storage statistics derived from the database. */
+export interface StatsResponse {
+  jobsStored: number;
+  filesStored: number;
+  sizeStored: number;
+}
+
 /** Health endpoint response payload. */
 export interface HealthResponse {
   status: "ok";

@@ -1,5 +1,5 @@
 import type { DatabaseClient } from "./database";
-import { FileRecord, JobInfo, JobStatus } from "../types";
+import { FileRecord, JobInfo, JobStatus, StatsResponse } from "../types";
 import {createLogger} from "../utils/logger";
 import { getCommitShort } from "../utils/commit";
 
@@ -223,6 +223,28 @@ export class JobRepository {
         fileHash: file.file_git_hash,
       };
     });
+  }
+
+  async getStats(): Promise<StatsResponse> {
+    const result = await this.db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM jobs) AS jobs_stored,
+        (SELECT COUNT(*) FROM files) AS files_stored,
+        (SELECT COALESCE(SUM(file_size), 0) FROM files) AS size_stored
+    `);
+    const row = result.rows[0] as
+      | {
+          jobs_stored: string | number;
+          files_stored: string | number;
+          size_stored: string | number;
+        }
+      | undefined;
+
+    return {
+      jobsStored: Number(row?.jobs_stored ?? 0),
+      filesStored: Number(row?.files_stored ?? 0),
+      sizeStored: Number(row?.size_stored ?? 0),
+    };
   }
 }
 

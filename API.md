@@ -108,6 +108,42 @@ Example response:
 
 ---
 
+### `GET /api/stats`
+
+Returns aggregate storage statistics using only data stored in the database.
+
+#### Request arguments
+
+None.
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `jobsStored` | `number` | Number of jobs stored in the database |
+| `filesStored` | `number` | Number of file records stored in the database |
+| `sizeStored` | `number` | Sum of all stored file sizes in bytes from the database |
+
+#### Example
+
+```bash
+curl -X GET https://your-host.example.com/api/stats
+```
+
+Example response:
+
+```json
+{
+  "jobsStored": 42,
+  "filesStored": 1024,
+  "sizeStored": 9876543
+}
+```
+
+---
+
 ### `POST /api/jobs/resolve`
 
 Resolves a branch, tag, or other Git ref to a full commit SHA for a repository.

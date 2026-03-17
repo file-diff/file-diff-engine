@@ -9,7 +9,7 @@ import {
 import { JobRepository } from "./db/repository";
 import { createJobRoutes } from "./routes/jobs";
 import { createQueue } from "./services/queue";
-import type { HealthResponse, VersionResponse } from "./types";
+import type { HealthResponse, StatsResponse, VersionResponse } from "./types";
 
 export interface AppDependencies {
   queue: Queue;
@@ -50,6 +50,10 @@ export async function createApp(
   });
   app.get("/api/version", async () => {
     const response: VersionResponse = { version: buildVersion };
+    return response;
+  });
+  app.get("/api/stats", async () => {
+    const response: StatsResponse = await jobRepo.getStats();
     return response;
   });
 
