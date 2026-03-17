@@ -38,7 +38,6 @@ export async function createApp(
     credentials: true,
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
   });
-  await app.register(rateLimit, { global: false });
 
   const queue = deps?.queue ?? createQueue();
   const db = deps?.db ?? (await getDatabase(deps?.dbConfig));
@@ -57,21 +56,17 @@ export async function createApp(
     const response: VersionResponse = { version: buildVersion };
     return response;
   });
-  app.get(
-    "/api/stats",
-    {
-      config: {
-        rateLimit: {
-          max: DEFAULT_STATS_RATE_LIMIT_MAX,
-          timeWindow: DEFAULT_STATS_RATE_LIMIT_WINDOW_MS,
-        },
-      },
-    },
-    async () => {
+  await app.register(async (statsApp) => {
+    await statsApp.register(rateLimit, {
+      max: DEFAULT_STATS_RATE_LIMIT_MAX,
+      timeWindow: DEFAULT_STATS_RATE_LIMIT_WINDOW_MS,
+    });
+
+    statsApp.get("/api/stats", async () => {
       const response: StatsResponse = await jobRepo.getStats();
       return response;
-    }
-  );
+    });
+  });
 
   return { app, queue, db, jobRepo };
 }
