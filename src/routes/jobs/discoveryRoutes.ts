@@ -15,7 +15,7 @@ import type {
 import * as githubApi from "../../services/githubApi";
 import * as repoProcessor from "../../services/repoProcessor";
 import { getCommitShort } from "../../utils/commit";
-import { isValidOrganization, isValidRepo, normalizeRepo } from "./shared";
+import { isValidOrganization, isValidRepo, logger, normalizeRepo } from "./shared";
 
 export function registerDiscoveryRoutes(app: FastifyInstance): void {
   /**
@@ -187,8 +187,18 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
    * Lists git cache folders and their sizes from disk.
    */
   app.get("/cache", async (_request, reply) => {
-    const response: GitCacheStatsResponse = getGitCacheStats();
-    return reply.code(200).send(response);
+    try {
+      const response: GitCacheStatsResponse = getGitCacheStats();
+      return reply.code(200).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to inspect git cache folders.";
+      logger.error("Failed to inspect git cache folders", { error: message });
+      const response: ErrorResponse = {
+        error: "Unable to inspect git cache folders on disk.",
+      };
+      return reply.code(500).send(response);
+    }
   });
 }
 
@@ -225,12 +235,23 @@ function getGitCacheStats(): GitCacheStatsResponse {
 
 function getDirectorySize(dirPath: string): number {
   return fs.readdirSync(dirPath, { withFileTypes: true }).reduce((size, entry) => {
-    const entryPath = path.join(dirPath, entry.name);
+    try {
+      const entryPath = path.join(dirPath, entry.name);
 
-    if (entry.isDirectory()) {
-      return size + getDirectorySize(entryPath);
+      if (entry.isDirectory()) {
+        return size + getDirectorySize(entryPath);
+      }
+
+      return size + fs.lstatSync(entryPath).size;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown filesystem error.";
+      logger.warn("Skipping unreadable git cache entry", {
+        dirPath,
+        entryName: entry.name,
+        error: message,
+      });
+      return size;
     }
-
-    return size + fs.lstatSync(entryPath).size;
   }, 0);
 }
