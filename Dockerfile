@@ -14,7 +14,7 @@ FROM node:24-bookworm-slim
 
 WORKDIR /app
 
-ARG DIFFT_TAG_NAME=0.68.0-dev.4
+ARG DIFFT_TAG_NAME=0.68.0-dev.3
 
 ADD https://github.com/file-diff/difftastic/releases/download/${DIFFT_TAG_NAME}/difft-${DIFFT_TAG_NAME}-x86_64-unknown-linux-gnu.tar.xz /tmp/difft.tar.xz
 
