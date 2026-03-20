@@ -639,6 +639,41 @@ Example response:
 
 ---
 
+### `GET /api/commit/:id/files`
+
+Returns compact metadata for files that were processed for the latest job matching a commit SHA.
+
+#### Path arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Full commit SHA |
+
+#### Success response
+
+Status: `200 OK`
+
+This endpoint returns the exact same response body as `GET /api/jobs/:id/files`.
+
+#### Error response
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `error` | `string` | Error message |
+
+Common statuses:
+
+- `404 Not Found` when no job exists for the given commit
+
+#### Example
+
+```bash
+curl -X GET \
+  https://your-host.example.com/api/commit/0123456789abcdef0123456789abcdef01234567/files
+```
+
+---
+
 ### `GET /api/jobs/:id/files/hash/:hash/download`
 
 Downloads the file content for a file that belongs to a processed job.
