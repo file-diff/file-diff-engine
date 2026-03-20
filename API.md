@@ -18,6 +18,7 @@ Most routes are served under the `/api` prefix.
 - Repository names use the `owner/repo` format, for example `facebook/react`.
 - Commit hashes are full 40-character hexadecimal Git SHAs unless noted otherwise.
 - Download responses return binary file content instead of JSON.
+- Set `REQUEST_DELAY_MS` to add a fixed delay before every endpoint response. The default is `0` (no delay); for example, `REQUEST_DELAY_MS=500` simulates 500ms latency in development.
 
 ## Response field reference
 

@@ -4,6 +4,10 @@ https://filediff.org
 
 API reference: [API.md](./API.md)
 
+## Configuration
+
+- `REQUEST_DELAY_MS`: Adds a delay before every API request is handled. Defaults to `0` (disabled). Set `REQUEST_DELAY_MS=500` to simulate 500ms of latency during development.
+
 ## Storage tree
 
 The worker stores repository data under `TMP_DIR` (or the relative `tmp/` directory under the service working directory when `TMP_DIR` is not set).
