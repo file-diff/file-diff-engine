@@ -10,6 +10,7 @@ import { JobRepository } from "./db/repository";
 import { createJobRoutes } from "./routes/jobs";
 import { createQueue } from "./services/queue";
 import type { HealthResponse, StatsResponse, VersionResponse } from "./types";
+import { createLogger } from "./utils/logger";
 
 export interface AppDependencies {
   queue: Queue;
@@ -27,6 +28,7 @@ export interface AppContext {
 const DEFAULT_STATS_RATE_LIMIT_MAX = 60;
 const DEFAULT_STATS_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_REQUEST_DELAY_MS = 0;
+const logger = createLogger("app");
 
 function getRequestDelayMs(): number {
   const rawDelay = process.env.REQUEST_DELAY_MS;
@@ -55,9 +57,12 @@ export async function createApp(
   const jobRepo = new JobRepository(db);
 
   if (requestDelayMs > 0) {
+    logger.warn("Request delay hook is enabled.", { requestDelayMs });
     app.addHook("onRequest", async () => {
       await new Promise((resolve) => setTimeout(resolve, requestDelayMs));
     });
+  } else {
+    logger.info("Request delay hook is not enabled.");
   }
 
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });

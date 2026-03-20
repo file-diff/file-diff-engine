@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Queue } from "bullmq";
 import type { DatabaseClient } from "../db/database";
 import { createApp } from "../app";
@@ -71,6 +71,7 @@ describe("createApp", () => {
 
   it("does not delay requests when REQUEST_DELAY_MS is unset", async () => {
     delete process.env.REQUEST_DELAY_MS;
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const { app } = await createApp({ db, queue: mockQueue });
 
     const startedAt = Date.now();
@@ -82,12 +83,16 @@ describe("createApp", () => {
 
     expect(response.statusCode).toBe(200);
     expect(elapsedMs).toBeLessThan(100);
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[app] Request delay hook is not enabled.")
+    );
 
     await app.close();
   });
 
   it("delays requests when REQUEST_DELAY_MS is configured", async () => {
     process.env.REQUEST_DELAY_MS = "40";
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { app } = await createApp({ db, queue: mockQueue });
 
     const startedAt = Date.now();
@@ -100,6 +105,10 @@ describe("createApp", () => {
     expect(response.statusCode).toBe(200);
     expect(elapsedMs).toBeGreaterThanOrEqual(30);
     expect(elapsedMs).toBeLessThan(150);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[app] Request delay hook is enabled."),
+      { requestDelayMs: 40 }
+    );
 
     await app.close();
   });
@@ -177,5 +186,9 @@ describe("createApp", () => {
     });
 
     await app.close();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 });
