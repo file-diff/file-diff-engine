@@ -36,7 +36,7 @@ function getRequestDelayMs(): number {
   }
 
   const parsedDelay = Number.parseInt(rawDelay, 10);
-  if (!Number.isFinite(parsedDelay) || parsedDelay <= 0) {
+  if (!Number.isFinite(parsedDelay) || parsedDelay < 0) {
     return DEFAULT_REQUEST_DELAY_MS;
   }
 

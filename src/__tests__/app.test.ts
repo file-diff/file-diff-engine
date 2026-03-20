@@ -99,6 +99,7 @@ describe("createApp", () => {
 
     expect(response.statusCode).toBe(200);
     expect(elapsedMs).toBeGreaterThanOrEqual(30);
+    expect(elapsedMs).toBeLessThan(150);
 
     await app.close();
   });
