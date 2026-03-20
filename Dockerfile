@@ -32,6 +32,7 @@ COPY --from=build /app/dist ./dist
 
 ENV DIFFT_TAG_NAME=${DIFFT_TAG_NAME}
 ENV NODE_ENV=production
+ENV REQUEST_DELAY_MS=0
 ENV HOST=0.0.0.0
 ENV PORT=12986
 ENV TMP_DIR=/app/tmp

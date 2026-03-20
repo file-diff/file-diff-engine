@@ -9,6 +9,7 @@ services:
         condition: service_healthy
     environment:
       BUILD_VERSION: ${BUILD_VERSION:-dev}
+      REQUEST_DELAY_MS: ${REQUEST_DELAY_MS:-0}
       HOST: 0.0.0.0
       PORT: 12986
       REDIS_HOST: redis
