@@ -30,19 +30,7 @@ export class JobRepository {
       return undefined;
     }
 
-    return {
-      id: row.id as string,
-      repo: row.repo as string,
-      commit: row.commit as string,
-      commitShort: getCommitShort(row.commit as string),
-      status: row.status as JobStatus,
-      progress: Number(row.progress),
-      totalFiles: Number(row.total_files),
-      processedFiles: Number(row.processed_files),
-      error: (row.error as string | null) ?? undefined,
-      createdAt: toIsoString(row.created_at),
-      updatedAt: toIsoString(row.updated_at),
-    };
+    return toJobInfo(row);
   }
 
   async getJobByCommit(commit: string): Promise<JobInfo | undefined> {
@@ -55,19 +43,7 @@ export class JobRepository {
       return undefined;
     }
 
-    return {
-      id: row.id as string,
-      repo: row.repo as string,
-      commit: row.commit as string,
-      commitShort: getCommitShort(row.commit as string),
-      status: row.status as JobStatus,
-      progress: Number(row.progress),
-      totalFiles: Number(row.total_files),
-      processedFiles: Number(row.processed_files),
-      error: (row.error as string | null) ?? undefined,
-      createdAt: toIsoString(row.created_at),
-      updatedAt: toIsoString(row.updated_at),
-    };
+    return toJobInfo(row);
   }
 
   async updateJobStatus(
@@ -283,4 +259,20 @@ function toIsoString(value: unknown): string {
   }
 
   return String(value);
+}
+
+function toJobInfo(row: Record<string, unknown>): JobInfo {
+  return {
+    id: row.id as string,
+    repo: row.repo as string,
+    commit: row.commit as string,
+    commitShort: getCommitShort(row.commit as string),
+    status: row.status as JobStatus,
+    progress: Number(row.progress),
+    totalFiles: Number(row.total_files),
+    processedFiles: Number(row.processed_files),
+    error: (row.error as string | null) ?? undefined,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+  };
 }

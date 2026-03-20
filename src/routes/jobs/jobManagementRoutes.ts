@@ -3,6 +3,8 @@ import { Queue } from "bullmq";
 import { JobRepository } from "../../db/repository";
 import type {
   ErrorResponse,
+  FileRecord,
+  JobInfo,
   JobFilesResponse,
   JobRequest,
   JobSummary,
@@ -136,23 +138,7 @@ export function registerJobManagementRoutes(
     }
 
     const files = await jobRepo.getFiles(id);
-    // Do not change the structure of the response, as the frontend relies on it
-    const response: JobFilesResponse = {
-      jobId: job.id,
-      commit: job.commit,
-      commitShort: job.commitShort,
-      status: job.status,
-      progress: job.progress,
-      files: files.map((f) => ({
-        t: f.file_type,
-        path: f.file_name,
-        s: f.file_size,
-        update: f.file_update_date,
-        commit: f.file_last_commit,
-        hash: f.file_git_hash,
-      })),
-    };
-    return reply.send(response);
+    return reply.send(buildJobFilesResponse(job, files));
   });
 }
 
@@ -180,4 +166,26 @@ async function removeQueuedJob(queue: Queue, jobId: string): Promise<void> {
   if (queuedJob) {
     await queuedJob.remove();
   }
+}
+
+export function buildJobFilesResponse(
+  job: Pick<JobInfo, "id" | "commit" | "commitShort" | "status" | "progress">,
+  files: FileRecord[]
+): JobFilesResponse {
+  // Do not change the structure of the response, as the frontend relies on it
+  return {
+    jobId: job.id,
+    commit: job.commit,
+    commitShort: job.commitShort,
+    status: job.status,
+    progress: job.progress,
+    files: files.map((f) => ({
+      t: f.file_type,
+      path: f.file_name,
+      s: f.file_size,
+      update: f.file_update_date,
+      commit: f.file_last_commit,
+      hash: f.file_git_hash,
+    })),
+  };
 }

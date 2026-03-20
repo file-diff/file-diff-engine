@@ -8,11 +8,11 @@ import {
 } from "./db/database";
 import { JobRepository } from "./db/repository";
 import { createJobRoutes } from "./routes/jobs";
+import { buildJobFilesResponse } from "./routes/jobs/jobManagementRoutes";
 import { createQueue } from "./services/queue";
 import type {
   ErrorResponse,
   HealthResponse,
-  JobFilesResponse,
   StatsResponse,
   VersionResponse,
 } from "./types";
@@ -82,22 +82,7 @@ export async function createApp(
     }
 
     const files = await jobRepo.getFiles(job.id);
-    const response: JobFilesResponse = {
-      jobId: job.id,
-      commit: job.commit,
-      commitShort: job.commitShort,
-      status: job.status,
-      progress: job.progress,
-      files: files.map((f) => ({
-        t: f.file_type,
-        path: f.file_name,
-        s: f.file_size,
-        update: f.file_update_date,
-        commit: f.file_last_commit,
-        hash: f.file_git_hash,
-      })),
-    };
-    return reply.send(response);
+    return reply.send(buildJobFilesResponse(job, files));
   });
 
   app.get("/api/health", async () => {

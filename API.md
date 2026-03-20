@@ -641,7 +641,7 @@ Example response:
 
 ### `GET /api/commit/:id/files`
 
-Returns compact metadata for files that were processed for the latest job matching a commit SHA.
+Returns compact metadata for files that were processed for the job matching a commit SHA.
 
 #### Path arguments
 
