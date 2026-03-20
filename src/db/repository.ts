@@ -45,6 +45,31 @@ export class JobRepository {
     };
   }
 
+  async getJobByCommit(commit: string): Promise<JobInfo | undefined> {
+    const result = await this.db.query(
+      "SELECT * FROM jobs WHERE commit = $1 ORDER BY created_at DESC LIMIT 1",
+      [commit]
+    );
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      id: row.id as string,
+      repo: row.repo as string,
+      commit: row.commit as string,
+      commitShort: getCommitShort(row.commit as string),
+      status: row.status as JobStatus,
+      progress: Number(row.progress),
+      totalFiles: Number(row.total_files),
+      processedFiles: Number(row.processed_files),
+      error: (row.error as string | null) ?? undefined,
+      createdAt: toIsoString(row.created_at),
+      updatedAt: toIsoString(row.updated_at),
+    };
+  }
+
   async updateJobStatus(
     id: string,
     status: JobStatus,

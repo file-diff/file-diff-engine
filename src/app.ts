@@ -9,7 +9,13 @@ import {
 import { JobRepository } from "./db/repository";
 import { createJobRoutes } from "./routes/jobs";
 import { createQueue } from "./services/queue";
-import type { HealthResponse, StatsResponse, VersionResponse } from "./types";
+import type {
+  ErrorResponse,
+  HealthResponse,
+  JobFilesResponse,
+  StatsResponse,
+  VersionResponse,
+} from "./types";
 import { createLogger } from "./utils/logger";
 
 export interface AppDependencies {
@@ -66,6 +72,33 @@ export async function createApp(
   }
 
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
+
+  app.get<{ Params: { id: string } }>("/api/commit/:id/files", async (request, reply) => {
+    const { id } = request.params;
+    const job = await jobRepo.getJobByCommit(id);
+    if (!job) {
+      const response: ErrorResponse = { error: "Job not found." };
+      return reply.code(404).send(response);
+    }
+
+    const files = await jobRepo.getFiles(job.id);
+    const response: JobFilesResponse = {
+      jobId: job.id,
+      commit: job.commit,
+      commitShort: job.commitShort,
+      status: job.status,
+      progress: job.progress,
+      files: files.map((f) => ({
+        t: f.file_type,
+        path: f.file_name,
+        s: f.file_size,
+        update: f.file_update_date,
+        commit: f.file_last_commit,
+        hash: f.file_git_hash,
+      })),
+    };
+    return reply.send(response);
+  });
 
   app.get("/api/health", async () => {
     const response: HealthResponse = {

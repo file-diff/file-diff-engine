@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Queue } from "bullmq";
 import type { DatabaseClient } from "../db/database";
 import { createApp } from "../app";
-import type { StatsResponse, VersionResponse } from "../types";
+import type { JobFilesResponse, StatsResponse, VersionResponse } from "../types";
 import { JobRepository } from "../db/repository";
 import { createTestDatabase } from "./helpers/testDatabase";
 
@@ -184,6 +184,65 @@ describe("createApp", () => {
       jobsStored: 2,
       filesStored: 3,
       sizeStored: 37,
+    });
+
+    await app.close();
+  });
+
+  it("returns files for the latest job matching a commit", async () => {
+    const commit = "0123456789abcdef0123456789abcdef01234567";
+    await jobRepo.createJob("job-by-commit", "owner/repo", commit);
+    await jobRepo.insertFiles("job-by-commit", [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_size: 12,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      },
+    ]);
+
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/commit/${commit}/files`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<JobFilesResponse>()).toEqual({
+      jobId: "job-by-commit",
+      commit,
+      commitShort: "0123456",
+      status: "waiting",
+      progress: 0,
+      files: [
+        {
+          t: "t",
+          path: "README.md",
+          s: 12,
+          update: "2024-01-01T00:00:00Z",
+          commit: "abc123",
+          hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it("returns 404 for an unknown commit files endpoint", async () => {
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/commit/0123456789abcdef0123456789abcdef01234567/files",
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: "Job not found.",
     });
 
     await app.close();
