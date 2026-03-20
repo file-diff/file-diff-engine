@@ -11,6 +11,7 @@ describe("createApp", () => {
   let jobRepo: JobRepository;
   let mockQueue: Queue;
   const originalBuildVersion = process.env.BUILD_VERSION;
+  const originalRequestDelayMs = process.env.REQUEST_DELAY_MS;
 
   beforeEach(async () => {
     db = await createTestDatabase();
@@ -25,6 +26,11 @@ describe("createApp", () => {
       delete process.env.BUILD_VERSION;
     } else {
       process.env.BUILD_VERSION = originalBuildVersion;
+    }
+    if (originalRequestDelayMs === undefined) {
+      delete process.env.REQUEST_DELAY_MS;
+    } else {
+      process.env.REQUEST_DELAY_MS = originalRequestDelayMs;
     }
     await db.end();
   });
@@ -59,6 +65,41 @@ describe("createApp", () => {
     expect(response.json<VersionResponse>()).toEqual({
       version: "2026.03.10+abc1234",
     });
+
+    await app.close();
+  });
+
+  it("does not delay requests when REQUEST_DELAY_MS is unset", async () => {
+    delete process.env.REQUEST_DELAY_MS;
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const startedAt = Date.now();
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/health",
+    });
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(response.statusCode).toBe(200);
+    expect(elapsedMs).toBeLessThan(100);
+
+    await app.close();
+  });
+
+  it("delays requests when REQUEST_DELAY_MS is configured", async () => {
+    process.env.REQUEST_DELAY_MS = "40";
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const startedAt = Date.now();
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/health",
+    });
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(response.statusCode).toBe(200);
+    expect(elapsedMs).toBeGreaterThanOrEqual(30);
+    expect(elapsedMs).toBeLessThan(150);
 
     await app.close();
   });
