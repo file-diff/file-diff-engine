@@ -22,6 +22,7 @@ describe("createApp", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     if (originalBuildVersion === undefined) {
       delete process.env.BUILD_VERSION;
     } else {
@@ -186,9 +187,5 @@ describe("createApp", () => {
     });
 
     await app.close();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 });
