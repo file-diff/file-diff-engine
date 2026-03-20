@@ -47,7 +47,6 @@ escape_sql_literal() {
 }
 
 export BUILD_VERSION="${BUILD_VERSION:-$(git rev-parse HEAD)}"
-export REQUEST_DELAY_MS="${REQUEST_DELAY_MS:-0}"
 
 docker compose down
 
