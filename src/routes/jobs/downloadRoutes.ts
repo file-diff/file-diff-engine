@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import * as childProcess from "child_process";
 import { pipeline } from "stream/promises";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   bundledLanguagesInfo,
   bundledThemesInfo,
@@ -39,6 +39,11 @@ export const difftCommandRunner = {
 export const shikiTokenizer = {
   codeToTokens,
 };
+
+function getDownloadRateLimitKey(request: FastifyRequest): string {
+  const params = request.params as { id?: string; hash?: string };
+  return `${request.ip}:${params.id ?? ""}:${params.hash ?? ""}`;
+}
 
 interface ShikiTokenizationOptions {
   language: BundledLanguage | SpecialLanguage;
@@ -84,6 +89,7 @@ export function registerDownloadRoutes(
             process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS,
             DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS
           ),
+          keyGenerator: getDownloadRateLimitKey,
         },
       },
     },

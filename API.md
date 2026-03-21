@@ -717,7 +717,7 @@ Common statuses:
 - `404 Not Found` when the job does not exist
 - `404 Not Found` when the file hash does not exist for the job
 - `404 Not Found` when the file is missing or unreadable on disk
-- `429 Too Many Requests` when the download rate limit is exceeded
+- `429 Too Many Requests` when the per-file download rate limit is exceeded
 
 #### Example
 
@@ -727,7 +727,7 @@ curl -L \
   --output downloaded-file
 ```
 
-Rate-limited response example:
+Per-file rate-limited response example:
 
 ```json
 {

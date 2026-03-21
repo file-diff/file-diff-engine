@@ -692,6 +692,66 @@ describe("Job Routes", () => {
     });
   });
 
+  it("GET /api/jobs/:id/files/hash/:hash/download - should not share rate limits across different files", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-download-parallel-rate-limit-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+    process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX = "1";
+    process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS = "60000";
+    await app.close();
+    app = Fastify();
+    await app.register(createJobRoutes(mockQueue, jobRepo), {
+      prefix: "/api/jobs",
+    });
+
+    const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+    fs.writeFileSync(path.join(treeDir, "README.md"), "hello from disk");
+    fs.writeFileSync(path.join(treeDir, "CHANGELOG.md"), "hello from changelog");
+
+    await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+    await jobRepo.insertFiles(commitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 15,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+      {
+        file_type: "t",
+        file_name: "CHANGELOG.md",
+        file_disk_path: "CHANGELOG.md",
+        file_size: 20,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "def456",
+        file_git_hash: otherFileHash,
+      },
+    ]);
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      app.inject({
+        method: "GET",
+        url: `/api/jobs/${commitHash}/files/hash/${fileHash}/download`,
+      }),
+      app.inject({
+        method: "GET",
+        url: `/api/jobs/${commitHash}/files/hash/${otherFileHash}/download`,
+      }),
+    ]);
+
+    expect(firstResponse.statusCode).toBe(200);
+    expect((firstResponse as unknown as { rawPayload: Buffer }).rawPayload.toString("utf8")).toBe(
+      "hello from disk"
+    );
+    expect(secondResponse.statusCode).toBe(200);
+    expect(
+      (secondResponse as unknown as { rawPayload: Buffer }).rawPayload.toString("utf8")
+    ).toBe("hello from changelog");
+  });
+
   it("GET /api/jobs/files/hash/:leftHash/diff/:rightHash - should return difft JSON output across jobs", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-difft-"));
     tempDirs.push(tmpDir);
