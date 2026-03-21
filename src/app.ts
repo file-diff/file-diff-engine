@@ -1,6 +1,7 @@
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Queue } from "bullmq";
+import { zstdCompressSync } from "node:zlib";
 import {
   getDatabase,
   type DatabaseClient,
@@ -36,6 +37,31 @@ const DEFAULT_STATS_RATE_LIMIT_MAX = 60;
 const DEFAULT_STATS_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_REQUEST_DELAY_MS = 0;
 const logger = createLogger("app");
+
+function acceptsZstdEncoding(acceptEncodingHeader?: string): boolean {
+  if (!acceptEncodingHeader) {
+    return false;
+  }
+
+  return acceptEncodingHeader.split(",").some((encodingEntry) => {
+    const [encoding, ...params] = encodingEntry.trim().toLowerCase().split(";");
+
+    if (encoding !== "zstd") {
+      return false;
+    }
+
+    const qValue = params
+      .map((param) => param.trim())
+      .find((param) => param.startsWith("q="));
+
+    if (!qValue) {
+      return true;
+    }
+
+    const quality = Number.parseFloat(qValue.slice(2));
+    return !Number.isFinite(quality) || quality > 0;
+  });
+}
 
 function getRequestDelayMs(): number {
   const rawDelay = process.env.REQUEST_DELAY_MS;
@@ -119,11 +145,13 @@ export async function createApp(
       })),
     };
 
-    if (format === "json") {
-      return reply.send(jsonResponse);
-    }
+    let payload: string | Buffer;
+    let contentType: string;
 
-    if (format === "csv") {
+    if (format === "json") {
+      payload = JSON.stringify(jsonResponse);
+      contentType = "application/json; charset=utf-8";
+    } else if (format === "csv") {
       // Build CSV header and rows. Include job-level fields on each row for completeness.
       const headers = [
         "jobId",
@@ -164,18 +192,23 @@ export async function createApp(
       ]);
 
       const csvLines = [headers.map(escape).join(",")].concat(rows.map((r) => r.map(escape).join(",")));
-      const csv = csvLines.join("\n");
-
-      reply.header("Content-Type", "text/csv; charset=utf-8");
-      return reply.send(csv);
+      payload = csvLines.join("\n");
+      contentType = "text/csv; charset=utf-8";
+    } else {
+      payload = serializeFiles(files);
+      contentType = "application/octet-stream";
     }
 
-    // binary
-    {
-      const out = serializeFiles(files);
-      reply.header("Content-Type", "application/octet-stream");
-      return reply.send(out);
+    reply.header("Content-Type", contentType);
+    reply.header("Vary", "Accept-Encoding");
+
+    if (acceptsZstdEncoding(request.headers["accept-encoding"])) {
+      const content = typeof payload === "string" ? Buffer.from(payload, "utf8") : payload;
+      reply.header("Content-Encoding", "zstd");
+      return reply.send(zstdCompressSync(content));
     }
+
+    return reply.send(payload);
   });
 
   app.get("/api/health", async () => {
