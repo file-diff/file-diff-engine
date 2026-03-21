@@ -16,6 +16,7 @@ import type {
   StatsResponse,
   VersionResponse,
 } from "./types";
+import { serializeFiles } from "./utils/binarySerializer";
 import { createLogger } from "./utils/logger";
 
 export interface AppDependencies {
@@ -170,94 +171,8 @@ export async function createApp(
     }
 
     // binary
-    // Return concatenated per-file binary records as application/octet-stream.
-    // Record layout per file:
-    // 1 byte  - file type (number) or char code
-    // 2 bytes - name length (uint16 BE)
-    // N bytes - name UTF-8
-    // 4 bytes - update timestamp (uint32 BE, seconds)
-    // 4 bytes - file size (uint32 BE)
-    // 4 bytes - commit prefix (first 4 bytes of hex)
-    // 4 bytes - hash prefix (first 4 bytes of hex)
     {
-      // Helper to safely get a 4-byte buffer from a hex string (first 8 hex chars -> 4 bytes)
-      const hexPrefixTo4Bytes = (hex?: string) => {
-        if (!hex) return Buffer.alloc(4, 0);
-        const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
-        const prefix = clean.slice(0, 8).padEnd(8, "0");
-        try {
-          return Buffer.from(prefix, "hex");
-        } catch (e) {
-          return Buffer.alloc(4, 0);
-        }
-      };
-
-      // Precompute per-file buffers and total length
-      const fileBuffers: Buffer[] = [];
-      let totalLength = 0;
-
-      for (const f of files) {
-        // type: 1 byte
-        let typeByte = 0;
-        if (typeof f.file_type === "number") {
-          typeByte = f.file_type & 0xff;
-        } else if (typeof f.file_type === "string" && f.file_type.length > 0) {
-          typeByte = f.file_type.charCodeAt(0) & 0xff;
-        }
-
-        // name UTF-8 bytes, length as uint16 BE
-        const name = f.file_name ?? "";
-        const nameBuf = Buffer.from(String(name), "utf8");
-        // clamp name length to 65535
-        const nameLen = Math.min(0xffff, nameBuf.length);
-        const nameTrunc = nameBuf.slice(0, nameLen);
-
-        // update date -> unix seconds (4 bytes). Accept string or number.
-        let updateTs = 0;
-        if (f.file_update_date) {
-          const d = typeof f.file_update_date === "number" ? new Date(f.file_update_date) : new Date(String(f.file_update_date));
-          if (!Number.isNaN(d.getTime())) {
-            updateTs = Math.floor(d.getTime() / 1000);
-          }
-        }
-        updateTs = updateTs >>> 0; // ensure uint32
-
-        // size -> uint32
-        let size = 0;
-        if (typeof f.file_size === "number") {
-          size = Math.max(0, Math.floor(f.file_size));
-        } else if (typeof f.file_size === "string") {
-          const parsed = Number.parseInt(f.file_size, 10);
-          if (Number.isFinite(parsed)) size = Math.max(0, Math.floor(parsed));
-        }
-        size = size >>> 0;
-
-        const commitBuf = hexPrefixTo4Bytes(f.file_last_commit);
-        const hashBuf = hexPrefixTo4Bytes(f.file_git_hash);
-
-        const recordLen = 1 + 2 + nameTrunc.length + 4 + 4 + 4 + 4;
-        const buf = Buffer.allocUnsafe(recordLen);
-        let offset = 0;
-        buf.writeUInt8(typeByte, offset);
-        offset += 1;
-        buf.writeUInt16BE(nameTrunc.length, offset);
-        offset += 2;
-        nameTrunc.copy(buf, offset);
-        offset += nameTrunc.length;
-        buf.writeUInt32BE(updateTs >>> 0, offset);
-        offset += 4;
-        buf.writeUInt32BE(size >>> 0, offset);
-        offset += 4;
-        commitBuf.copy(buf, offset, 0, 4);
-        offset += 4;
-        hashBuf.copy(buf, offset, 0, 4);
-        offset += 4;
-
-        fileBuffers.push(buf);
-        totalLength += buf.length;
-      }
-
-      const out = Buffer.concat(fileBuffers, totalLength);
+      const out = serializeFiles(files);
       reply.header("Content-Type", "application/octet-stream");
       return reply.send(out);
     }
