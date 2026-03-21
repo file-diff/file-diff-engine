@@ -59,7 +59,7 @@ function acceptsZstdEncoding(acceptEncodingHeader?: string): boolean {
     }
 
     const quality = Number.parseFloat(qValue.slice(2));
-    return !Number.isFinite(quality) || quality > 0;
+    return Number.isFinite(quality) && quality > 0;
   });
 }
 
