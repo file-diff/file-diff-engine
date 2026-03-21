@@ -651,11 +651,19 @@ Returns compact metadata for files that were processed for the latest job matchi
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | Full or short commit SHA (minimum 2 characters) |
 
+#### Query arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `format` | `string` | No | Response format: `json` (default), `csv`, or `binary` |
+
 #### Success response
 
 Status: `200 OK`
 
 This endpoint returns the exact same response body as `GET /api/jobs/:id/files`.
+
+When the client sends `Accept-Encoding: zstd`, the endpoint returns the selected format compressed with Zstandard and includes `Content-Encoding: zstd`.
 
 #### Error response
 
@@ -672,6 +680,7 @@ Common statuses:
 
 ```bash
 curl -X GET \
+  -H 'Accept-Encoding: zstd' \
   https://your-host.example.com/api/commit/0123456789abcdef0123456789abcdef01234567/files
 ```
 

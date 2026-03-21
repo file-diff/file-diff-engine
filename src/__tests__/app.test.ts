@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Queue } from "bullmq";
+import { zstdDecompressSync } from "node:zlib";
 import type { DatabaseClient } from "../db/database";
 import { createApp } from "../app";
 import type { JobFilesResponse, StatsResponse, VersionResponse } from "../types";
 import { JobRepository } from "../db/repository";
 import { createTestDatabase } from "./helpers/testDatabase";
+import { deserializeFiles } from "../utils/binarySerializer";
 
 describe("createApp", () => {
   let db: DatabaseClient;
@@ -224,10 +226,150 @@ describe("createApp", () => {
           s: 12,
           update: "2024-01-01T00:00:00Z",
           commit: "abc123",
-          hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          hash: "aaaaaaaa",
         },
       ],
     });
+
+    await app.close();
+  });
+
+  it("returns zstd-compressed json for commit files when requested", async () => {
+    const commit = "1123456789abcdef0123456789abcdef01234567";
+    await jobRepo.createJob("job-zstd-json", "owner/repo", commit);
+    await jobRepo.insertFiles("job-zstd-json", [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_size: 12,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc12345",
+        file_git_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      },
+    ]);
+
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/commit/${commit}/files`,
+      headers: {
+        "accept-encoding": "gzip, zstd",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-encoding"]).toBe("zstd");
+    expect(response.headers["content-type"]).toContain("application/json");
+    expect(response.headers["vary"]).toContain("Accept-Encoding");
+
+    const decompressed = zstdDecompressSync(
+      (response as unknown as { rawPayload: Buffer }).rawPayload
+    ).toString("utf8");
+
+    expect(JSON.parse(decompressed)).toEqual({
+      jobId: "job-zstd-json",
+      commit,
+      commitShort: "1123456",
+      status: "waiting",
+      progress: 0,
+      files: [
+        {
+          t: "t",
+          path: "README.md",
+          s: 12,
+          update: "2024-01-01T00:00:00Z",
+          commit: "abc12345",
+          hash: "aaaaaaaa",
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it("returns zstd-compressed csv for commit files when requested", async () => {
+    const commit = "2123456789abcdef0123456789abcdef01234567";
+    await jobRepo.createJob("job-zstd-csv", "owner/repo", commit);
+    await jobRepo.insertFiles("job-zstd-csv", [
+      {
+        file_type: "b",
+        file_name: "assets/logo.png",
+        file_size: 25,
+        file_update_date: "2024-01-02T00:00:00Z",
+        file_last_commit: "def4567890",
+        file_git_hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      },
+    ]);
+
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/commit/${commit}/files?format=csv`,
+      headers: {
+        "accept-encoding": "zstd",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-encoding"]).toBe("zstd");
+    expect(response.headers["content-type"]).toContain("text/csv");
+
+    const decompressed = zstdDecompressSync(
+      (response as unknown as { rawPayload: Buffer }).rawPayload
+    ).toString("utf8");
+
+    expect(decompressed).toBe(
+      "jobId,commit,commitShort,status,progress,file_type,file_name,file_size,file_update_date,file_last_commit,file_git_hash\n" +
+        "job-zstd-csv,2123456789abcdef0123456789abcdef01234567,2123456,waiting,0,b,assets/logo.png,25,2024-01-02T00:00:00Z,def45678,bbbbbbbb"
+    );
+
+    await app.close();
+  });
+
+  it("returns zstd-compressed binary for commit files when requested", async () => {
+    const commit = "3123456789abcdef0123456789abcdef01234567";
+    await jobRepo.createJob("job-zstd-binary", "owner/repo", commit);
+    await jobRepo.insertFiles("job-zstd-binary", [
+      {
+        file_type: "x",
+        file_name: "bin/run.sh",
+        file_size: 42,
+        file_update_date: "2024-01-03T00:00:00Z",
+        file_last_commit: "fedcba9876543210",
+        file_git_hash: "cccccccccccccccccccccccccccccccccccccccc",
+      },
+    ]);
+
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/commit/${commit}/files?format=binary`,
+      headers: {
+        "accept-encoding": "br, zstd;q=1.0",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-encoding"]).toBe("zstd");
+    expect(response.headers["content-type"]).toContain("application/octet-stream");
+
+    const decompressed = zstdDecompressSync(
+      (response as unknown as { rawPayload: Buffer }).rawPayload
+    );
+
+    expect(deserializeFiles(decompressed)).toEqual([
+      {
+        fileType: "x",
+        fileName: "bin/run.sh",
+        updateTimestamp: Math.floor(new Date("2024-01-03T00:00:00Z").getTime() / 1000),
+        fileSize: 42,
+        commitHex: "fedcba98",
+        hashHex: "cccccccc",
+      },
+    ]);
 
     await app.close();
   });
