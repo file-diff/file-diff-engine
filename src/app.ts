@@ -52,13 +52,13 @@ function acceptsZstdEncoding(acceptEncodingHeader?: string): boolean {
 
     const qValue = params
       .map((param) => param.trim())
-      .find((param) => param.startsWith("q="));
+      .find((param) => /^q\s*=/.test(param));
 
     if (!qValue) {
       return true;
     }
 
-    const quality = Number.parseFloat(qValue.slice(2));
+    const quality = Number.parseFloat(qValue.split("=")[1]?.trim() ?? "");
     return Number.isFinite(quality) && quality > 0;
   });
 }
