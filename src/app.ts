@@ -145,70 +145,80 @@ export async function createApp(
       })),
     };
 
-    let payload: string | Buffer;
-    let contentType: string;
-
-    if (format === "json") {
-      payload = JSON.stringify(jsonResponse);
-      contentType = "application/json; charset=utf-8";
-    } else if (format === "csv") {
+    const responsePayload =
+      format === "json"
+        ? {
+            payload: JSON.stringify(jsonResponse),
+            contentType: "application/json; charset=utf-8",
+          }
+        : format === "csv"
+          ? (() => {
       // Build CSV header and rows. Include job-level fields on each row for completeness.
-      const headers = [
-        "jobId",
-        "commit",
-        "commitShort",
-        "status",
-        "progress",
-        "file_type",
-        "file_name",
-        "file_size",
-        "file_update_date",
-        "file_last_commit",
-        "file_git_hash",
-      ];
+              const headers = [
+                "jobId",
+                "commit",
+                "commitShort",
+                "status",
+                "progress",
+                "file_type",
+                "file_name",
+                "file_size",
+                "file_update_date",
+                "file_last_commit",
+                "file_git_hash",
+              ];
 
-      const escape = (v: unknown) => {
-        if (v === null || v === undefined) return "";
-        const s = String(v);
-        // If string contains quote, comma, or newline, wrap in quotes and escape quotes.
-        if (/[",\n]/.test(s)) {
-          return '"' + s.replace(/"/g, '""') + '"';
-        }
-        return s;
-      };
+              const escape = (v: unknown) => {
+                if (v === null || v === undefined) return "";
+                const s = String(v);
+                // If string contains quote, comma, or newline, wrap in quotes and escape quotes.
+                if (/[",\n]/.test(s)) {
+                  return '"' + s.replace(/"/g, '""') + '"';
+                }
+                return s;
+              };
 
-      const rows = files.map((f) => [
-        jsonResponse.jobId,
-        jsonResponse.commit,
-        jsonResponse.commitShort,
-        jsonResponse.status,
-        jsonResponse.progress,
-        f.file_type,
-        f.file_name,
-        f.file_size,
-        f.file_update_date,
-        f.file_last_commit.slice(0, 8),
-        f.file_git_hash.slice(0, 8),
-      ]);
+              const rows = files.map((f) => [
+                jsonResponse.jobId,
+                jsonResponse.commit,
+                jsonResponse.commitShort,
+                jsonResponse.status,
+                jsonResponse.progress,
+                f.file_type,
+                f.file_name,
+                f.file_size,
+                f.file_update_date,
+                f.file_last_commit.slice(0, 8),
+                f.file_git_hash.slice(0, 8),
+              ]);
 
-      const csvLines = [headers.map(escape).join(",")].concat(rows.map((r) => r.map(escape).join(",")));
-      payload = csvLines.join("\n");
-      contentType = "text/csv; charset=utf-8";
-    } else {
-      payload = serializeFiles(files);
-      contentType = "application/octet-stream";
-    }
+              const csvLines = [headers.map(escape).join(",")].concat(
+                rows.map((r) => r.map(escape).join(","))
+              );
 
-    reply.header("Content-Type", contentType);
+              return {
+                payload: csvLines.join("\n"),
+                contentType: "text/csv; charset=utf-8",
+              };
+            })()
+          : {
+              payload: serializeFiles(files),
+              contentType: "application/octet-stream",
+            };
+
+    reply.header("Content-Type", responsePayload.contentType);
     reply.header("Vary", "Accept-Encoding");
 
     if (acceptsZstdEncoding(request.headers["accept-encoding"])) {
-      const content = typeof payload === "string" ? Buffer.from(payload, "utf8") : payload;
+      const content =
+        typeof responsePayload.payload === "string"
+          ? Buffer.from(responsePayload.payload, "utf8")
+          : responsePayload.payload;
       reply.header("Content-Encoding", "zstd");
       return reply.send(zstdCompressSync(content));
     }
 
-    return reply.send(payload);
+    return reply.send(responsePayload.payload);
   });
 
   app.get("/api/health", async () => {
