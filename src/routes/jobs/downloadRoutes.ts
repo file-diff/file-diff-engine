@@ -11,7 +11,7 @@ import {
   type BundledTheme,
   type SpecialLanguage,
 } from "shiki";
-import { JobRepository, type FileLookupRecord } from "../../db/repository";
+import { JobRepository, AmbiguousHashError, type FileLookupRecord } from "../../db/repository";
 import type { ErrorResponse } from "../../types";
 import {
   DEFAULT_DOWNLOAD_RATE_LIMIT_MAX,
@@ -89,23 +89,42 @@ export function registerDownloadRoutes(
     },
     async (request, reply) => {
       const { id, hash } = request.params;
-      const job = await jobRepo.getJob(id);
+
+      let job;
+      try {
+        job = await jobRepo.getJob(id);
+      } catch (error) {
+        if (error instanceof AmbiguousHashError) {
+          const response: ErrorResponse = { error: error.message };
+          return reply.code(400).send(response);
+        }
+        throw error;
+      }
       if (!job) {
         const response: ErrorResponse = { error: "Job not found." };
         return reply.code(404).send(response);
       }
 
-      const file = await jobRepo.getFileByHash(id, hash);
+      let file;
+      try {
+        file = await jobRepo.getFileByHash(job.id, hash);
+      } catch (error) {
+        if (error instanceof AmbiguousHashError) {
+          const response: ErrorResponse = { error: error.message };
+          return reply.code(400).send(response);
+        }
+        throw error;
+      }
       if (!file) {
         const response: ErrorResponse = {
-          error: `File with hash '${hash}' was not found for job '${id}' in the database.`,
+          error: `File with hash '${hash}' was not found for job '${job.id}' in the database.`,
         };
         return reply.code(404).send(response);
       }
 
       let filePath: string;
       try {
-        filePath = resolveJobFilePath(id, file.fileDiskPath);
+        filePath = resolveJobFilePath(job.id, file.fileDiskPath);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Invalid stored file path.";
@@ -122,14 +141,14 @@ export function registerDownloadRoutes(
             : "Failed to check file accessibility on disk.";
         const response: ErrorResponse = {
           error:
-            `File with hash '${hash}' was found in the database for job '${id}', ` +
+            `File with hash '${hash}' was found in the database for job '${job.id}', ` +
             `but the file is missing or unreadable on disk at '${filePath}'. ${message}`,
         };
         return reply.code(404).send(response);
       }
 
       logger.info("Streaming file download", {
-        jobId: id,
+        jobId: job.id,
         hash,
         fileName: file.fileName,
         filePath,
@@ -145,7 +164,7 @@ export function registerDownloadRoutes(
         await pipeline(fs.createReadStream(filePath), reply.raw);
       } catch (error) {
         logger.error("Failed to stream file download", {
-          jobId: id,
+          jobId: job.id,
           hash,
           fileName: file.fileName,
           filePath,
@@ -241,7 +260,19 @@ async function resolveAccessibleFileByHash(
   jobRepo: JobRepository,
   hash: string
 ): Promise<ResolvedJobFile | FileLookupErrorResult> {
-  const files = await jobRepo.getFilesByHash(hash);
+  let files: FileLookupRecord[];
+  try {
+    files = await jobRepo.getFilesByHash(hash);
+  } catch (error) {
+    if (error instanceof AmbiguousHashError) {
+      return {
+        statusCode: 400,
+        response: { error: error.message },
+      };
+    }
+    throw error;
+  }
+
   if (files.length === 0) {
     return {
       statusCode: 404,

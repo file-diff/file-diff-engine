@@ -247,4 +247,53 @@ describe("createApp", () => {
 
     await app.close();
   });
+
+  it("returns files for a job found by short commit prefix", async () => {
+    const commit = "0123456789abcdef0123456789abcdef01234567";
+    await jobRepo.createJob("job-short-commit", "owner/repo", commit);
+    await jobRepo.insertFiles("job-short-commit", [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_size: 12,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      },
+    ]);
+
+    const { app } = await createApp({ db, queue: mockQueue });
+    const shortCommit = commit.slice(0, 8);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/commit/${shortCommit}/files`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<JobFilesResponse>();
+    expect(body.commit).toBe(commit);
+    expect(body.files).toHaveLength(1);
+
+    await app.close();
+  });
+
+  it("returns 400 for an ambiguous short commit prefix", async () => {
+    const commit1 = "ab11111111111111111111111111111111111111";
+    const commit2 = "ab22222222222222222222222222222222222222";
+    await jobRepo.createJob("job-ambig-a", "owner/repo", commit1);
+    await jobRepo.createJob("job-ambig-b", "owner/repo", commit2);
+
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/commit/ab/files",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain("Multiple");
+
+    await app.close();
+  });
 });

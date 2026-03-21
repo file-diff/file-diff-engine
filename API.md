@@ -525,7 +525,7 @@ Returns the current status and progress for a previously created job.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | `string` | Yes | Job ID / commit SHA |
+| `id` | `string` | Yes | Job ID / commit SHA (full or short prefix, minimum 2 characters) |
 
 #### Success response
 
@@ -553,6 +553,7 @@ Status: `200 OK`
 
 Common statuses:
 
+- `400 Bad Request` when a short hash prefix matches multiple distinct jobs (ambiguous)
 - `404 Not Found` when the job does not exist
 
 #### Example
@@ -572,7 +573,7 @@ Returns compact metadata for files that were processed for a job.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | `string` | Yes | Job ID / commit SHA |
+| `id` | `string` | Yes | Job ID / commit SHA (full or short prefix, minimum 2 characters) |
 
 #### Success response
 
@@ -606,6 +607,7 @@ Each `files` item contains:
 
 Common statuses:
 
+- `400 Bad Request` when a short hash prefix matches multiple distinct jobs (ambiguous)
 - `404 Not Found` when the job does not exist
 
 #### Example
@@ -647,7 +649,7 @@ Returns compact metadata for files that were processed for the latest job matchi
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | `string` | Yes | Full commit SHA |
+| `id` | `string` | Yes | Full or short commit SHA (minimum 2 characters) |
 
 #### Success response
 
@@ -663,6 +665,7 @@ This endpoint returns the exact same response body as `GET /api/jobs/:id/files`.
 
 Common statuses:
 
+- `400 Bad Request` when a short commit prefix matches multiple distinct commits (ambiguous)
 - `404 Not Found` when no job exists for the given commit
 
 #### Example
@@ -682,8 +685,8 @@ Downloads the file content for a file that belongs to a processed job.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | `string` | Yes | Job ID / commit SHA |
-| `hash` | `string` | Yes | Git blob hash for the requested file |
+| `id` | `string` | Yes | Job ID / commit SHA (full or short prefix, minimum 2 characters) |
+| `hash` | `string` | Yes | Git blob hash for the requested file (full or short prefix, minimum 2 characters) |
 
 #### Success response
 
@@ -714,6 +717,7 @@ Possible payloads include:
 
 Common statuses:
 
+- `400 Bad Request` when a short hash prefix matches multiple distinct jobs or files (ambiguous)
 - `404 Not Found` when the job does not exist
 - `404 Not Found` when the file hash does not exist for the job
 - `404 Not Found` when the file is missing or unreadable on disk
@@ -747,7 +751,7 @@ Runs Shiki tokenization for a file found in the database by its hash and returns
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `hash` | `string` | Yes | Git blob hash of the file to tokenize |
+| `hash` | `string` | Yes | Git blob hash of the file to tokenize (full or short prefix, minimum 2 characters) |
 
 #### Query arguments
 
@@ -773,6 +777,7 @@ Response body:
 Common statuses:
 
 - `400 Bad Request` when `theme` or `language` is not a supported Shiki option
+- `400 Bad Request` when a short hash prefix matches multiple distinct files (ambiguous)
 - `404 Not Found` when the file hash does not exist in the database
 - `404 Not Found` when the file is missing or unreadable on disk
 - `500 Internal Server Error` when the stored file path is invalid or Shiki tokenization fails
@@ -814,8 +819,8 @@ Runs `difft --display json` against two files found in the database by their has
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `leftHash` | `string` | Yes | Git blob hash of the left-hand file |
-| `rightHash` | `string` | Yes | Git blob hash of the right-hand file |
+| `leftHash` | `string` | Yes | Git blob hash of the left-hand file (full or short prefix, minimum 2 characters) |
+| `rightHash` | `string` | Yes | Git blob hash of the right-hand file (full or short prefix, minimum 2 characters) |
 
 #### Success response
 
@@ -833,6 +838,7 @@ Response body:
 
 Common statuses:
 
+- `400 Bad Request` when a short hash prefix matches multiple distinct files (ambiguous)
 - `404 Not Found` when either file hash does not exist in the database
 - `404 Not Found` when either file is missing or unreadable on disk
 - `500 Internal Server Error` when the stored file path is invalid or the `difft` command fails

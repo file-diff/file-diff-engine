@@ -6,7 +6,7 @@ import {
   type DatabaseClient,
   type DatabaseConfig,
 } from "./db/database";
-import { JobRepository } from "./db/repository";
+import { JobRepository, AmbiguousHashError } from "./db/repository";
 import { createJobRoutes } from "./routes/jobs";
 import { createQueue } from "./services/queue";
 import type {
@@ -75,7 +75,16 @@ export async function createApp(
 
   app.get<{ Params: { id: string } }>("/api/commit/:id/files", async (request, reply) => {
     const { id } = request.params;
-    const job = await jobRepo.getJobByCommit(id);
+    let job;
+    try {
+      job = await jobRepo.getJobByCommit(id);
+    } catch (error) {
+      if (error instanceof AmbiguousHashError) {
+        const response: ErrorResponse = { error: error.message };
+        return reply.code(400).send(response);
+      }
+      throw error;
+    }
     if (!job) {
       const response: ErrorResponse = { error: "Job not found." };
       return reply.code(404).send(response);
