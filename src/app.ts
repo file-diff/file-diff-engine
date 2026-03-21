@@ -102,8 +102,8 @@ export async function createApp(
         path: f.file_name,
         s: f.file_size,
         update: f.file_update_date,
-        commit: f.file_last_commit,
-        hash: f.file_git_hash,
+        commit: f.file_last_commit.slice(0, 8),
+        hash: f.file_git_hash.slice(0, 8),
       })),
     };
     return reply.send(response);
