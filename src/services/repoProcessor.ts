@@ -359,7 +359,7 @@ function getAllEntries(
       if (item.isSymbolicLink()) {
         results.push({ fullPath, kind: "symlink", gitEntry });
       } else if (item.isDirectory()) {
-        results.push({ fullPath, kind: "directory" });
+        results.push({ fullPath, kind: "directory", gitEntry: undefined });
         walk(fullPath);
       } else {
         results.push({ fullPath, kind: "file", gitEntry });
