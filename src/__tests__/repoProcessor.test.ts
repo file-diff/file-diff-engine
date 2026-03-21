@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { execSync } from "child_process";
+import type { FileRecord } from "../types";
 import {
   getFileTypeFromGitMode,
   listRepositoryRefs,
@@ -138,6 +139,65 @@ describe("repoProcessor – local clone simulation", () => {
 
       // Verify the callback type is accepted
       expect(typeof callback).toBe("function");
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should include tracked git hashes in discovered file records", async () => {
+    const testDir = path.join(os.tmpdir(), `fde-discovery-test-${Date.now()}`);
+    const repoDir = path.join(testDir, "origin");
+    const workDir = path.join(testDir, "work");
+
+    try {
+      createTestRepo(repoDir);
+      const commit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      let discoveredRecords: FileRecord[] | undefined;
+
+      await processRepository(`file://${repoDir}`, commit, workDir, {
+        onFilesDiscovered: async (files) => {
+          discoveredRecords = files;
+        },
+      });
+
+      expect(discoveredRecords).toBeDefined();
+
+      const helloHash = execSync("git hash-object --no-filters -- hello.txt", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+      const scriptHash = execSync("git hash-object --no-filters -- script.sh", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      expect(discoveredRecords).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            file_name: "hello.txt",
+            file_type: "t",
+            file_git_hash: helloHash,
+            file_last_commit: "",
+            file_update_date: "",
+          }),
+          expect.objectContaining({
+            file_name: "script.sh",
+            file_type: "t",
+            file_git_hash: scriptHash,
+            file_last_commit: "",
+            file_update_date: "",
+          }),
+          expect.objectContaining({
+            file_name: "src",
+            file_type: "d",
+            file_git_hash: "",
+          }),
+        ])
+      );
     } finally {
       fs.rmSync(testDir, { recursive: true, force: true });
     }

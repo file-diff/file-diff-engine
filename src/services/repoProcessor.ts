@@ -235,8 +235,9 @@ export async function processRepository(
     commit,
   ]);
 
+  const gitEntriesByPath = await getTrackedGitEntries(cloneDir);
   // Gather all file/directory entries (excluding .git)
-  const entries = getAllEntries(cloneDir);
+  const entries = getAllEntries(cloneDir, gitEntriesByPath);
   const total = entries.length;
   logger.debug("Discovered repository entries", { repo, commit, total });
   const initialRecords = entries.map((entry) => createInitialRecord(cloneDir, entry));
@@ -267,7 +268,7 @@ export async function processRepository(
           ? fs.lstatSync(entry.fullPath)
           : fs.statSync(entry.fullPath);
       const binary = entry.kind === "file" ? isBinaryFile(entry.fullPath) : false;
-      const gitEntry = await getGitEntryInfo(cloneDir, relativePath);
+      const gitEntry = entry.gitEntry;
       if (!gitEntry) {
         throw new Error(`Failed to read git metadata for path: ${relativePath}`);
       }
@@ -307,6 +308,12 @@ function getRepositoryCacheDir(repoUrl: string, workDir: string): string {
 interface EntryInfo {
   fullPath: string;
   kind: "directory" | "file" | "symlink";
+  gitEntry?: GitEntryInfo;
+}
+
+interface GitEntryInfo {
+  mode: string;
+  hash: string;
 }
 
 function createInitialRecord(repoDir: string, entry: EntryInfo): FileRecord {
@@ -317,7 +324,7 @@ function createInitialRecord(repoDir: string, entry: EntryInfo): FileRecord {
     file_size: 0,
     file_update_date: "",
     file_last_commit: "",
-    file_git_hash: "",
+    file_git_hash: entry.gitEntry?.hash ?? "",
   };
 }
 
@@ -336,7 +343,10 @@ function getInitialFileType(kind: EntryInfo["kind"]): FileRecord["file_type"] {
 }
 
 /** Recursively list all files and directories, excluding .git */
-function getAllEntries(dir: string): EntryInfo[] {
+function getAllEntries(
+  dir: string,
+  gitEntriesByPath: Map<string, GitEntryInfo>
+): EntryInfo[] {
   const results: EntryInfo[] = [];
 
   function walk(currentDir: string): void {
@@ -344,13 +354,15 @@ function getAllEntries(dir: string): EntryInfo[] {
     for (const item of items) {
       if (item.name === ".git") continue;
       const fullPath = path.join(currentDir, item.name);
+      const relativePath = path.relative(dir, fullPath).split(path.sep).join("/");
+      const gitEntry = gitEntriesByPath.get(relativePath);
       if (item.isSymbolicLink()) {
-        results.push({ fullPath, kind: "symlink" });
+        results.push({ fullPath, kind: "symlink", gitEntry });
       } else if (item.isDirectory()) {
         results.push({ fullPath, kind: "directory" });
         walk(fullPath);
       } else {
-        results.push({ fullPath, kind: "file" });
+        results.push({ fullPath, kind: "file", gitEntry });
       }
     }
   }
@@ -359,25 +371,23 @@ function getAllEntries(dir: string): EntryInfo[] {
   return results;
 }
 
-async function getGitEntryInfo(
-  repoDir: string,
-  relativePath: string
-): Promise<{ mode: string; hash: string } | null> {
-  const rel = relativePath.split(path.sep).join("/");
-  const out = await runGitCommand(repoDir, ["ls-files", "--stage", "--", rel]);
-  if (!out) {
-    return null;
+async function getTrackedGitEntries(repoDir: string): Promise<Map<string, GitEntryInfo>> {
+  const out = await runGitCommand(repoDir, ["ls-files", "--stage"]);
+  const entries = new Map<string, GitEntryInfo>();
+
+  for (const line of out.split("\n").filter(Boolean)) {
+    const match = line.match(/^(\d{6}) ([a-f0-9]{40}) \d+\t(.+)$/);
+    if (!match) {
+      throw new Error(`Unexpected git ls-files output: ${line}`);
+    }
+
+    entries.set(match[3], {
+      mode: match[1],
+      hash: match[2],
+    });
   }
 
-  const match = out.match(/^(\d{6}) ([a-f0-9]{40}) \d+\t/);
-  if (!match) {
-    throw new Error(`Unexpected git ls-files output for path '${rel}': ${out}`);
-  }
-
-  return {
-    mode: match[1],
-    hash: match[2],
-  };
+  return entries;
 }
 
 /** Get the last commit SHA that touched a given path. */
