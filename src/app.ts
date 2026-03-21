@@ -73,8 +73,19 @@ export async function createApp(
 
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
 
-  app.get<{ Params: { id: string } }>("/api/commit/:id/files", async (request, reply) => {
+  app.get<{
+    Params: { id: string };
+    Querystring: { format?: string };
+  }>("/api/commit/:id/files", async (request, reply) => {
     const { id } = request.params;
+    const format = (request.query?.format || "json").toLowerCase();
+    const allowed = new Set(["json", "csv", "binary"]);
+
+    if (!allowed.has(format)) {
+      const response: ErrorResponse = { error: "Invalid format. Allowed: json, csv, binary." };
+      return reply.code(400).send(response);
+    }
+
     let job;
     try {
       job = await jobRepo.getJobByCommit(id);
@@ -91,7 +102,7 @@ export async function createApp(
     }
 
     const files = await jobRepo.getFiles(job.id);
-    const response: JobFilesResponse = {
+    const jsonResponse: JobFilesResponse = {
       jobId: job.id,
       commit: job.commit,
       commitShort: job.commitShort,
@@ -106,7 +117,65 @@ export async function createApp(
         hash: f.file_git_hash.slice(0, 8),
       })),
     };
-    return reply.send(response);
+
+    if (format === "json") {
+      return reply.send(jsonResponse);
+    }
+
+    if (format === "csv") {
+      // Build CSV header and rows. Include job-level fields on each row for completeness.
+      const headers = [
+        "jobId",
+        "commit",
+        "commitShort",
+        "status",
+        "progress",
+        "file_type",
+        "file_name",
+        "file_size",
+        "file_update_date",
+        "file_last_commit",
+        "file_git_hash",
+      ];
+
+      const escape = (v: unknown) => {
+        if (v === null || v === undefined) return "";
+        const s = String(v);
+        // If string contains quote, comma, or newline, wrap in quotes and escape quotes.
+        if (/[",\n]/.test(s)) {
+          return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+      };
+
+      const rows = files.map((f) => [
+        jsonResponse.jobId,
+        jsonResponse.commit,
+        jsonResponse.commitShort,
+        jsonResponse.status,
+        jsonResponse.progress,
+        f.file_type,
+        f.file_name,
+        f.file_size,
+        f.file_update_date,
+        f.file_last_commit.slice(0, 8),
+        f.file_git_hash.slice(0, 8),
+      ]);
+
+      const csvLines = [headers.map(escape).join(",")].concat(rows.map((r) => r.map(escape).join(",")));
+      const csv = csvLines.join("\n");
+
+      reply.header("Content-Type", "text/csv; charset=utf-8");
+      return reply.send(csv);
+    }
+
+    // binary
+    // Return raw JSON bytes as application/octet-stream. This keeps the response compact
+    // and allows clients to choose how to deserialize (e.g., treat as binary payload).
+    const buf = Buffer.from(JSON.stringify(jsonResponse));
+    reply.header("Content-Type", "application/octet-stream");
+    reply.header("Content-Length", String(buf.length));
+    return reply.send(buf);
   });
 
   app.get("/api/health", async () => {
