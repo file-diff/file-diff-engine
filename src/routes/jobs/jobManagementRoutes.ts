@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { Queue } from "bullmq";
-import { JobRepository } from "../../db/repository";
+import { JobRepository, AmbiguousHashError } from "../../db/repository";
 import type {
   ErrorResponse,
   JobFilesResponse,
@@ -115,7 +115,16 @@ export function registerJobManagementRoutes(
    */
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
     const { id } = request.params;
-    const job = await jobRepo.getJob(id);
+    let job;
+    try {
+      job = await jobRepo.getJob(id);
+    } catch (error) {
+      if (error instanceof AmbiguousHashError) {
+        const response: ErrorResponse = { error: error.message };
+        return reply.code(400).send(response);
+      }
+      throw error;
+    }
     if (!job) {
       const response: ErrorResponse = { error: "Job not found." };
       return reply.code(404).send(response);
@@ -129,13 +138,22 @@ export function registerJobManagementRoutes(
    */
   app.get<{ Params: { id: string } }>("/:id/files", async (request, reply) => {
     const { id } = request.params;
-    const job = await jobRepo.getJob(id);
+    let job;
+    try {
+      job = await jobRepo.getJob(id);
+    } catch (error) {
+      if (error instanceof AmbiguousHashError) {
+        const response: ErrorResponse = { error: error.message };
+        return reply.code(400).send(response);
+      }
+      throw error;
+    }
     if (!job) {
       const response: ErrorResponse = { error: "Job not found." };
       return reply.code(404).send(response);
     }
 
-    const files = await jobRepo.getFiles(id);
+    const files = await jobRepo.getFiles(job.id);
     // Do not change the structure of the response, as the frontend relies on it
     const response: JobFilesResponse = {
       jobId: job.id,

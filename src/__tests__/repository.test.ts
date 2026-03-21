@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { DatabaseClient } from "../db/database";
-import { JobRepository } from "../db/repository";
+import { JobRepository, AmbiguousHashError } from "../db/repository";
 import type { FileRecord } from "../types";
 import { createTestDatabase } from "./helpers/testDatabase";
 
@@ -249,5 +249,180 @@ describe("JobRepository", () => {
         fileHash: sharedHash,
       },
     ]);
+  });
+
+  describe("short hash support", () => {
+    it("should find a job by short id prefix", async () => {
+      await repo.createJob(
+        "0123456789abcdef0123456789abcdef01234567",
+        "owner/repo",
+        "0123456789abcdef0123456789abcdef01234567"
+      );
+      const job = await repo.getJob("0123456");
+      expect(job).toBeDefined();
+      expect(job!.id).toBe("0123456789abcdef0123456789abcdef01234567");
+    });
+
+    it("should throw AmbiguousHashError when short id matches multiple jobs", async () => {
+      await repo.createJob(
+        "aa11111111111111111111111111111111111111",
+        "owner/repo",
+        "aa11111111111111111111111111111111111111"
+      );
+      await repo.createJob(
+        "aa22222222222222222222222222222222222222",
+        "owner/repo",
+        "aa22222222222222222222222222222222222222"
+      );
+      await expect(repo.getJob("aa")).rejects.toThrow(AmbiguousHashError);
+    });
+
+    it("should return undefined when short id matches no jobs", async () => {
+      const job = await repo.getJob("ff");
+      expect(job).toBeUndefined();
+    });
+
+    it("should find a job by short commit prefix", async () => {
+      await repo.createJob(
+        "job-short-commit",
+        "owner/repo",
+        "abcdef1234567890abcdef1234567890abcdef12"
+      );
+      const job = await repo.getJobByCommit("abcdef12");
+      expect(job).toBeDefined();
+      expect(job!.commit).toBe(
+        "abcdef1234567890abcdef1234567890abcdef12"
+      );
+    });
+
+    it("should throw AmbiguousHashError when short commit matches multiple distinct commits", async () => {
+      await repo.createJob(
+        "job-ambig-1",
+        "owner/repo",
+        "bb11111111111111111111111111111111111111"
+      );
+      await repo.createJob(
+        "job-ambig-2",
+        "owner/repo",
+        "bb22222222222222222222222222222222222222"
+      );
+      await expect(repo.getJobByCommit("bb")).rejects.toThrow(
+        AmbiguousHashError
+      );
+    });
+
+    it("should find a file by short hash prefix within a job", async () => {
+      await repo.createJob("job-short-file", "owner/repo", "main");
+      await repo.insertFiles("job-short-file", [
+        {
+          file_type: "t",
+          file_name: "readme.txt",
+          file_disk_path: "readme.txt",
+          file_size: 10,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "abc",
+          file_git_hash:
+            "cc11111111111111111111111111111111111111",
+        },
+      ]);
+      const file = await repo.getFileByHash("job-short-file", "cc1111");
+      expect(file).toBeDefined();
+      expect(file!.fileHash).toBe(
+        "cc11111111111111111111111111111111111111"
+      );
+    });
+
+    it("should throw AmbiguousHashError when short file hash matches multiple distinct hashes in a job", async () => {
+      await repo.createJob("job-ambig-file", "owner/repo", "main");
+      await repo.insertFiles("job-ambig-file", [
+        {
+          file_type: "t",
+          file_name: "a.txt",
+          file_disk_path: "a.txt",
+          file_size: 10,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "abc",
+          file_git_hash:
+            "dd11111111111111111111111111111111111111",
+        },
+        {
+          file_type: "t",
+          file_name: "b.txt",
+          file_disk_path: "b.txt",
+          file_size: 10,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "abc",
+          file_git_hash:
+            "dd22222222222222222222222222222222222222",
+        },
+      ]);
+      await expect(
+        repo.getFileByHash("job-ambig-file", "dd")
+      ).rejects.toThrow(AmbiguousHashError);
+    });
+
+    it("should find files by short hash prefix across jobs", async () => {
+      const fullHash = "ee11111111111111111111111111111111111111";
+      await repo.createJob("job-cross-1", "owner/repo", "main1");
+      await repo.createJob("job-cross-2", "owner/repo", "main2");
+      await repo.insertFiles("job-cross-1", [
+        {
+          file_type: "t",
+          file_name: "a.txt",
+          file_disk_path: "a.txt",
+          file_size: 10,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "abc",
+          file_git_hash: fullHash,
+        },
+      ]);
+      await repo.insertFiles("job-cross-2", [
+        {
+          file_type: "t",
+          file_name: "a.txt",
+          file_disk_path: "a.txt",
+          file_size: 10,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "abc",
+          file_git_hash: fullHash,
+        },
+      ]);
+      const files = await repo.getFilesByHash("ee1111");
+      expect(files).toHaveLength(2);
+      expect(files[0].fileHash).toBe(fullHash);
+      expect(files[1].fileHash).toBe(fullHash);
+    });
+
+    it("should throw AmbiguousHashError when short hash matches multiple distinct file hashes across jobs", async () => {
+      await repo.createJob("job-cross-ambig-1", "owner/repo", "main1");
+      await repo.createJob("job-cross-ambig-2", "owner/repo", "main2");
+      await repo.insertFiles("job-cross-ambig-1", [
+        {
+          file_type: "t",
+          file_name: "a.txt",
+          file_disk_path: "a.txt",
+          file_size: 10,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "abc",
+          file_git_hash:
+            "ff11111111111111111111111111111111111111",
+        },
+      ]);
+      await repo.insertFiles("job-cross-ambig-2", [
+        {
+          file_type: "t",
+          file_name: "b.txt",
+          file_disk_path: "b.txt",
+          file_size: 10,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "def",
+          file_git_hash:
+            "ff22222222222222222222222222222222222222",
+        },
+      ]);
+      await expect(repo.getFilesByHash("ff")).rejects.toThrow(
+        AmbiguousHashError
+      );
+    });
   });
 });

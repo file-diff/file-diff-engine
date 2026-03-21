@@ -1083,4 +1083,215 @@ describe("Job Routes", () => {
       error: "shiki tokenization failed",
     });
   });
+
+  describe("short hash support", () => {
+    it("GET /api/jobs/:id - should find a job by short id prefix", async () => {
+      await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+      const shortId = commitHash.slice(0, 8);
+      const res = await makeRequest(app, "GET", `/api/jobs/${shortId}`);
+      expect(res.status).toBe(200);
+      const resBody = res.body as JobInfo;
+      expect(resBody.id).toBe(commitHash);
+    });
+
+    it("GET /api/jobs/:id - should return 400 for ambiguous short id", async () => {
+      const hash1 = "ab11111111111111111111111111111111111111";
+      const hash2 = "ab22222222222222222222222222222222222222";
+      await jobRepo.createJob(hash1, "owner/repo", hash1);
+      await jobRepo.createJob(hash2, "owner/repo", hash2);
+      const res = await makeRequest(app, "GET", "/api/jobs/ab");
+      expect(res.status).toBe(400);
+      expect((res.body as { error: string }).error).toContain("Multiple");
+    });
+
+    it("GET /api/jobs/:id/files - should find files by short job id prefix", async () => {
+      await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+      await jobRepo.insertFiles(commitHash, [
+        {
+          file_type: "t",
+          file_name: "README.md",
+          file_size: 50,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "abc123",
+          file_git_hash: "deadbeef",
+        },
+      ]);
+      const shortId = commitHash.slice(0, 10);
+      const res = await makeRequest(app, "GET", `/api/jobs/${shortId}/files`);
+      expect(res.status).toBe(200);
+      const resBody = res.body as JobFilesResponse;
+      expect(resBody.jobId).toBe(commitHash);
+      expect(resBody.files).toHaveLength(1);
+    });
+
+    it("GET /api/jobs/:id/files/hash/:hash/download - should stream file using short job id and short file hash", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-short-hash-"));
+      tempDirs.push(tmpDir);
+      process.env.TMP_DIR = tmpDir;
+      const treeDir = path.join(tmpDir, `fde-${commitHash}`, "tree");
+      fs.mkdirSync(treeDir, { recursive: true });
+      fs.writeFileSync(path.join(treeDir, "README.md"), "short hash content");
+
+      await jobRepo.createJob(commitHash, "owner/repo", commitHash);
+      await jobRepo.insertFiles(commitHash, [
+        {
+          file_type: "t",
+          file_name: "README.md",
+          file_disk_path: "README.md",
+          file_size: 18,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "abc123",
+          file_git_hash: fileHash,
+        },
+      ]);
+
+      const shortJobId = commitHash.slice(0, 7);
+      const shortFileHash = fileHash.slice(0, 7);
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/jobs/${shortJobId}/files/hash/${shortFileHash}/download`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect((response as unknown as { rawPayload: Buffer }).rawPayload.toString("utf8")).toBe(
+        "short hash content"
+      );
+    });
+
+    it("GET /api/jobs/files/hash/:leftHash/diff/:rightHash - should accept short file hashes for diff", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-short-diff-"));
+      tempDirs.push(tmpDir);
+      process.env.TMP_DIR = tmpDir;
+
+      const leftJobId = "aaaa111111111111111111111111111111111111";
+      const rightJobId = "bbbb111111111111111111111111111111111111";
+
+      const leftTree = path.join(tmpDir, `fde-${leftJobId}`, "tree");
+      const rightTree = path.join(tmpDir, `fde-${rightJobId}`, "tree");
+      fs.mkdirSync(leftTree, { recursive: true });
+      fs.mkdirSync(rightTree, { recursive: true });
+      fs.writeFileSync(path.join(leftTree, "left.txt"), "left content");
+      fs.writeFileSync(path.join(rightTree, "right.txt"), "right content");
+
+      await jobRepo.createJob(leftJobId, "owner/repo", leftJobId);
+      await jobRepo.createJob(rightJobId, "owner/repo", rightJobId);
+      await jobRepo.insertFiles(leftJobId, [
+        {
+          file_type: "t",
+          file_name: "left.txt",
+          file_disk_path: "left.txt",
+          file_size: 12,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "abc",
+          file_git_hash: fileHash,
+        },
+      ]);
+      await jobRepo.insertFiles(rightJobId, [
+        {
+          file_type: "t",
+          file_name: "right.txt",
+          file_disk_path: "right.txt",
+          file_size: 13,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "def",
+          file_git_hash: otherFileHash,
+        },
+      ]);
+
+      const fakeDiffResult = { status: "different", changes: [] };
+      vi.spyOn(difftCommandRunner, "execFile").mockImplementation(
+        ((_cmd: unknown, _args: unknown, _opts: unknown, cb: unknown) => {
+          (cb as (err: null, stdout: string, stderr: string) => void)(
+            null,
+            JSON.stringify(fakeDiffResult),
+            ""
+          );
+        }) as typeof difftCommandRunner.execFile
+      );
+
+      const shortLeft = fileHash.slice(0, 5);
+      const shortRight = otherFileHash.slice(0, 5);
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/jobs/files/hash/${shortLeft}/diff/${shortRight}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(fakeDiffResult);
+    });
+
+    it("GET /api/jobs/files/hash/:leftHash/diff/:rightHash - should return 400 for ambiguous short file hash in diff", async () => {
+      const hash1 = "cc11111111111111111111111111111111111111";
+      const hash2 = "cc22222222222222222222222222222222222222";
+      const jobId = "dddd111111111111111111111111111111111111";
+
+      await jobRepo.createJob(jobId, "owner/repo", jobId);
+      await jobRepo.insertFiles(jobId, [
+        {
+          file_type: "t",
+          file_name: "a.txt",
+          file_disk_path: "a.txt",
+          file_size: 5,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "abc",
+          file_git_hash: hash1,
+        },
+        {
+          file_type: "t",
+          file_name: "b.txt",
+          file_disk_path: "b.txt",
+          file_size: 5,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "def",
+          file_git_hash: hash2,
+        },
+      ]);
+
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/jobs/files/hash/cc/diff/${otherFileHash}`,
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error).toContain("Multiple");
+    });
+
+    it("GET /api/jobs/files/hash/:hash/tokenize - should accept a short file hash for tokenization", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-short-token-"));
+      tempDirs.push(tmpDir);
+      process.env.TMP_DIR = tmpDir;
+
+      const jobId = "eeee111111111111111111111111111111111111";
+      const treeDir = path.join(tmpDir, `fde-${jobId}`, "tree");
+      fs.mkdirSync(treeDir, { recursive: true });
+      fs.writeFileSync(path.join(treeDir, "hello.ts"), 'const x = 1;');
+
+      await jobRepo.createJob(jobId, "owner/repo", jobId);
+      await jobRepo.insertFiles(jobId, [
+        {
+          file_type: "t",
+          file_name: "hello.ts",
+          file_disk_path: "hello.ts",
+          file_size: 12,
+          file_update_date: "2024-01-01T00:00:00Z",
+          file_last_commit: "abc",
+          file_git_hash: fileHash,
+        },
+      ]);
+
+      const fakeTokenResult = { tokens: [], bg: "#000" };
+      vi.spyOn(shikiTokenizer, "codeToTokens").mockResolvedValue(
+        fakeTokenResult as never
+      );
+
+      const shortHash = fileHash.slice(0, 6);
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/jobs/files/hash/${shortHash}/tokenize`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(fakeTokenResult);
+    });
+  });
 });

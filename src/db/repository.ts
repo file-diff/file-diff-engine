@@ -5,6 +5,27 @@ import { getCommitShort } from "../utils/commit";
 
 const logger = createLogger("repository");
 
+const FULL_HASH_LENGTH = 40;
+const MIN_SHORT_HASH_LENGTH = 2;
+
+export class AmbiguousHashError extends Error {
+  constructor(hash: string, entityType: string) {
+    super(
+      `Multiple ${entityType}s match the short hash '${hash}'. Please use a longer hash to uniquely identify the ${entityType}.`
+    );
+    this.name = "AmbiguousHashError";
+  }
+}
+
+function needsLikeMatch(value: string): boolean {
+  return value.length >= MIN_SHORT_HASH_LENGTH && value.length < FULL_HASH_LENGTH;
+}
+
+function buildLikePattern(value: string): string {
+  const escaped = value.replace(/%/g, "\\%").replace(/_/g, "\\_");
+  return escaped + "%";
+}
+
 export interface FileLookupRecord {
   jobId: string;
   fileName: string;
@@ -24,7 +45,23 @@ export class JobRepository {
   }
 
   async getJob(id: string): Promise<JobInfo | undefined> {
-    const result = await this.db.query("SELECT * FROM jobs WHERE id = $1", [id]);
+    const useLike = needsLikeMatch(id);
+    const query = useLike
+      ? "SELECT * FROM jobs WHERE id LIKE $1"
+      : "SELECT * FROM jobs WHERE id = $1";
+    const param = useLike ? buildLikePattern(id) : id;
+
+    const result = await this.db.query(query, [param]);
+
+    if (useLike) {
+      const distinctIds = new Set(
+        result.rows.map((r) => (r as Record<string, unknown>).id as string)
+      );
+      if (distinctIds.size > 1) {
+        throw new AmbiguousHashError(id, "job");
+      }
+    }
+
     const row = result.rows[0] as Record<string, unknown> | undefined;
     if (!row) {
       return undefined;
@@ -46,10 +83,24 @@ export class JobRepository {
   }
 
   async getJobByCommit(commit: string): Promise<JobInfo | undefined> {
+    const useLike = needsLikeMatch(commit);
+    const condition = useLike ? "commit LIKE $1" : "commit = $1";
+    const param = useLike ? buildLikePattern(commit) : commit;
+
     const result = await this.db.query(
-      "SELECT * FROM jobs WHERE commit = $1 ORDER BY created_at DESC LIMIT 1",
-      [commit]
+      `SELECT * FROM jobs WHERE ${condition} ORDER BY created_at DESC`,
+      [param]
     );
+
+    if (useLike) {
+      const distinctCommits = new Set(
+        result.rows.map((r) => (r as Record<string, unknown>).commit as string)
+      );
+      if (distinctCommits.size > 1) {
+        throw new AmbiguousHashError(commit, "commit");
+      }
+    }
+
     const row = result.rows[0] as Record<string, unknown> | undefined;
     if (!row) {
       return undefined;
@@ -195,14 +246,29 @@ export class JobRepository {
     jobId: string,
     hash: string
   ): Promise<FileLookupRecord | undefined> {
+    const useLike = needsLikeMatch(hash);
+    const condition = useLike ? "file_git_hash LIKE $2" : "file_git_hash = $2";
+    const param = useLike ? buildLikePattern(hash) : hash;
+
     const result = await this.db.query(
       `SELECT job_id, file_name, file_disk_path, file_git_hash
        FROM files
-       WHERE job_id = $1 AND file_git_hash = $2
-       ORDER BY id ASC
-       LIMIT 1`,
-      [jobId, hash]
+       WHERE job_id = $1 AND ${condition}
+       ORDER BY id ASC`,
+      [jobId, param]
     );
+
+    if (useLike) {
+      const distinctHashes = new Set(
+        result.rows.map(
+          (r) => (r as { file_git_hash: string }).file_git_hash
+        )
+      );
+      if (distinctHashes.size > 1) {
+        throw new AmbiguousHashError(hash, "file");
+      }
+    }
+
     const row = result.rows[0] as
       | {
           job_id: string;
@@ -225,13 +291,28 @@ export class JobRepository {
   }
 
   async getFilesByHash(hash: string): Promise<FileLookupRecord[]> {
+    const useLike = needsLikeMatch(hash);
+    const condition = useLike ? "file_git_hash LIKE $1" : "file_git_hash = $1";
+    const param = useLike ? buildLikePattern(hash) : hash;
+
     const result = await this.db.query(
       `SELECT job_id, file_name, file_disk_path, file_git_hash
        FROM files
-       WHERE file_git_hash = $1
+       WHERE ${condition}
        ORDER BY id ASC`,
-      [hash]
+      [param]
     );
+
+    if (useLike) {
+      const distinctHashes = new Set(
+        result.rows.map(
+          (r) => (r as { file_git_hash: string }).file_git_hash
+        )
+      );
+      if (distinctHashes.size > 1) {
+        throw new AmbiguousHashError(hash, "file");
+      }
+    }
 
     return result.rows.map((row) => {
       const file = row as {
