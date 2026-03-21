@@ -53,7 +53,7 @@ export function serializeFiles(files: FileRecord[]): Buffer {
     // type: 1 byte
     let typeByte = 0;
     if (typeof f.file_type === "number") {
-      typeByte = (f.file_type as number) & 0xff;
+      typeByte = f.file_type & 0xff;
     } else if (typeof f.file_type === "string" && f.file_type.length > 0) {
       typeByte = f.file_type.charCodeAt(0) & 0xff;
     }
@@ -82,7 +82,7 @@ export function serializeFiles(files: FileRecord[]): Buffer {
     if (typeof f.file_size === "number") {
       size = Math.max(0, Math.floor(f.file_size));
     } else if (typeof f.file_size === "string") {
-      const parsed = Number.parseInt(f.file_size as string, 10);
+      const parsed = Number.parseInt(f.file_size, 10);
       if (Number.isFinite(parsed)) size = Math.max(0, Math.floor(parsed));
     }
     size = size >>> 0;
