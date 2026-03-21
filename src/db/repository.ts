@@ -22,8 +22,12 @@ function needsLikeMatch(value: string): boolean {
 }
 
 function buildLikePattern(value: string): string {
-  const escaped = value.replace(/%/g, "\\%").replace(/_/g, "\\_");
-  return escaped + "%";
+  // Git hashes are hexadecimal, so they never contain LIKE wildcards (% or _).
+  // Validate hex to be safe before constructing the pattern.
+  if (!/^[a-f0-9]+$/i.test(value)) {
+    return value;
+  }
+  return value + "%";
 }
 
 export interface FileLookupRecord {
