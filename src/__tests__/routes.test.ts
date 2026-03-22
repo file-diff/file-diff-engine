@@ -692,6 +692,93 @@ describe("Job Routes", () => {
     });
   });
 
+  it("GET /api/jobs/files/hash/:hash/download - should stream the file contents by hash only", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-download-by-hash-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+
+    const otherCommitHash = "89abcdef012345670123456789abcdef01234567";
+    const treeDir = path.join(tmpDir, `fde-${otherCommitHash}`, "tree");
+    fs.mkdirSync(treeDir, { recursive: true });
+    fs.writeFileSync(path.join(treeDir, "README.md"), "download by hash only");
+
+    await jobRepo.createJob(otherCommitHash, "owner/repo", otherCommitHash);
+    await jobRepo.insertFiles(otherCommitHash, [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 21,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: fileHash,
+      },
+    ]);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/files/hash/${fileHash.slice(0, 7)}/download`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("application/octet-stream");
+    expect(response.headers["content-disposition"]).toContain('filename="README.md"');
+    expect((response as unknown as { rawPayload: Buffer }).rawPayload.toString("utf8")).toBe(
+      "download by hash only"
+    );
+  });
+
+  it("GET /api/jobs/files/hash/:hash/download - should report when the hash is missing from the database", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/jobs/files/hash/${fileHash}/download`,
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: `File with hash '${fileHash}' was not found in the database.`,
+    });
+  });
+
+  it("GET /api/jobs/files/hash/:hash/download - should return 400 for ambiguous short file hash", async () => {
+    const hash1 = "cc11111111111111111111111111111111111111";
+    const hash2 = "cc22222222222222222222222222222222222222";
+    const jobId = "dddd111111111111111111111111111111111111";
+
+    await jobRepo.createJob(jobId, "owner/repo", jobId);
+    await jobRepo.insertFiles(jobId, [
+      {
+        file_type: "t",
+        file_name: "a.txt",
+        file_disk_path: "a.txt",
+        file_size: 5,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc",
+        file_git_hash: hash1,
+      },
+      {
+        file_type: "t",
+        file_name: "b.txt",
+        file_disk_path: "b.txt",
+        file_size: 5,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "def",
+        file_git_hash: hash2,
+      },
+    ]);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/jobs/files/hash/cc/download",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error:
+        "Multiple files match the short hash 'cc'. Please use a longer hash to uniquely identify the file.",
+    });
+  });
+
   it("GET /api/jobs/files/hash/:leftHash/diff/:rightHash - should return difft JSON output across jobs", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-difft-"));
     tempDirs.push(tmpDir);
