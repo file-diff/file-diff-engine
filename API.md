@@ -752,6 +752,60 @@ Rate-limited response example:
 
 ---
 
+### `GET /api/jobs/files/hash/:hash/download`
+
+Downloads the file content for a processed file resolved only by its git blob hash across jobs.
+
+#### Path arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `hash` | `string` | Yes | Git blob hash for the requested file (full or short prefix, minimum 2 characters) |
+
+#### Success response
+
+Status: `200 OK`
+
+Response body:
+
+- Binary file stream
+
+Relevant headers:
+
+| Header | Description |
+| --- | --- |
+| `Content-Type` | `application/octet-stream` |
+| `Content-Disposition` | Attachment filename generated from the stored file name |
+
+#### Error response
+
+When an error occurs, the response is JSON.
+
+Possible payloads include:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `error` | `string` | Error message for lookup or file access failures |
+| `statusCode` | `number` | Present on Fastify rate-limit responses |
+| `message` | `string` | Present on Fastify rate-limit responses |
+
+Common statuses:
+
+- `400 Bad Request` when a short hash prefix matches multiple distinct files (ambiguous)
+- `404 Not Found` when no file hash exists in the database
+- `404 Not Found` when all matching files are missing or unreadable on disk
+- `429 Too Many Requests` when the download rate limit is exceeded
+
+#### Example
+
+```bash
+curl -L \
+  https://your-host.example.com/api/jobs/files/hash/1111111111111111111111111111111111111111/download \
+  --output downloaded-file
+```
+
+---
+
 ### `GET /api/jobs/files/hash/:hash/tokenize`
 
 Runs Shiki tokenization for a file found in the database by its hash and returns the JSON token payload.

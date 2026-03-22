@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import * as childProcess from "child_process";
 import { pipeline } from "stream/promises";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   bundledLanguagesInfo,
   bundledThemesInfo,
@@ -71,6 +71,33 @@ export function registerDownloadRoutes(
   app: FastifyInstance,
   jobRepo: JobRepository
 ): void {
+  app.get<{ Params: { hash: string } }>(
+    "/files/hash/:hash/download",
+    {
+      config: {
+        rateLimit: {
+          max: parsePositiveInteger(
+            process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX,
+            DEFAULT_DOWNLOAD_RATE_LIMIT_MAX
+          ),
+          timeWindow: parsePositiveInteger(
+            process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS,
+            DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS
+          ),
+        },
+      },
+    },
+    async (request, reply) => {
+      const { hash } = request.params;
+      const fileResult = await resolveAccessibleFileByHash(jobRepo, hash);
+      if ("statusCode" in fileResult) {
+        return reply.code(fileResult.statusCode).send(fileResult.response);
+      }
+
+      return streamFileDownload(reply, fileResult, hash);
+    }
+  );
+
   app.get<{ Params: { id: string; hash: string } }>(
     "/:id/files/hash/:hash/download",
     {
@@ -147,34 +174,7 @@ export function registerDownloadRoutes(
         return reply.code(404).send(response);
       }
 
-      logger.info("Streaming file download", {
-        jobId: job.id,
-        hash,
-        fileName: file.fileName,
-        filePath,
-      });
-
-      reply.hijack();
-      reply.raw.writeHead(200, {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${getDownloadFilename(file.fileName)}"`,
-      });
-
-      try {
-        await pipeline(fs.createReadStream(filePath), reply.raw);
-      } catch (error) {
-        logger.error("Failed to stream file download", {
-          jobId: job.id,
-          hash,
-          fileName: file.fileName,
-          filePath,
-          error,
-        });
-        if (!reply.raw.destroyed) {
-          reply.raw.destroy(error instanceof Error ? error : undefined);
-        }
-      }
-      return reply;
+      return streamFileDownload(reply, { file, filePath }, hash);
     }
   );
 
@@ -327,6 +327,41 @@ async function resolveAccessibleFileByHash(
       error: `Unexpected file lookup state for hash '${hash}'.`,
     },
   };
+}
+
+async function streamFileDownload(
+  reply: FastifyReply,
+  resolvedFile: ResolvedJobFile,
+  hash: string
+) {
+  logger.info("Streaming file download", {
+    jobId: resolvedFile.file.jobId,
+    hash,
+    fileName: resolvedFile.file.fileName,
+    filePath: resolvedFile.filePath,
+  });
+
+  reply.hijack();
+  reply.raw.writeHead(200, {
+    "Content-Type": "application/octet-stream",
+    "Content-Disposition": `attachment; filename="${getDownloadFilename(resolvedFile.file.fileName)}"`,
+  });
+
+  try {
+    await pipeline(fs.createReadStream(resolvedFile.filePath), reply.raw);
+  } catch (error) {
+    logger.error("Failed to stream file download", {
+      jobId: resolvedFile.file.jobId,
+      hash,
+      fileName: resolvedFile.file.fileName,
+      filePath: resolvedFile.filePath,
+      error,
+    });
+    if (!reply.raw.destroyed) {
+      reply.raw.destroy(error instanceof Error ? error : undefined);
+    }
+  }
+  return reply;
 }
 
 async function runDifftJson(leftFilePath: string, rightFilePath: string): Promise<unknown> {
