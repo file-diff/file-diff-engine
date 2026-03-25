@@ -341,6 +341,109 @@ Example response:
 
 ---
 
+### `POST /api/jobs/commits`
+
+Lists repository commits from newest to oldest, limited by the requested count.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `limit` | `number` | Yes | Maximum number of commits to return. Must be a positive integer. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `commits` | `array` | Recent commits ordered from newest to oldest |
+
+Each `commits` item contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `commit` | `string` | Full commit SHA |
+| `date` | `string` | Commit date/time in ISO-8601 format |
+| `author` | `string` | Commit author name |
+| `title` | `string` | Commit subject/title |
+| `branch` | `string \| null` | Branch name when the commit is the head of a branch |
+| `parents` | `string[]` | Full parent commit SHAs |
+| `pullRequest` | `object \| null` | Associated GitHub pull request when available |
+| `tags` | `string[]` | Tag names pointing at the commit |
+
+When `pullRequest` is present, it contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `number` | `number` | Pull request number |
+| `title` | `string` | Pull request title |
+| `url` | `string` | Pull request URL |
+
+#### Error response
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `error` | `string` | Error message |
+
+Common statuses:
+
+- `400 Bad Request` when `repo` is missing or invalid, or `limit` is not a positive integer
+- `500 Internal Server Error` when commit history cannot be listed
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/commits \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "limit": 2
+  }'
+```
+
+Example response:
+
+```json
+{
+  "repo": "facebook/react",
+  "commits": [
+    {
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "date": "2026-03-20T12:00:00Z",
+      "author": "Jane Developer",
+      "title": "Add commit history endpoint",
+      "branch": "main",
+      "parents": [
+        "1111111111111111111111111111111111111111"
+      ],
+      "pullRequest": {
+        "number": 123,
+        "title": "Add commit history endpoint",
+        "url": "https://github.com/facebook/react/pull/123"
+      },
+      "tags": [
+        "v1.0.0"
+      ]
+    },
+    {
+      "commit": "1111111111111111111111111111111111111111",
+      "date": "2026-03-19T09:15:00Z",
+      "author": "Jane Developer",
+      "title": "Prepare release",
+      "branch": null,
+      "parents": [],
+      "pullRequest": null,
+      "tags": []
+    }
+  ]
+}
+```
+
+---
+
 ### `GET /api/jobs/organizations/:organization/repositories`
 
 Lists repositories available inside a GitHub organization.
