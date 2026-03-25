@@ -13,6 +13,7 @@ import {
 import { Queue } from "bullmq";
 import type {
   GitCacheStatsResponse,
+  ListCommitsResponse,
   ListRefsResponse,
   ListOrganizationRepositoriesResponse,
   JobFilesResponse,
@@ -206,6 +207,69 @@ describe("Job Routes", () => {
     expect(res.status).toBe(500);
     expect(res.body).toEqual({
       error: "Unable to list refs for repository 'https://github.com/facebook/react.git'.",
+    });
+  });
+
+  it("POST /api/jobs/commits - should list commits for a repository", async () => {
+    const listRepositoryCommitsSpy = vi
+      .spyOn(repoProcessor, "listRepositoryCommits")
+      .mockResolvedValue([
+        {
+          commit: commitHash,
+          date: "2026-03-20T12:00:00Z",
+          author: "Test User",
+          title: "Add feature",
+          branch: "main",
+          parents: [fileHash],
+          pullRequest: {
+            number: 123,
+            title: "Add feature",
+            url: "https://github.com/facebook/react/pull/123",
+          },
+          tags: ["v1.0.0"],
+        },
+      ]);
+
+    const res = await makeRequest(app, "POST", "/api/jobs/commits", {
+      repo: "https://github.com/facebook/react.git",
+      limit: 5,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<ListCommitsResponse>({
+      repo: "facebook/react",
+      commits: [
+        {
+          commit: commitHash,
+          date: "2026-03-20T12:00:00Z",
+          author: "Test User",
+          title: "Add feature",
+          branch: "main",
+          parents: [fileHash],
+          pullRequest: {
+            number: 123,
+            title: "Add feature",
+            url: "https://github.com/facebook/react/pull/123",
+          },
+          tags: ["v1.0.0"],
+        },
+      ],
+    });
+    expect(listRepositoryCommitsSpy).toHaveBeenCalledWith(
+      "https://github.com/facebook/react.git",
+      5
+    );
+  });
+
+  it("POST /api/jobs/commits - should reject an invalid limit", async () => {
+    const res = await makeRequest(app, "POST", "/api/jobs/commits", {
+      repo: "facebook/react",
+      limit: 0,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Field 'limit' must be a positive integer.",
     });
   });
 

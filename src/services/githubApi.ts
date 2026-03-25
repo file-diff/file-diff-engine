@@ -1,5 +1,6 @@
 import https from "https";
 import type {
+  CommitPullRequestSummary,
   ListOrganizationRepositoriesResponse,
   OrganizationRepositorySummary,
   ResolvePullRequestResponse,
@@ -36,6 +37,12 @@ interface GitHubPullRequestApiResponse {
 interface GitHubRepositoryApiResponse {
   name?: string;
   full_name?: string;
+  html_url?: string;
+}
+
+interface GitHubCommitPullRequestApiResponse {
+  number?: number;
+  title?: string;
   html_url?: string;
 }
 
@@ -111,6 +118,30 @@ export async function listOrganizationRepositories(
   return {
     organization: normalizedOrganization,
     repositories,
+  };
+}
+
+export async function getCommitPullRequest(
+  repo: string,
+  commit: string
+): Promise<CommitPullRequestSummary | null> {
+  const [owner, repoName] = repo.split("/", 2);
+  const response = await getJson<GitHubCommitPullRequestApiResponse[]>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/commits/${encodeURIComponent(commit)}/pulls`,
+    {
+      notFoundMessage: `GitHub commit '${commit}' was not found in repository '${repo}'.`,
+    }
+  );
+  const pullRequest = response[0];
+
+  if (!pullRequest?.number || !pullRequest.html_url) {
+    return null;
+  }
+
+  return {
+    number: pullRequest.number,
+    title: pullRequest.title?.trim() || "",
+    url: pullRequest.html_url.trim(),
   };
 }
 

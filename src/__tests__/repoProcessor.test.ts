@@ -6,6 +6,7 @@ import { execSync } from "child_process";
 import type { FileRecord } from "../types";
 import {
   getFileTypeFromGitMode,
+  listRepositoryCommits,
   listRepositoryRefs,
   processRepository,
   resolveRefToCommitHash,
@@ -272,6 +273,60 @@ describe("repoProcessor – local clone simulation", () => {
         ])
       );
       expect(refs.filter((ref) => ref.ref === "refs/tags/v2.0.0")).toHaveLength(1);
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should list commits from newest to oldest with branch, tags, and parents", async () => {
+    const testDir = path.join(os.tmpdir(), `fde-list-commits-test-${Date.now()}`);
+    const repoDir = path.join(testDir, "origin");
+
+    try {
+      createTestRepo(repoDir);
+      const branchName = execSync("git branch --show-current", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      fs.writeFileSync(path.join(repoDir, "hello.txt"), "Hello Again\n");
+      execSync("git add hello.txt", { cwd: repoDir });
+      execSync('git commit -m "second commit"', { cwd: repoDir });
+      const secondCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      execSync("git branch release", { cwd: repoDir });
+      execSync("git tag v2.0.0", { cwd: repoDir });
+
+      const initialCommit = execSync("git rev-parse HEAD^", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      const commits = await listRepositoryCommits(`file://${repoDir}`, 2);
+
+      expect(commits).toHaveLength(2);
+      expect(commits[0]).toMatchObject({
+        commit: secondCommit,
+        author: "Test",
+        title: "second commit",
+        branch: branchName,
+        parents: [initialCommit],
+        pullRequest: null,
+        tags: ["v2.0.0"],
+      });
+      expect(commits[0].date).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(commits[1]).toMatchObject({
+        commit: initialCommit,
+        author: "Test",
+        title: "initial commit",
+        branch: null,
+        parents: [],
+        pullRequest: null,
+        tags: ["v1.0.0"],
+      });
     } finally {
       fs.rmSync(testDir, { recursive: true, force: true });
     }

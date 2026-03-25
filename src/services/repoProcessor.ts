@@ -1,11 +1,13 @@
+import os from "os";
 import fs from "fs";
 import path from "path";
 import { createHash } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { FileRecord, type GitRefSummary } from "../types";
+import { FileRecord, type CommitSummary, type GitRefSummary } from "../types";
 import { getCommitShort } from "../utils/commit";
 import { createLogger } from "../utils/logger";
+import { getCommitPullRequest } from "./githubApi";
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger("repo-processor");
@@ -149,6 +151,97 @@ export async function listRepositoryRefs(repoUrl: string): Promise<GitRefSummary
 
     return a.name.localeCompare(b.name);
   });
+}
+
+export async function listRepositoryCommits(
+  repoUrl: string,
+  limit: number
+): Promise<CommitSummary[]> {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error("Field 'limit' must be a positive integer.");
+  }
+
+  const { branchRef } = await getHeadReference(repoUrl);
+  const defaultBranch =
+    branchRef?.startsWith("refs/heads/") ? branchRef.slice("refs/heads/".length) : null;
+  const refs = await listRepositoryRefs(repoUrl);
+  const refsByCommit = new Map<
+    string,
+    {
+      branches: string[];
+      tags: string[];
+    }
+  >();
+
+  for (const ref of refs) {
+    const current = refsByCommit.get(ref.commit) ?? { branches: [], tags: [] };
+    if (ref.type === "branch") {
+      current.branches.push(ref.name);
+    } else {
+      current.tags.push(ref.name);
+    }
+    refsByCommit.set(ref.commit, current);
+  }
+
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-commit-list-"));
+
+  try {
+    const cloneArgs = ["clone", `--depth=${limit}`];
+    if (branchRef?.startsWith("refs/heads/")) {
+      cloneArgs.push("--branch", branchRef.slice("refs/heads/".length), "--single-branch");
+    }
+    cloneArgs.push(repoUrl, repoDir);
+    await runGitCommand(process.cwd(), cloneArgs);
+
+    const output = await runGitCommand(repoDir, [
+      "log",
+      `-n`,
+      String(limit),
+      "--date=iso-strict",
+      "--pretty=format:%H%x1f%cI%x1f%an%x1f%s%x1f%P",
+      "HEAD",
+    ]);
+    const commits = output
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [commit, date, author, title, parents = ""] = line.split("\x1f");
+        const commitRefs = refsByCommit.get(commit) ?? { branches: [], tags: [] };
+        return {
+          commit,
+          date,
+          author,
+          title,
+          branch:
+            (defaultBranch && commitRefs.branches.includes(defaultBranch)
+              ? defaultBranch
+              : commitRefs.branches[0]) ?? null,
+          parents: parents ? parents.split(" ").filter(Boolean) : [],
+          pullRequest: null,
+          tags: [...commitRefs.tags],
+        } satisfies CommitSummary;
+      });
+
+    const githubRepo = getGitHubRepoName(repoUrl);
+    if (!githubRepo) {
+      return commits;
+    }
+
+    return Promise.all(
+      commits.map(async (commit) => {
+        try {
+          return {
+            ...commit,
+            pullRequest: await getCommitPullRequest(githubRepo, commit.commit),
+          };
+        } catch {
+          return commit;
+        }
+      })
+    );
+  } finally {
+    fs.rmSync(repoDir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -388,6 +481,34 @@ async function getTrackedGitEntries(repoDir: string): Promise<Map<string, GitEnt
   }
 
   return entries;
+}
+
+async function getHeadReference(
+  repoUrl: string
+): Promise<{ branchRef: string | null; commit: string | null }> {
+  const output = await runGitCommand(process.cwd(), ["ls-remote", "--symref", repoUrl, "HEAD"]);
+  let branchRef: string | null = null;
+  let commit: string | null = null;
+
+  for (const line of output.split("\n").filter(Boolean)) {
+    const symrefMatch = line.match(/^ref:\s+(\S+)\s+HEAD$/);
+    if (symrefMatch) {
+      branchRef = symrefMatch[1];
+      continue;
+    }
+
+    const [hash, ref] = line.trim().split(/\s+/, 2);
+    if (ref === "HEAD" && hash) {
+      commit = hash.toLowerCase();
+    }
+  }
+
+  return { branchRef, commit };
+}
+
+function getGitHubRepoName(repoUrl: string): string | null {
+  const match = repoUrl.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+  return match ? `${match[1]}/${match[2]}` : null;
 }
 
 /** Get the last commit SHA that touched a given path. */

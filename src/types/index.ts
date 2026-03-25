@@ -44,6 +44,14 @@ export interface ListRefsRequest {
   repo: string;
 }
 
+/** Payload sent when listing recent commits for a repository. */
+export interface ListCommitsRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Maximum number of commits to return */
+  limit: number;
+}
+
 /** Generic error response payload returned by the API. */
 export interface ErrorResponse {
   error: string;
@@ -94,6 +102,31 @@ export interface GitRefSummary {
 export interface ListRefsResponse {
   repo: string;
   refs: GitRefSummary[];
+}
+
+/** Pull request metadata associated with a commit. */
+export interface CommitPullRequestSummary {
+  number: number;
+  title: string;
+  url: string;
+}
+
+/** Response entry when listing recent commits for a repository. */
+export interface CommitSummary {
+  commit: string;
+  date: string;
+  author: string;
+  title: string;
+  branch: string | null;
+  parents: string[];
+  pullRequest: CommitPullRequestSummary | null;
+  tags: string[];
+}
+
+/** Response payload when listing recent commits for a repository. */
+export interface ListCommitsResponse {
+  repo: string;
+  commits: CommitSummary[];
 }
 
 /** Response entry when listing repositories for a GitHub organization. */

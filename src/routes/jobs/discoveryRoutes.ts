@@ -3,6 +3,8 @@ import path from "path";
 import type { FastifyInstance } from "fastify";
 import type {
   ErrorResponse,
+  ListCommitsRequest,
+  ListCommitsResponse,
   GitCacheStatsResponse,
   ListRefsRequest,
   ListRefsResponse,
@@ -138,6 +140,55 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to list git refs.";
+      const response: ErrorResponse = { error: message };
+      return reply.code(500).send(response);
+    }
+  });
+
+  /**
+   * POST /api/jobs/commits
+   * Body: { "repo": "owner/repo", "limit": 10 }
+   * Lists repository commits from newest to oldest.
+   */
+  app.post<{ Body: ListCommitsRequest }>("/commits", async (request, reply) => {
+    let { repo, limit } = request.body ?? {};
+    if (!repo) {
+      const response: ErrorResponse = {
+        error: "Field 'repo' is required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (!Number.isInteger(limit) || limit <= 0) {
+      const response: ErrorResponse = {
+        error: "Field 'limit' must be a positive integer.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    try {
+      const commits = await repoProcessor.listRepositoryCommits(
+        repoProcessor.getRepositoryUrl(repo),
+        limit
+      );
+      const response: ListCommitsResponse = {
+        repo,
+        commits,
+      };
+      return reply.code(200).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to list repository commits.";
       const response: ErrorResponse = { error: message };
       return reply.code(500).send(response);
     }
