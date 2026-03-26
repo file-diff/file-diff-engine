@@ -63,9 +63,7 @@ function isRetryableGitLockError(error: unknown): boolean {
   return (
     message.includes(".lock") ||
     message.includes("another git process seems to be running") ||
-    message.includes("cannot lock ref") ||
-    message.includes("unable to create") ||
-    message.includes("file exists")
+    message.includes("cannot lock ref")
   );
 }
 

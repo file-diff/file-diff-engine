@@ -49,7 +49,7 @@ describe("repoProcessor git error handling", () => {
 
   it("should retry git fetch when the cache repository is locked by another task", async () => {
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-git-lock-"));
-    const repoUrl = "file:///tmp/example-repo.git";
+    const repoUrl = `file://${path.join(workDir, "mock-origin.git")}`;
     const commit = "0123456789abcdef0123456789abcdef01234567";
     const cacheKey = createHash("sha256").update(repoUrl).digest("hex");
     const cacheDir = path.join(path.dirname(path.resolve(workDir)), "repo-cache", cacheKey);
