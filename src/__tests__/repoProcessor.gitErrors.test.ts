@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { createHash } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("repoProcessor git error handling", () => {
@@ -42,6 +43,56 @@ describe("repoProcessor git error handling", () => {
         "stderr: fatal: repository not found"
       );
     } finally {
+      fs.rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should retry git fetch when the cache repository is locked by another task", async () => {
+    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-git-lock-"));
+    const repoUrl = "file:///tmp/example-repo.git";
+    const commit = "0123456789abcdef0123456789abcdef01234567";
+    const cacheKey = createHash("sha256").update(repoUrl).digest("hex");
+    const cacheDir = path.join(path.dirname(path.resolve(workDir)), "repo-cache", cacheKey);
+    let fetchAttempts = 0;
+
+    fs.mkdirSync(path.join(cacheDir, ".git"), { recursive: true });
+
+    try {
+      vi.doMock("child_process", () => ({
+        execFile: vi.fn((...args: unknown[]) => {
+          const gitArgs = args[1] as string[];
+          const callback = args[args.length - 1] as (
+            error: (Error & { stderr?: string; stdout?: string }) | null,
+            stdout?: string,
+            stderr?: string
+          ) => void;
+
+          if (gitArgs[0] === "fetch") {
+            fetchAttempts += 1;
+            if (fetchAttempts < 3) {
+              const error = Object.assign(new Error("git fetch lock collision"), {
+                stderr: `fatal: Unable to create '${path.join(
+                  cacheDir,
+                  ".git",
+                  "shallow.lock"
+                )}': File exists.\nAnother git process seems to be running in this repository`,
+                stdout: "",
+              });
+              callback(error);
+              return;
+            }
+          }
+
+          callback(null, "", "");
+        }),
+      }));
+
+      const { processRepository } = await import("../services/repoProcessor");
+
+      await expect(processRepository(repoUrl, commit, workDir)).resolves.toEqual([]);
+      expect(fetchAttempts).toBe(3);
+    } finally {
+      fs.rmSync(path.dirname(cacheDir), { recursive: true, force: true });
       fs.rmSync(workDir, { recursive: true, force: true });
     }
   });
