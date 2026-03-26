@@ -11,6 +11,8 @@ import { getCommitPullRequest } from "./githubApi";
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger("repo-processor");
+const CACHE_COLLISION_MAX_ATTEMPTS = 3;
+const CACHE_COLLISION_RETRY_DELAY_MS = 100;
 
 /**
  * Helper to run git commands in a working directory and return stdout (trimmed).
@@ -53,6 +55,49 @@ async function runGitCommand(cwd: string, args: string[]): Promise<string> {
     });
     throw new Error(details);
   }
+}
+
+function isRetryableGitLockError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+  return (
+    message.includes(".lock") ||
+    message.includes("another git process seems to be running") ||
+    message.includes("cannot lock ref")
+  );
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function runGitCommandWithRetry(cwd: string, args: string[]): Promise<string> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= CACHE_COLLISION_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await runGitCommand(cwd, args);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= CACHE_COLLISION_MAX_ATTEMPTS || !isRetryableGitLockError(error)) {
+        throw error;
+      }
+
+      logger.warn("Git cache operation collided with another process, retrying", {
+        cwd,
+        command: `git ${args.join(" ")}`,
+        attempt,
+        maxAttempts: CACHE_COLLISION_MAX_ATTEMPTS,
+      });
+      await wait(CACHE_COLLISION_RETRY_DELAY_MS * attempt);
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Git command failed after retries: git ${args.join(" ")}`);
 }
 
 export function getRepositoryUrl(repo: string): string {
@@ -311,14 +356,14 @@ export async function processRepository(
 
   if (!fs.existsSync(path.join(cacheDir, ".git"))) {
     fs.rmSync(cacheDir, { recursive: true, force: true });
-    await runGitCommand(path.dirname(cacheDir), [
+    await runGitCommandWithRetry(path.dirname(cacheDir), [
       "clone",
       "--no-checkout",
       repoUrl,
       cacheDir,
     ]);
   }
-  await runGitCommand(cacheDir, ["fetch", "--depth=1", "origin", commit]);
+  await runGitCommandWithRetry(cacheDir, ["fetch", "--depth=1", "origin", commit]);
   fs.cpSync(cacheDir, cloneDir, { recursive: true });
   await runGitCommand(cloneDir, [
     "-c",
