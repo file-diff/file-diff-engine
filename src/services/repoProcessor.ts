@@ -74,12 +74,13 @@ function wait(ms: number): Promise<void> {
 }
 
 async function runGitCommandWithRetry(cwd: string, args: string[]): Promise<string> {
-  let attempt = 1;
+  let lastError: unknown;
 
-  while (true) {
+  for (let attempt = 1; attempt <= CACHE_COLLISION_MAX_ATTEMPTS; attempt++) {
     try {
       return await runGitCommand(cwd, args);
     } catch (error) {
+      lastError = error;
       if (attempt >= CACHE_COLLISION_MAX_ATTEMPTS || !isRetryableGitLockError(error)) {
         throw error;
       }
@@ -91,9 +92,12 @@ async function runGitCommandWithRetry(cwd: string, args: string[]): Promise<stri
         maxAttempts: CACHE_COLLISION_MAX_ATTEMPTS,
       });
       await wait(CACHE_COLLISION_RETRY_DELAY_MS * attempt);
-      attempt += 1;
     }
   }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Git command failed after retries: git ${args.join(" ")}`);
 }
 
 export function getRepositoryUrl(repo: string): string {
