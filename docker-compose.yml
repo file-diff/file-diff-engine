@@ -21,7 +21,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       TMP_DIR: /app/tmp
     ports:
-      - "12986:12986"
+      - "127.0.0.1:12986:12986"
     volumes:
       - ./repositories_data:/app/tmp
   postgres:
