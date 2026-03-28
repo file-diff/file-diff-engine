@@ -133,7 +133,7 @@ describe("repoProcessor git error handling", () => {
       expect(options.env).toMatchObject({
         GIT_CONFIG_COUNT: "1",
         GIT_CONFIG_KEY_0: "http.https://github.com/.extraHeader",
-        GIT_CONFIG_VALUE_0: `Authorization: basic ${Buffer.from(
+        GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(
           "x-access-token:test-token",
           "utf8"
         ).toString("base64")}`,

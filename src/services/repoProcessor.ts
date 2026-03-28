@@ -77,7 +77,7 @@ function getGitCommandEnv(): NodeJS.ProcessEnv {
 
   env.GIT_CONFIG_COUNT = String(configCount + 1);
   env[`GIT_CONFIG_KEY_${configCount}`] = `http.https://${GITHUB_HOSTNAME}/.extraHeader`;
-  env[`GIT_CONFIG_VALUE_${configCount}`] = `Authorization: basic ${authHeader}`;
+  env[`GIT_CONFIG_VALUE_${configCount}`] = `Authorization: Basic ${authHeader}`;
 
   return env;
 }
