@@ -96,4 +96,55 @@ describe("repoProcessor git error handling", () => {
       fs.rmSync(workDir, { recursive: true, force: true });
     }
   });
+
+  it("should configure git to use GITHUB_TOKEN for GitHub HTTPS requests", async () => {
+    const originalToken = process.env.GITHUB_TOKEN;
+    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-github-token-"));
+    const execFile = vi.fn((...args: unknown[]) => {
+      const callback = args[args.length - 1] as (
+        error: (Error & { stderr?: string; stdout?: string }) | null,
+        stdout?: string,
+        stderr?: string
+      ) => void;
+
+      callback(
+        Object.assign(new Error("spawn git ENOENT"), {
+          stderr: "fatal: repository not found",
+          stdout: "",
+        })
+      );
+    });
+
+    try {
+      process.env.GITHUB_TOKEN = " test-token ";
+
+      vi.doMock("child_process", () => ({
+        execFile,
+      }));
+
+      const { processRepository } = await import("../services/repoProcessor");
+
+      await expect(
+        processRepository("file-diff/file-diff-engine", "main", workDir)
+      ).rejects.toThrow("fatal: repository not found");
+
+      expect(execFile).toHaveBeenCalledTimes(1);
+      const options = execFile.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
+      expect(options.env).toMatchObject({
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+        GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(
+          "x-access-token:test-token",
+          "utf8"
+        ).toString("base64")}`,
+      });
+    } finally {
+      if (originalToken === undefined) {
+        delete process.env.GITHUB_TOKEN;
+      } else {
+        process.env.GITHUB_TOKEN = originalToken;
+      }
+      fs.rmSync(workDir, { recursive: true, force: true });
+    }
+  });
 });

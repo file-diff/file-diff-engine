@@ -7,6 +7,7 @@ API reference: [API.md](./API.md)
 ## Configuration
 
 - `REQUEST_DELAY_MS`: Adds a delay before every API request is handled. Defaults to `0` (disabled). Set `REQUEST_DELAY_MS=500` to simulate 500ms of latency during development.
+- `GITHUB_TOKEN`: Optional GitHub token used to authorize GitHub API requests and Git HTTPS operations so the service can use higher authenticated rate limits.
 
 ## Storage tree
 
