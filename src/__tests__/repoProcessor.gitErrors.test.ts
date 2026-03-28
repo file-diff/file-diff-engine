@@ -132,8 +132,8 @@ describe("repoProcessor git error handling", () => {
       const options = execFile.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
       expect(options.env).toMatchObject({
         GIT_CONFIG_COUNT: "1",
-        GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
-        GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(
+        GIT_CONFIG_KEY_0: "http.https://github.com/.extraHeader",
+        GIT_CONFIG_VALUE_0: `Authorization: basic ${Buffer.from(
           "x-access-token:test-token",
           "utf8"
         ).toString("base64")}`,
