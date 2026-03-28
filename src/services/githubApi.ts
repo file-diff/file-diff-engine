@@ -243,7 +243,7 @@ function getRequestHeaders(): Record<string, string> {
     Accept: "application/vnd.github+json",
     "User-Agent": "file-diff-engine",
   };
-  const token = process.env.GITHUB_TOKEN?.trim();
+  const token = process.env.PUBLIC_GITHUB_TOKEN?.trim();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }

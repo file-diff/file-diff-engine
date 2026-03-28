@@ -62,7 +62,7 @@ async function runGitCommand(cwd: string, args: string[]): Promise<string> {
 }
 
 function getGitCommandEnv(): NodeJS.ProcessEnv {
-  const token = process.env.GITHUB_TOKEN?.trim();
+  const token = process.env.PUBLIC_GITHUB_TOKEN?.trim();
   if (!token) {
     return process.env;
   }
