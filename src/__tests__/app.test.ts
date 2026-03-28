@@ -3,10 +3,11 @@ import { Queue } from "bullmq";
 import { zstdDecompressSync } from "node:zlib";
 import type { DatabaseClient } from "../db/database";
 import { createApp } from "../app";
-import type { JobFilesResponse, StatsResponse, VersionResponse } from "../types";
+import type { HealthResponse, JobFilesResponse, StatsResponse, VersionResponse } from "../types";
 import { JobRepository } from "../db/repository";
 import { createTestDatabase } from "./helpers/testDatabase";
 import { deserializeFiles } from "../utils/binarySerializer";
+import * as githubApi from "../services/githubApi";
 
 describe("createApp", () => {
   let db: DatabaseClient;
@@ -14,6 +15,7 @@ describe("createApp", () => {
   let mockQueue: Queue;
   const originalBuildVersion = process.env.BUILD_VERSION;
   const originalRequestDelayMs = process.env.REQUEST_DELAY_MS;
+  const originalPublicGitHubToken = process.env.PUBLIC_GITHUB_TOKEN;
 
   beforeEach(async () => {
     db = await createTestDatabase();
@@ -21,6 +23,13 @@ describe("createApp", () => {
     mockQueue = {
       close: async () => undefined,
     } as unknown as Queue;
+    vi.spyOn(githubApi, "getGitHubRateLimit").mockResolvedValue({
+      limit: 60,
+      remaining: 59,
+      reset: 1_712_345_678,
+      used: 1,
+      resource: "core",
+    });
   });
 
   afterEach(async () => {
@@ -34,6 +43,11 @@ describe("createApp", () => {
       delete process.env.REQUEST_DELAY_MS;
     } else {
       process.env.REQUEST_DELAY_MS = originalRequestDelayMs;
+    }
+    if (originalPublicGitHubToken === undefined) {
+      delete process.env.PUBLIC_GITHUB_TOKEN;
+    } else {
+      process.env.PUBLIC_GITHUB_TOKEN = originalPublicGitHubToken;
     }
     await db.end();
   });
@@ -51,6 +65,68 @@ describe("createApp", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+
+    await app.close();
+  });
+
+  it("returns GitHub rate limit info in health checks", async () => {
+    process.env.PUBLIC_GITHUB_TOKEN = " test-token ";
+    vi.spyOn(githubApi, "getGitHubRateLimit").mockResolvedValueOnce({
+      limit: 5000,
+      remaining: 4999,
+      reset: 1_712_345_679,
+      used: 1,
+      resource: "core",
+    });
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/health",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<HealthResponse>()).toEqual({
+      status: "ok",
+      message: "API is healthy",
+      github: {
+        configured: true,
+        status: "ok",
+        rateLimit: {
+          limit: 5000,
+          remaining: 4999,
+          reset: 1_712_345_679,
+          used: 1,
+          resource: "core",
+        },
+      },
+    });
+
+    await app.close();
+  });
+
+  it("returns GitHub health errors without failing the health endpoint", async () => {
+    delete process.env.PUBLIC_GITHUB_TOKEN;
+    vi.spyOn(githubApi, "getGitHubRateLimit").mockRejectedValueOnce(
+      new githubApi.GitHubApiError("Bad credentials", 401)
+    );
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/health",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<HealthResponse>()).toEqual({
+      status: "ok",
+      message: "API is healthy",
+      github: {
+        configured: false,
+        status: "error",
+        error: "Bad credentials",
+      },
+    });
 
     await app.close();
   });

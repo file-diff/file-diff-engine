@@ -45,7 +45,7 @@ The `t` field in file results can be one of:
 
 ### `GET /api/health`
 
-Checks whether the API is running.
+Checks whether the API is running and includes GitHub API rate-limit status for the backend.
 
 #### Request arguments
 
@@ -59,6 +59,10 @@ Status: `200 OK`
 | --- | --- | --- |
 | `status` | `"ok"` | Health status value |
 | `message` | `string` | Human-readable health message |
+| `github.configured` | `boolean` | Whether `PUBLIC_GITHUB_TOKEN` is configured |
+| `github.status` | `"ok" \| "error"` | Whether the GitHub rate-limit lookup succeeded |
+| `github.rateLimit` | `object` | Present when GitHub rate-limit data was fetched successfully |
+| `github.error` | `string` | Present when the GitHub rate-limit lookup failed |
 
 #### Example
 
@@ -71,7 +75,18 @@ Example response:
 ```json
 {
   "status": "ok",
-  "message": "API is healthy"
+  "message": "API is healthy",
+  "github": {
+    "configured": true,
+    "status": "ok",
+    "rateLimit": {
+      "limit": 5000,
+      "remaining": 4999,
+      "reset": 1712345679,
+      "used": 1,
+      "resource": "core"
+    }
+  }
 }
 ```
 

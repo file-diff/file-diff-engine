@@ -201,6 +201,18 @@ export interface StatsResponse {
 export interface HealthResponse {
   status: "ok";
   message: string;
+  github: {
+    configured: boolean;
+    status: "ok" | "error";
+    rateLimit?: {
+      limit: number;
+      remaining: number;
+      reset: number;
+      used: number;
+      resource: string;
+    };
+    error?: string;
+  };
 }
 
 /** Build version endpoint response payload. */
