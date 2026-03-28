@@ -50,6 +50,26 @@ interface GitHubErrorApiResponse {
   message?: string;
 }
 
+interface GitHubRateLimitApiBucket {
+  limit?: number;
+  remaining?: number;
+  reset?: number;
+  used?: number;
+  resource?: string;
+}
+
+interface GitHubRateLimitApiResponse {
+  rate?: GitHubRateLimitApiBucket;
+}
+
+export interface GitHubRateLimitSummary {
+  limit: number;
+  remaining: number;
+  reset: number;
+  used: number;
+  resource: string;
+}
+
 export async function resolvePullRequest(
   pullRequestUrl: string
 ): Promise<ResolvePullRequestResponse> {
@@ -142,6 +162,30 @@ export async function getCommitPullRequest(
     number: pullRequest.number,
     title: pullRequest.title?.trim() || "",
     url: pullRequest.html_url.trim(),
+  };
+}
+
+export async function getGitHubRateLimit(): Promise<GitHubRateLimitSummary> {
+  const response = await getJson<GitHubRateLimitApiResponse>("/rate_limit", {
+    notFoundMessage: "GitHub rate limit endpoint was not found.",
+  });
+  const rate = response.rate;
+
+  if (
+    typeof rate?.limit !== "number" ||
+    typeof rate.remaining !== "number" ||
+    typeof rate.reset !== "number" ||
+    typeof rate.used !== "number"
+  ) {
+    throw new GitHubApiError("GitHub rate limit response was invalid.", 502);
+  }
+
+  return {
+    limit: rate.limit,
+    remaining: rate.remaining,
+    reset: rate.reset,
+    used: rate.used,
+    resource: rate.resource?.trim() || "core",
   };
 }
 
@@ -243,7 +287,7 @@ function getRequestHeaders(): Record<string, string> {
     Accept: "application/vnd.github+json",
     "User-Agent": "file-diff-engine",
   };
-  const token = process.env.GITHUB_TOKEN?.trim();
+  const token = process.env.PUBLIC_GITHUB_TOKEN?.trim();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }

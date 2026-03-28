@@ -9,6 +9,7 @@ import {
 } from "./db/database";
 import { JobRepository, AmbiguousHashError } from "./db/repository";
 import { createJobRoutes } from "./routes/jobs";
+import { getGitHubRateLimit } from "./services/githubApi";
 import { createQueue } from "./services/queue";
 import type {
   ErrorResponse,
@@ -175,9 +176,27 @@ export async function createApp(
   });
 
   app.get("/api/health", async () => {
+    const githubConfigured = Boolean(process.env.PUBLIC_GITHUB_TOKEN?.trim());
+    let github: HealthResponse["github"];
+
+    try {
+      github = {
+        configured: githubConfigured,
+        status: "ok",
+        rateLimit: await getGitHubRateLimit(),
+      };
+    } catch (error) {
+      github = {
+        configured: githubConfigured,
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+
     const response: HealthResponse = {
       status: "ok",
       message: "API is healthy",
+      github,
     };
     return response;
   });

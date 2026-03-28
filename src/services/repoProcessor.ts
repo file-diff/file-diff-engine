@@ -13,6 +13,7 @@ const execFileAsync = promisify(execFile);
 const logger = createLogger("repo-processor");
 const CACHE_COLLISION_MAX_ATTEMPTS = 3;
 const CACHE_COLLISION_RETRY_DELAY_MS = 100;
+const GITHUB_HOSTNAME = "github.com";
 
 /**
  * Helper to run git commands in a working directory and return stdout (trimmed).
@@ -22,7 +23,10 @@ async function runGitCommand(cwd: string, args: string[]): Promise<string> {
   logger.debug("Running git command", { cwd, command });
 
   try {
-    const { stdout, stderr } = await execFileAsync("git", args, { cwd });
+    const { stdout, stderr } = await execFileAsync("git", args, {
+      cwd,
+      env: getGitCommandEnv(),
+    });
     const stdoutText = (stdout ?? "").toString().trim();
     const stderrText = (stderr ?? "").toString().trim();
     if (stderrText) {
@@ -55,6 +59,27 @@ async function runGitCommand(cwd: string, args: string[]): Promise<string> {
     });
     throw new Error(details);
   }
+}
+
+function getGitCommandEnv(): NodeJS.ProcessEnv {
+  const token = process.env.PUBLIC_GITHUB_TOKEN?.trim();
+  if (!token) {
+    return process.env;
+  }
+
+  const env = { ...process.env };
+  const existingCount = Number.parseInt(env.GIT_CONFIG_COUNT ?? "0", 10);
+  const configCount =
+    Number.isInteger(existingCount) && existingCount >= 0 ? existingCount : 0;
+  const authHeader = Buffer.from(`x-access-token:${token}`, "utf8").toString(
+    "base64"
+  );
+
+  env.GIT_CONFIG_COUNT = String(configCount + 1);
+  env[`GIT_CONFIG_KEY_${configCount}`] = `http.https://${GITHUB_HOSTNAME}/.extraHeader`;
+  env[`GIT_CONFIG_VALUE_${configCount}`] = `Authorization: Basic ${authHeader}`;
+
+  return env;
 }
 
 function isRetryableGitLockError(error: unknown): boolean {
