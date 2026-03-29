@@ -332,6 +332,79 @@ describe("repoProcessor – local clone simulation", () => {
     }
   });
 
+  it("should list the newest commits across all branches", async () => {
+    const testDir = path.join(os.tmpdir(), `fde-list-commits-branches-test-${Date.now()}`);
+    const repoDir = path.join(testDir, "origin");
+
+    try {
+      createTestRepo(repoDir);
+      const branchName = execSync("git branch --show-current", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+      const initialCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      fs.writeFileSync(path.join(repoDir, "main.txt"), "main branch\n");
+      execSync("git add main.txt", { cwd: repoDir });
+      execSync('git commit -m "main branch commit"', {
+        cwd: repoDir,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: "2099-01-02T10:00:00Z",
+          GIT_COMMITTER_DATE: "2099-01-02T10:00:00Z",
+        },
+      });
+      const mainCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      execSync("git checkout -b feature-branch HEAD^", { cwd: repoDir });
+      fs.writeFileSync(path.join(repoDir, "feature.txt"), "feature branch\n");
+      execSync("git add feature.txt", { cwd: repoDir });
+      execSync('git commit -m "feature branch commit"', {
+        cwd: repoDir,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: "2099-01-03T10:00:00Z",
+          GIT_COMMITTER_DATE: "2099-01-03T10:00:00Z",
+        },
+      });
+      const featureCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      execSync(`git checkout ${branchName}`, { cwd: repoDir });
+
+      const commits = await listRepositoryCommits(`file://${repoDir}`, 2);
+
+      expect(commits).toHaveLength(2);
+      expect(commits.map((commit) => commit.commit)).toEqual([featureCommit, mainCommit]);
+      expect(commits[0]).toMatchObject({
+        commit: featureCommit,
+        title: "feature branch commit",
+        branch: "feature-branch",
+        parents: [initialCommit],
+        pullRequest: null,
+        tags: [],
+      });
+      expect(commits[1]).toMatchObject({
+        commit: mainCommit,
+        title: "main branch commit",
+        branch: branchName,
+        parents: [initialCommit],
+        pullRequest: null,
+        tags: [],
+      });
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
   it("should process the exact commit hash even after the branch moves", async () => {
     const testDir = path.join(os.tmpdir(), `fde-commit-test-${Date.now()}`);
     const repoDir = path.join(testDir, "origin");

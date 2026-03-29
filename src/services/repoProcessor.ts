@@ -256,20 +256,15 @@ export async function listRepositoryCommits(
   const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-commit-list-"));
 
   try {
-    const cloneArgs = ["clone", `--depth=${limit}`];
-    if (branchRef?.startsWith("refs/heads/")) {
-      cloneArgs.push("--branch", branchRef.slice("refs/heads/".length), "--single-branch");
-    }
+    const cloneArgs = ["clone", `--depth=${limit}`, "--no-single-branch"];
     cloneArgs.push(repoUrl, repoDir);
     await runGitCommand(process.cwd(), cloneArgs);
 
     const output = await runGitCommand(repoDir, [
       "log",
-      `-n`,
-      String(limit),
+      "--all",
       "--date=iso-strict",
       "--pretty=format:%H%x1f%cI%x1f%an%x1f%s%x1f%P",
-      "HEAD",
     ]);
     const commits = output
       .split("\n")
@@ -290,7 +285,9 @@ export async function listRepositoryCommits(
           pullRequest: null,
           tags: [...commitRefs.tags],
         } satisfies CommitSummary;
-      });
+      })
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, limit);
 
     const githubRepo = getGitHubRepoName(repoUrl);
     if (!githubRepo) {
