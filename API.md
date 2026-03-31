@@ -804,6 +804,65 @@ curl -X GET \
 
 ---
 
+### `GET /api/commit/:id/grep`
+
+Searches text and executable files for the latest processed job matching a commit SHA without creating a new job.
+
+#### Path arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Full or short commit SHA (minimum 2 characters) |
+
+#### Query arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `query` | `string` | Yes | Plain-text substring to search for |
+
+#### Success response
+
+Status: `200 OK`
+
+```json
+{
+  "jobId": "job-grep",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "commitShort": "0123456",
+  "status": "completed",
+  "progress": 100,
+  "query": "TODO",
+  "matches": [
+    {
+      "path": "src/index.ts",
+      "lineNumber": 14,
+      "line": "  // TODO: remove this fallback"
+    }
+  ]
+}
+```
+
+#### Error response
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `error` | `string` | Error message |
+
+Common statuses:
+
+- `400 Bad Request` when the `query` parameter is missing or a short commit prefix is ambiguous
+- `404 Not Found` when no job exists for the given commit
+- `500 Internal Server Error` when processed files cannot be read from disk
+
+#### Example
+
+```bash
+curl -X GET \
+  'https://your-host.example.com/api/commit/0123456789abcdef0123456789abcdef01234567/grep?query=TODO'
+```
+
+---
+
 ### `GET /api/jobs/:id/files/hash/:hash/download`
 
 Downloads the file content for a file that belongs to a processed job.

@@ -1,3 +1,5 @@
+import fs from "fs";
+import readline from "readline";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Queue } from "bullmq";
@@ -12,14 +14,18 @@ import { createJobRoutes } from "./routes/jobs";
 import { getGitHubRateLimit } from "./services/githubApi";
 import { createQueue } from "./services/queue";
 import type {
+  CommitGrepMatch,
+  CommitGrepResponse,
   ErrorResponse,
+  FileRecord,
   HealthResponse,
   JobFilesResponse,
   StatsResponse,
   VersionResponse,
 } from "./types";
-import {serializeFiles, serializeJobFilesResponse} from "./utils/binarySerializer";
+import { serializeJobFilesResponse } from "./utils/binarySerializer";
 import { createLogger } from "./utils/logger";
+import { resolveJobFilePath } from "./routes/jobs/shared";
 
 export interface AppDependencies {
   queue: Queue;
@@ -38,6 +44,60 @@ const DEFAULT_STATS_RATE_LIMIT_MAX = 60;
 const DEFAULT_STATS_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_REQUEST_DELAY_MS = 0;
 const logger = createLogger("app");
+
+function isGrepableFileType(fileType: FileRecord["file_type"]): boolean {
+  return fileType === "t" || fileType === "x";
+}
+
+async function grepFilesForJob(
+  jobId: string,
+  files: FileRecord[],
+  query: string
+): Promise<CommitGrepMatch[]> {
+  const matches: CommitGrepMatch[] = [];
+
+  for (const file of files) {
+    if (!isGrepableFileType(file.file_type)) {
+      continue;
+    }
+
+    const storedPath = file.file_disk_path ?? file.file_name;
+    let filePath: string;
+    try {
+      filePath = resolveJobFilePath(jobId, storedPath);
+      await fs.promises.access(filePath, fs.constants.R_OK);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to access file on disk.";
+      throw new Error(
+        `File '${file.file_name}' for job '${jobId}' is missing or unreadable on disk. ${message}`
+      );
+    }
+
+    const lineReader = readline.createInterface({
+      input: fs.createReadStream(filePath, { encoding: "utf8" }),
+      crlfDelay: Infinity,
+    });
+
+    let lineNumber = 0;
+    try {
+      for await (const line of lineReader) {
+        lineNumber += 1;
+        if (line.includes(query)) {
+          matches.push({
+            path: file.file_name,
+            lineNumber,
+            line,
+          });
+        }
+      }
+    } finally {
+      lineReader.close();
+    }
+  }
+
+  return matches;
+}
 
 function acceptsZstdEncoding(acceptEncodingHeader?: string): boolean {
   if (!acceptEncodingHeader) {
@@ -173,6 +233,53 @@ export async function createApp(
     }
 
     return reply.send(responsePayload.payload);
+  });
+
+  app.get<{
+    Params: { id: string };
+    Querystring: { query?: string };
+  }>("/api/commit/:id/grep", async (request, reply) => {
+    const { id } = request.params;
+    const query = request.query?.query?.trim();
+
+    if (!query) {
+      const response: ErrorResponse = { error: "Query parameter 'query' is required." };
+      return reply.code(400).send(response);
+    }
+
+    let job;
+    try {
+      job = await jobRepo.getJobByCommit(id);
+    } catch (error) {
+      if (error instanceof AmbiguousHashError) {
+        const response: ErrorResponse = { error: error.message };
+        return reply.code(400).send(response);
+      }
+      throw error;
+    }
+    if (!job) {
+      const response: ErrorResponse = { error: "Job not found." };
+      return reply.code(404).send(response);
+    }
+
+    try {
+      const files = await jobRepo.getFilesWithDiskPaths(job.id);
+      const response: CommitGrepResponse = {
+        jobId: job.id,
+        commit: job.commit,
+        commitShort: job.commitShort,
+        status: job.status,
+        progress: job.progress,
+        query,
+        matches: await grepFilesForJob(job.id, files, query),
+      };
+      return reply.send(response);
+    } catch (error) {
+      const response: ErrorResponse = {
+        error: error instanceof Error ? error.message : "Failed to grep commit files.",
+      };
+      return reply.code(500).send(response);
+    }
   });
 
   app.get("/api/health", async () => {

@@ -246,6 +246,15 @@ export class JobRepository {
     return result.rows as FileRecord[];
   }
 
+  async getFilesWithDiskPaths(jobId: string): Promise<FileRecord[]> {
+    const result = await this.db.query(
+      `SELECT file_type, file_name, file_disk_path, file_size, file_update_date, file_last_commit, file_git_hash
+       FROM files WHERE job_id = $1 ORDER BY id ASC`,
+      [jobId]
+    );
+    return result.rows as FileRecord[];
+  }
+
   async getFileByHash(
     jobId: string,
     hash: string
