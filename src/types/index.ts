@@ -134,9 +134,9 @@ export interface OrganizationRepositorySummary {
   name: string;
   repo: string;
   repositoryUrl: string;
-  pushed_at: string;
-  created_at: string;
-  updated_at: string;
+  pushedAt: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** Response payload when listing repositories for a GitHub organization. */

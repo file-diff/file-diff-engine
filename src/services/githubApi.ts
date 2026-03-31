@@ -130,11 +130,11 @@ export async function listOrganizationRepositories(
         repositoryUrl:
           repository.html_url?.trim() ||
           `https://${GITHUB_HOSTNAME}/${repository.full_name?.trim() || ""}`,
-        pushed_at:
+        pushedAt:
           typeof repository.pushed_at === "string" ? repository.pushed_at : "",
-        created_at:
+        createdAt:
           typeof repository.created_at === "string" ? repository.created_at : "",
-        updated_at:
+        updatedAt:
           typeof repository.updated_at === "string" ? repository.updated_at : "",
       }))
     );
