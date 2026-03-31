@@ -1,9 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { Queue } from "bullmq";
 import { zstdDecompressSync } from "node:zlib";
 import type { DatabaseClient } from "../db/database";
 import { createApp } from "../app";
-import type { HealthResponse, JobFilesResponse, StatsResponse, VersionResponse } from "../types";
+import type {
+  CommitGrepResponse,
+  HealthResponse,
+  JobFilesResponse,
+  StatsResponse,
+  VersionResponse,
+} from "../types";
 import { JobRepository } from "../db/repository";
 import { createTestDatabase } from "./helpers/testDatabase";
 import { deserializeFiles } from "../utils/binarySerializer";
@@ -16,11 +25,15 @@ describe("createApp", () => {
   const originalBuildVersion = process.env.BUILD_VERSION;
   const originalRequestDelayMs = process.env.REQUEST_DELAY_MS;
   const originalPublicGitHubToken = process.env.PUBLIC_GITHUB_TOKEN;
+  const originalTmpDir = process.env.TMP_DIR;
+  let tempDirs: string[];
 
   beforeEach(async () => {
+    tempDirs = [];
     db = await createTestDatabase();
     jobRepo = new JobRepository(db);
     mockQueue = {
+      add: vi.fn().mockResolvedValue({}),
       close: async () => undefined,
     } as unknown as Queue;
     vi.spyOn(githubApi, "getGitHubRateLimit").mockResolvedValue({
@@ -48,6 +61,14 @@ describe("createApp", () => {
       delete process.env.PUBLIC_GITHUB_TOKEN;
     } else {
       process.env.PUBLIC_GITHUB_TOKEN = originalPublicGitHubToken;
+    }
+    if (originalTmpDir === undefined) {
+      delete process.env.TMP_DIR;
+    } else {
+      process.env.TMP_DIR = originalTmpDir;
+    }
+    for (const tempDir of tempDirs) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
     }
     await db.end();
   });
@@ -461,6 +482,107 @@ describe("createApp", () => {
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({
       error: "Job not found.",
+    });
+
+    await app.close();
+  });
+
+  it("greps text files for a processed commit without creating a new job", async () => {
+    const commit = "4123456789abcdef0123456789abcdef01234567";
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-commit-grep-"));
+    tempDirs.push(tmpDir);
+    process.env.TMP_DIR = tmpDir;
+
+    const treeDir = path.join(tmpDir, "fde-job-grep", "tree", "src");
+    fs.mkdirSync(treeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "fde-job-grep", "tree", "README.md"),
+      "hello world\nfind me here\n"
+    );
+    fs.writeFileSync(
+      path.join(treeDir, "index.ts"),
+      "const value = 'find me here';\nconst other = 'nope';\n"
+    );
+    fs.writeFileSync(path.join(tmpDir, "fde-job-grep", "tree", "image.bin"), Buffer.from([0, 1, 2]));
+
+    await jobRepo.createJob("job-grep", "owner/repo", commit);
+    await jobRepo.insertFiles("job-grep", [
+      {
+        file_type: "t",
+        file_name: "README.md",
+        file_disk_path: "README.md",
+        file_size: 24,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "abc123",
+        file_git_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      },
+      {
+        file_type: "x",
+        file_name: "src/index.ts",
+        file_disk_path: "src/index.ts",
+        file_size: 54,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "def456",
+        file_git_hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      },
+      {
+        file_type: "b",
+        file_name: "image.bin",
+        file_disk_path: "image.bin",
+        file_size: 3,
+        file_update_date: "2024-01-01T00:00:00Z",
+        file_last_commit: "ghi789",
+        file_git_hash: "cccccccccccccccccccccccccccccccccccccccc",
+      },
+    ]);
+
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/commit/${commit}/grep?query=find%20me%20here`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<CommitGrepResponse>()).toEqual({
+      jobId: "job-grep",
+      commit,
+      commitShort: "4123456",
+      status: "waiting",
+      progress: 0,
+      query: "find me here",
+      matches: [
+        {
+          path: "README.md",
+          lineNumber: 2,
+          line: "find me here",
+        },
+        {
+          path: "src/index.ts",
+          lineNumber: 1,
+          line: "const value = 'find me here';",
+        },
+      ],
+    });
+    expect((mockQueue as unknown as { add: ReturnType<typeof vi.fn> }).add).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
+  it("returns 400 when commit grep query is missing", async () => {
+    const commit = "5123456789abcdef0123456789abcdef01234567";
+    await jobRepo.createJob("job-grep-empty", "owner/repo", commit);
+
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/commit/${commit}/grep`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: "Query parameter 'query' is required.",
     });
 
     await app.close();

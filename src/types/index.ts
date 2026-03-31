@@ -193,6 +193,24 @@ export interface JobFilesResponse {
   files: JobFileSummary[];
 }
 
+/** A single grep match found within a processed commit checkout. */
+export interface CommitGrepMatch {
+  path: string;
+  lineNumber: number;
+  line: string;
+}
+
+/** Response payload when grepping files for a processed commit. */
+export interface CommitGrepResponse {
+  jobId: string;
+  commit: string;
+  commitShort: string;
+  status: JobStatus;
+  progress: number;
+  query: string;
+  matches: CommitGrepMatch[];
+}
+
 /** Aggregate storage statistics derived from the database. */
 export interface StatsResponse {
   jobsStored: number;
