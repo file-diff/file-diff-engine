@@ -69,9 +69,9 @@ describe("githubApi", () => {
           name: "file-diff-engine",
           repo: "file-diff/file-diff-engine",
           repositoryUrl: "https://github.com/file-diff/file-diff-engine",
-          pushed_at: "2011-01-26T19:06:43Z",
-          created_at: "2011-01-26T19:01:12Z",
-          updated_at: "2011-01-26T19:14:43Z",
+          pushedAt: "2011-01-26T19:06:43Z",
+          createdAt: "2011-01-26T19:01:12Z",
+          updatedAt: "2011-01-26T19:14:43Z",
         },
       ],
     });
