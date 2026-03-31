@@ -8,3 +8,4 @@ tmp/
 postgres_data
 redis_data
 repositories_data
+gitploy.py
