@@ -485,6 +485,9 @@ Each `repositories` item contains:
 | `name` | `string` | Repository short name |
 | `repo` | `string` | Repository in `owner/repo` format |
 | `repositoryUrl` | `string` | Full GitHub repository URL |
+| `pushed_at` | `string` | Last push timestamp from GitHub |
+| `created_at` | `string` | Repository creation timestamp from GitHub |
+| `updated_at` | `string` | Last update timestamp from GitHub |
 
 #### Error response
 

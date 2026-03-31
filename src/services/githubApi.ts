@@ -38,6 +38,9 @@ interface GitHubRepositoryApiResponse {
   name?: string;
   full_name?: string;
   html_url?: string;
+  pushed_at?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface GitHubCommitPullRequestApiResponse {
@@ -127,6 +130,12 @@ export async function listOrganizationRepositories(
         repositoryUrl:
           repository.html_url?.trim() ||
           `https://${GITHUB_HOSTNAME}/${repository.full_name?.trim() || ""}`,
+        pushed_at:
+          typeof repository.pushed_at === "string" ? repository.pushed_at : "",
+        created_at:
+          typeof repository.created_at === "string" ? repository.created_at : "",
+        updated_at:
+          typeof repository.updated_at === "string" ? repository.updated_at : "",
       }))
     );
 
