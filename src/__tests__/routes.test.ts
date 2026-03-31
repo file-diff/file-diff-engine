@@ -340,6 +340,9 @@ describe("Job Routes", () => {
             name: "react",
             repo: "facebook/react",
             repositoryUrl: "https://github.com/facebook/react",
+            pushed_at: "2011-01-26T19:06:43Z",
+            created_at: "2011-01-26T19:01:12Z",
+            updated_at: "2011-01-26T19:14:43Z",
           },
         ],
       });
@@ -358,6 +361,9 @@ describe("Job Routes", () => {
           name: "react",
           repo: "facebook/react",
           repositoryUrl: "https://github.com/facebook/react",
+          pushed_at: "2011-01-26T19:06:43Z",
+          created_at: "2011-01-26T19:01:12Z",
+          updated_at: "2011-01-26T19:14:43Z",
         },
       ],
     });
