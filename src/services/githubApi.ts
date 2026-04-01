@@ -278,12 +278,13 @@ function mapRepositorySummary(
   owner: string,
   repository: GitHubRepositoryApiResponse
 ): OrganizationRepositorySummary {
+  const name = repository.name?.trim() || "";
+  const repo = repository.full_name?.trim() || (name ? `${owner}/${name}` : "");
+
   return {
-    name: repository.name?.trim() || "",
-    repo: repository.full_name?.trim() || `${owner}/${repository.name?.trim() || ""}`,
-    repositoryUrl:
-      repository.html_url?.trim() ||
-      `https://${GITHUB_HOSTNAME}/${repository.full_name?.trim() || ""}`,
+    name,
+    repo,
+    repositoryUrl: repository.html_url?.trim() || (repo ? `https://${GITHUB_HOSTNAME}/${repo}` : ""),
     pushedAt: typeof repository.pushed_at === "string" ? repository.pushed_at : "",
     createdAt: typeof repository.created_at === "string" ? repository.created_at : "",
     updatedAt: typeof repository.updated_at === "string" ? repository.updated_at : "",
@@ -298,6 +299,13 @@ function getOwnerRepositoriesError(owner: string, errors: unknown[]): GitHubApiE
 
   if (firstNonNotFoundError) {
     return firstNonNotFoundError;
+  }
+
+  const firstUnexpectedError = errors.find(
+    (error): error is Error => error instanceof Error && !(error instanceof GitHubApiError)
+  );
+  if (firstUnexpectedError) {
+    return new GitHubApiError(firstUnexpectedError.message, 500);
   }
 
   return new GitHubApiError(`GitHub organization or user '${owner}' was not found.`, 404);
