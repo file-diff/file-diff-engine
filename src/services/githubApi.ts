@@ -111,43 +111,37 @@ export async function listOrganizationRepositories(
   organization: string
 ): Promise<ListOrganizationRepositoriesResponse> {
   const normalizedOrganization = organization.trim();
-  const repositories: OrganizationRepositorySummary[] = [];
+  const [organizationResult, userResult] = await Promise.allSettled([
+    listRepositoriesForOwner(
+      normalizedOrganization,
+      "orgs",
+      `GitHub organization '${normalizedOrganization}' was not found.`
+    ),
+    listRepositoriesForOwner(
+      normalizedOrganization,
+      "users",
+      `GitHub user '${normalizedOrganization}' was not found.`
+    ),
+  ]);
 
-  for (let page = 1; ; page += 1) {
-    const pageResults = await getJson<GitHubRepositoryApiResponse[]>(
-      `/orgs/${encodeURIComponent(normalizedOrganization)}/repos?per_page=${GITHUB_REPOS_PAGE_SIZE}&page=${page}&type=all&sort=full_name&direction=asc`,
-      {
-        notFoundMessage: `GitHub organization '${normalizedOrganization}' was not found.`,
-      }
-    );
-
-    repositories.push(
-      ...pageResults.map((repository) => ({
-        name: repository.name?.trim() || "",
-        repo:
-          repository.full_name?.trim() ||
-          `${normalizedOrganization}/${repository.name?.trim() || ""}`,
-        repositoryUrl:
-          repository.html_url?.trim() ||
-          `https://${GITHUB_HOSTNAME}/${repository.full_name?.trim() || ""}`,
-        pushedAt:
-          typeof repository.pushed_at === "string" ? repository.pushed_at : "",
-        createdAt:
-          typeof repository.created_at === "string" ? repository.created_at : "",
-        updatedAt:
-          typeof repository.updated_at === "string" ? repository.updated_at : "",
-      }))
-    );
-
-    if (pageResults.length < GITHUB_REPOS_PAGE_SIZE) {
-      break;
-    }
+  if (organizationResult.status === "fulfilled") {
+    return {
+      organization: normalizedOrganization,
+      repositories: organizationResult.value,
+    };
   }
 
-  return {
-    organization: normalizedOrganization,
-    repositories,
-  };
+  if (userResult.status === "fulfilled") {
+    return {
+      organization: normalizedOrganization,
+      repositories: userResult.value,
+    };
+  }
+
+  throw getOwnerRepositoriesError(normalizedOrganization, [
+    organizationResult.reason,
+    userResult.reason,
+  ]);
 }
 
 export async function getCommitPullRequest(
@@ -257,6 +251,64 @@ async function getJson<T>(
   }
 
   return payload;
+}
+
+async function listRepositoriesForOwner(
+  owner: string,
+  ownerType: "orgs" | "users",
+  notFoundMessage: string
+): Promise<OrganizationRepositorySummary[]> {
+  const repositories: OrganizationRepositorySummary[] = [];
+
+  for (let page = 1; ; page += 1) {
+    const pageResults = await getJson<GitHubRepositoryApiResponse[]>(
+      `/${ownerType}/${encodeURIComponent(owner)}/repos?per_page=${GITHUB_REPOS_PAGE_SIZE}&page=${page}&type=all&sort=full_name&direction=asc`,
+      { notFoundMessage }
+    );
+
+    repositories.push(...pageResults.map((repository) => mapRepositorySummary(owner, repository)));
+
+    if (pageResults.length < GITHUB_REPOS_PAGE_SIZE) {
+      return repositories;
+    }
+  }
+}
+
+function mapRepositorySummary(
+  owner: string,
+  repository: GitHubRepositoryApiResponse
+): OrganizationRepositorySummary {
+  const name = repository.name?.trim() || "";
+  const repo = repository.full_name?.trim() || (name ? `${owner}/${name}` : "");
+
+  return {
+    name,
+    repo,
+    repositoryUrl: repository.html_url?.trim() || (repo ? `https://${GITHUB_HOSTNAME}/${repo}` : ""),
+    pushedAt: typeof repository.pushed_at === "string" ? repository.pushed_at : "",
+    createdAt: typeof repository.created_at === "string" ? repository.created_at : "",
+    updatedAt: typeof repository.updated_at === "string" ? repository.updated_at : "",
+  };
+}
+
+function getOwnerRepositoriesError(owner: string, errors: unknown[]): GitHubApiError {
+  const firstNonNotFoundError = errors.find(
+    (error): error is GitHubApiError =>
+      error instanceof GitHubApiError && error.statusCode !== 404
+  );
+
+  if (firstNonNotFoundError) {
+    return firstNonNotFoundError;
+  }
+
+  const firstUnexpectedError = errors.find(
+    (error): error is Error => error instanceof Error && !(error instanceof GitHubApiError)
+  );
+  if (firstUnexpectedError) {
+    return new GitHubApiError(firstUnexpectedError.message, 500);
+  }
+
+  return new GitHubApiError(`GitHub organization or user '${owner}' was not found.`, 404);
 }
 
 function requestGitHub(path: string): Promise<{ statusCode: number; body: string }> {

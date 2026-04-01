@@ -7,6 +7,11 @@ import {
   parsePullRequestUrl,
 } from "../services/githubApi";
 
+interface MockGitHubResponse {
+  statusCode: number;
+  body: unknown;
+}
+
 describe("githubApi", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -76,4 +81,158 @@ describe("githubApi", () => {
       ],
     });
   });
+
+  it("listOrganizationRepositories returns user repositories when the organization endpoint is not found", async () => {
+    mockGitHubRequests((path, respond) => {
+      if (
+        path ===
+        "/orgs/file-diff/repos?per_page=100&page=1&type=all&sort=full_name&direction=asc"
+      ) {
+        respond({
+          statusCode: 404,
+          body: { message: "Not Found" },
+        });
+        return;
+      }
+
+      expect(path).toBe(
+        "/users/file-diff/repos?per_page=100&page=1&type=all&sort=full_name&direction=asc"
+      );
+      respond({
+        statusCode: 200,
+        body: [
+          {
+            name: "file-diff-engine",
+            full_name: "file-diff/file-diff-engine",
+            html_url: "https://github.com/file-diff/file-diff-engine",
+            pushed_at: "2011-01-26T19:06:43Z",
+            created_at: "2011-01-26T19:01:12Z",
+            updated_at: "2011-01-26T19:14:43Z",
+          },
+        ],
+      });
+    });
+
+    await expect(listOrganizationRepositories("file-diff")).resolves.toEqual({
+      organization: "file-diff",
+      repositories: [
+        {
+          name: "file-diff-engine",
+          repo: "file-diff/file-diff-engine",
+          repositoryUrl: "https://github.com/file-diff/file-diff-engine",
+          pushedAt: "2011-01-26T19:06:43Z",
+          createdAt: "2011-01-26T19:01:12Z",
+          updatedAt: "2011-01-26T19:14:43Z",
+        },
+      ],
+    });
+  });
+
+  it("listOrganizationRepositories starts both owner lookups before paging the successful result", async () => {
+    const requestedPaths: string[] = [];
+
+    mockGitHubRequests((path, respond) => {
+      requestedPaths.push(path);
+
+      if (
+        path ===
+        "/orgs/file-diff/repos?per_page=100&page=1&type=all&sort=full_name&direction=asc"
+      ) {
+        queueMicrotask(() => {
+          expect(requestedPaths).toContain(
+            "/users/file-diff/repos?per_page=100&page=1&type=all&sort=full_name&direction=asc"
+          );
+          respond({
+            statusCode: 200,
+            body: Array.from({ length: 100 }, (_, index) => ({
+              name: `repo-${index + 1}`,
+              full_name: `file-diff/repo-${index + 1}`,
+              html_url: `https://github.com/file-diff/repo-${index + 1}`,
+            })),
+          });
+        });
+        return;
+      }
+
+      if (
+        path ===
+        "/orgs/file-diff/repos?per_page=100&page=2&type=all&sort=full_name&direction=asc"
+      ) {
+        respond({
+          statusCode: 200,
+          body: [
+            {
+              name: "repo-101",
+              full_name: "file-diff/repo-101",
+              html_url: "https://github.com/file-diff/repo-101",
+            },
+          ],
+        });
+        return;
+      }
+
+      expect(path).toBe(
+        "/users/file-diff/repos?per_page=100&page=1&type=all&sort=full_name&direction=asc"
+      );
+      respond({
+        statusCode: 404,
+        body: { message: "Not Found" },
+      });
+    });
+
+    const response = await listOrganizationRepositories("file-diff");
+
+    expect(response.organization).toBe("file-diff");
+    expect(response.repositories).toHaveLength(101);
+    expect(response.repositories[0]).toMatchObject({
+      name: "repo-1",
+      repo: "file-diff/repo-1",
+    });
+    expect(response.repositories[100]).toMatchObject({
+      name: "repo-101",
+      repo: "file-diff/repo-101",
+    });
+  });
+
+  it("listOrganizationRepositories returns a not found error when both owner lookups fail", async () => {
+    mockGitHubRequests((path, respond) => {
+      expect(path).toMatch(
+        /^\/(?:orgs|users)\/missing-owner\/repos\?per_page=100&page=1&type=all&sort=full_name&direction=asc$/
+      );
+      respond({
+        statusCode: 404,
+        body: { message: "Not Found" },
+      });
+    });
+
+    await expect(listOrganizationRepositories("missing-owner")).rejects.toMatchObject({
+      message: "GitHub organization or user 'missing-owner' was not found.",
+      statusCode: 404,
+    });
+  });
 });
+
+function mockGitHubRequests(
+  handleRequest: (path: string, respond: (response: MockGitHubResponse) => void) => void
+): void {
+  vi.spyOn(https, "request").mockImplementation((options, callback) => {
+    const response = new EventEmitter() as EventEmitter & { statusCode?: number };
+    const request = new EventEmitter() as EventEmitter & { end: () => void };
+
+    request.end = () => {
+      const path = typeof options === "string" ? options : options.path;
+      if (typeof path !== "string") {
+        throw new Error("Expected GitHub API request path.");
+      }
+
+      handleRequest(path, ({ statusCode, body }) => {
+        response.statusCode = statusCode;
+        callback?.(response as never);
+        response.emit("data", JSON.stringify(body));
+        response.emit("end");
+      });
+    };
+
+    return request as never;
+  });
+}
