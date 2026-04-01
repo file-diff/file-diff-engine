@@ -459,6 +459,88 @@ Example response:
 
 ---
 
+### `POST /api/jobs/commits/graph`
+
+Returns recent commits as mixed node/edge items that can be fed directly into a graph visualizer.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `limit` | `number` | Yes | Maximum number of commits to inspect. Must be a positive integer. |
+
+#### Success response
+
+Status: `200 OK`
+
+Returns a JSON array. Each item is one of:
+
+Node item:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Full commit SHA |
+| `type` | `"node"` | Item kind |
+| `colorKey` | `string` | Optional branch name when the commit is the head of a branch |
+
+Edge item:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Stable edge identifier in `parent->child` format |
+| `type` | `"edge"` | Item kind |
+| `source` | `string` | Parent commit SHA |
+| `target` | `string` | Child commit SHA |
+
+Edges are only included when both commits are present in the requested result set.
+
+#### Error response
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `error` | `string` | Error message |
+
+Common statuses:
+
+- `400 Bad Request` when `repo` is missing or invalid, or `limit` is not a positive integer
+- `500 Internal Server Error` when commit history cannot be listed
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/commits/graph \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "limit": 3
+  }'
+```
+
+Example response:
+
+```json
+[
+  {
+    "id": "0123456789abcdef0123456789abcdef01234567",
+    "type": "node",
+    "colorKey": "main"
+  },
+  {
+    "id": "1111111111111111111111111111111111111111",
+    "type": "node"
+  },
+  {
+    "id": "1111111111111111111111111111111111111111->0123456789abcdef0123456789abcdef01234567",
+    "type": "edge",
+    "source": "1111111111111111111111111111111111111111",
+    "target": "0123456789abcdef0123456789abcdef01234567"
+  }
+]
+```
+
+---
+
 ### `GET /api/jobs/organizations/:organization/repositories`
 
 Lists repositories available inside a GitHub organization.

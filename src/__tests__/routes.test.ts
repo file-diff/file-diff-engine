@@ -12,6 +12,7 @@ import {
 } from "../routes/jobs/downloadRoutes";
 import { Queue } from "bullmq";
 import type {
+  ListCommitsGraphResponse,
   GitCacheStatsResponse,
   ListCommitsResponse,
   ListRefsResponse,
@@ -271,6 +272,85 @@ describe("Job Routes", () => {
     expect(res.body).toEqual({
       error: "Field 'limit' must be a positive integer.",
     });
+  });
+
+  it("POST /api/jobs/commits/graph - should list visualization items for a repository", async () => {
+    const mergeCommitHash = "3333333333333333333333333333333333333333";
+    const graphCommits: ListCommitsResponse["commits"] = [
+      {
+        commit: commitHash,
+        date: "2026-03-20T12:00:00Z",
+        author: "Test User",
+        title: "Add feature",
+        branch: "main",
+        parents: [fileHash],
+        pullRequest: null,
+        tags: [],
+      },
+      {
+        commit: fileHash,
+        date: "2026-03-19T12:00:00Z",
+        author: "Test User",
+        title: "Base commit",
+        branch: null,
+        parents: [],
+        pullRequest: null,
+        tags: [],
+      },
+      {
+        commit: mergeCommitHash,
+        date: "2026-03-18T12:00:00Z",
+        author: "Test User",
+        title: "Merge feature",
+        branch: "release",
+        parents: [commitHash, otherFileHash],
+        pullRequest: null,
+        tags: [],
+      },
+    ];
+
+    const listRepositoryCommitsSpy = vi
+      .spyOn(repoProcessor, "listRepositoryCommits")
+      .mockResolvedValue(graphCommits);
+
+    const res = await makeRequest(app, "POST", "/api/jobs/commits/graph", {
+      repo: "https://github.com/facebook/react.git",
+      limit: 5,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<ListCommitsGraphResponse>([
+      {
+        id: commitHash,
+        type: "node",
+        colorKey: "main",
+      },
+      {
+        id: fileHash,
+        type: "node",
+      },
+      {
+        id: mergeCommitHash,
+        type: "node",
+        colorKey: "release",
+      },
+      {
+        id: `${fileHash}->${commitHash}`,
+        type: "edge",
+        source: fileHash,
+        target: commitHash,
+      },
+      {
+        id: `${commitHash}->${mergeCommitHash}`,
+        type: "edge",
+        source: commitHash,
+        target: mergeCommitHash,
+      },
+    ]);
+    expect(listRepositoryCommitsSpy).toHaveBeenCalledWith(
+      "https://github.com/facebook/react.git",
+      5
+    );
   });
 
   it("POST /api/jobs/pull-request/resolve - should resolve a pull request URL", async () => {

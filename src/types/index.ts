@@ -129,6 +129,27 @@ export interface ListCommitsResponse {
   commits: CommitSummary[];
 }
 
+/** Visualization node entry when listing commits as a graph. */
+export interface CommitGraphNode {
+  id: string;
+  type: "node";
+  colorKey?: string;
+}
+
+/** Visualization edge entry when listing commits as a graph. */
+export interface CommitGraphEdge {
+  id: string;
+  type: "edge";
+  source: string;
+  target: string;
+}
+
+/** Mixed graph item returned by the commit visualization endpoint. */
+export type CommitGraphItem = CommitGraphNode | CommitGraphEdge;
+
+/** Response payload when listing recent commits as visualization graph items. */
+export type ListCommitsGraphResponse = CommitGraphItem[];
+
 /** Response entry when listing repositories for a GitHub organization. */
 export interface OrganizationRepositorySummary {
   name: string;
