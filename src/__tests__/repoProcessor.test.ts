@@ -405,6 +405,60 @@ describe("repoProcessor – local clone simulation", () => {
     }
   });
 
+  it("should sort commits by actual timestamp across timezone offsets", async () => {
+    const testDir = path.join(os.tmpdir(), `fde-list-commits-timezone-test-${Date.now()}`);
+    const repoDir = path.join(testDir, "origin");
+
+    try {
+      createTestRepo(repoDir);
+      const initialCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      fs.writeFileSync(path.join(repoDir, "earlier.txt"), "earlier absolute time\n");
+      execSync("git add earlier.txt", { cwd: repoDir });
+      execSync('git commit -m "earlier absolute time"', {
+        cwd: repoDir,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: "2099-01-02T10:00:00+02:00",
+          GIT_COMMITTER_DATE: "2099-01-02T10:00:00+02:00",
+        },
+      });
+      const earlierCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      fs.writeFileSync(path.join(repoDir, "later.txt"), "later absolute time\n");
+      execSync("git add later.txt", { cwd: repoDir });
+      execSync('git commit -m "later absolute time"', {
+        cwd: repoDir,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: "2099-01-02T08:30:00Z",
+          GIT_COMMITTER_DATE: "2099-01-02T08:30:00Z",
+        },
+      });
+      const laterCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      const commits = await listRepositoryCommits(`file://${repoDir}`, 3);
+
+      expect(commits).toHaveLength(3);
+      expect(commits.map((commit) => commit.commit)).toEqual([
+        laterCommit,
+        earlierCommit,
+        initialCommit,
+      ]);
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
   it("should process the exact commit hash even after the branch moves", async () => {
     const testDir = path.join(os.tmpdir(), `fde-commit-test-${Date.now()}`);
     const repoDir = path.join(testDir, "origin");

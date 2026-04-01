@@ -98,6 +98,17 @@ function wait(ms: number): Promise<void> {
   });
 }
 
+function compareCommitDatesDescending(left: string, right: string): number {
+  const leftTimestamp = Date.parse(left);
+  const rightTimestamp = Date.parse(right);
+
+  if (Number.isNaN(leftTimestamp) || Number.isNaN(rightTimestamp)) {
+    return right.localeCompare(left);
+  }
+
+  return rightTimestamp - leftTimestamp;
+}
+
 async function runGitCommandWithRetry(cwd: string, args: string[]): Promise<string> {
   let lastError: unknown;
 
@@ -286,7 +297,7 @@ export async function listRepositoryCommits(
           tags: [...commitRefs.tags],
         } satisfies CommitSummary;
       })
-      .sort((a, b) => b.date.localeCompare(a.date))
+      .sort((a, b) => compareCommitDatesDescending(a.date, b.date))
       .slice(0, limit);
 
     const githubRepo = getGitHubRepoName(repoUrl);
