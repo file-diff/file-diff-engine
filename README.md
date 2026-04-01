@@ -9,16 +9,6 @@ API reference: [API.md](./API.md)
 - `REQUEST_DELAY_MS`: Adds a delay before every API request is handled. Defaults to `0` (disabled). Set `REQUEST_DELAY_MS=500` to simulate 500ms of latency during development.
 - `PUBLIC_GITHUB_TOKEN`: Optional GitHub token used to authorize GitHub API requests and Git HTTPS operations so the service can use higher authenticated rate limits.
 
-## Docker
-
-- `docker-compose.yml` builds the application image locally.
-- `docker-compose.prebuilt.yml` switches the `app` service to the published GitHub Container Registry image at `ghcr.io/file-diff/file-diff-engine:latest`.
-- To run with the published image instead of building locally, use:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up -d
-```
-
 ## Storage tree
 
 The worker stores repository data under `TMP_DIR` (or the relative `tmp/` directory under the service working directory when `TMP_DIR` is not set).

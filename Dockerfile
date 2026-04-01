@@ -15,6 +15,7 @@ FROM node:24-bookworm-slim
 WORKDIR /app
 
 ARG DIFFT_TAG_NAME=0.68.0-dev.3
+ARG PUBLIC_GITHUB_TOKEN
 
 ADD https://github.com/file-diff/difftastic/releases/download/${DIFFT_TAG_NAME}/difft-${DIFFT_TAG_NAME}-x86_64-unknown-linux-gnu.tar.xz /tmp/difft.tar.xz
 
@@ -30,6 +31,7 @@ COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
+ENV PUBLIC_GITHUB_TOKEN=${PUBLIC_GITHUB_TOKEN}
 ENV DIFFT_TAG_NAME=${DIFFT_TAG_NAME}
 ENV NODE_ENV=production
 ENV REQUEST_DELAY_MS=0
