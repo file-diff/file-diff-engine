@@ -4,15 +4,17 @@ import type { FastifyInstance } from "fastify";
 import type {
   CommitGraphItem,
   ErrorResponse,
-  RevertToCommitRequest,
-  RevertToCommitResponse,
+  ListBranchesRequest,
+  ListBranchesResponse,
   ListCommitsRequest,
   ListCommitsGraphResponse,
   ListCommitsResponse,
-  GitCacheStatsResponse,
   ListRefsRequest,
   ListRefsResponse,
   ListOrganizationRepositoriesResponse,
+  GitCacheStatsResponse,
+  RevertToCommitRequest,
+  RevertToCommitResponse,
   ResolveCommitRequest,
   ResolveCommitResponse,
   ResolvePullRequestRequest,
@@ -228,6 +230,47 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to list git refs.";
+      const response: ErrorResponse = { error: message };
+      return reply.code(500).send(response);
+    }
+  });
+
+  /**
+   * POST /api/jobs/branches
+   * Body: { "repo": "owner/repo" }
+   * Lists repository branches with branch head metadata and pull request status.
+   */
+  app.post<{ Body: ListBranchesRequest }>("/branches", async (request, reply) => {
+    let { repo } = request.body ?? {};
+    if (!repo) {
+      const response: ErrorResponse = {
+        error: "Field 'repo' is required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    try {
+      const branches = await repoProcessor.listRepositoryBranches(
+        repoProcessor.getRepositoryUrl(repo)
+      );
+      const response: ListBranchesResponse = {
+        repo,
+        branches,
+      };
+      return reply.code(200).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to list repository branches.";
       const response: ErrorResponse = { error: message };
       return reply.code(500).send(response);
     }

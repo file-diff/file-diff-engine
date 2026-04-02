@@ -4,7 +4,12 @@ import path from "path";
 import { createHash } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { FileRecord, type CommitSummary, type GitRefSummary } from "../types";
+import {
+  FileRecord,
+  type BranchSummary,
+  type CommitSummary,
+  type GitRefSummary,
+} from "../types";
 import { getCommitShort } from "../utils/commit";
 import { createLogger } from "../utils/logger";
 import { getCommitPullRequest } from "./githubApi";
@@ -254,6 +259,103 @@ export async function listRepositoryRefs(repoUrl: string): Promise<GitRefSummary
 
     return a.name.localeCompare(b.name);
   });
+}
+
+export async function listRepositoryBranches(repoUrl: string): Promise<BranchSummary[]> {
+  assertSafeGitRepositoryUrl(repoUrl);
+  const { branchRef } = await getHeadReference(repoUrl);
+  const defaultBranch =
+    branchRef?.startsWith("refs/heads/") ? branchRef.slice("refs/heads/".length) : null;
+  const refs = await listRepositoryRefs(repoUrl);
+  const branches = refs.filter((ref) => ref.type === "branch");
+
+  if (branches.length === 0) {
+    return [];
+  }
+
+  const tagsByCommit = new Map<string, string[]>();
+  for (const ref of refs) {
+    if (ref.type !== "tag") {
+      continue;
+    }
+
+    const tags = tagsByCommit.get(ref.commit) ?? [];
+    tags.push(ref.name);
+    tagsByCommit.set(ref.commit, tags);
+  }
+
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-branch-list-"));
+
+  try {
+    await runGitCommand(process.cwd(), [
+      "clone",
+      "--depth=1",
+      "--no-single-branch",
+      "--",
+      repoUrl,
+      repoDir,
+    ]);
+
+    const output = await runGitCommand(repoDir, [
+      "for-each-ref",
+      `--format=%(refname)\x1f%(objectname)\x1f%(committerdate:iso-strict)\x1f%(authorname)\x1f%(subject)`,
+      "refs/remotes/origin",
+    ]);
+    const metadataByBranch = new Map<
+      string,
+      {
+        date: string;
+        author: string;
+        title: string;
+      }
+    >();
+
+    for (const line of output.split("\n").filter(Boolean)) {
+      const [ref, , date = "", author = "", title = ""] = line.split("\x1f");
+      if (!ref || ref === "refs/remotes/origin/HEAD") {
+        continue;
+      }
+
+      const branchName = ref.startsWith("refs/remotes/origin/")
+        ? ref.slice("refs/remotes/origin/".length)
+        : null;
+      if (!branchName) {
+        continue;
+      }
+
+      metadataByBranch.set(branchName, {
+        date,
+        author,
+        title,
+      });
+    }
+
+    const githubRepo = getGitHubRepoName(repoUrl);
+    return Promise.all(
+      branches.map(async (branch) => {
+        const metadata = metadataByBranch.get(branch.name);
+        const pullRequest = githubRepo
+          ? await getCommitPullRequest(githubRepo, branch.commit).catch(() => null)
+          : null;
+
+        return {
+          name: branch.name,
+          ref: branch.ref,
+          commit: branch.commit,
+          commitShort: branch.commitShort,
+          date: metadata?.date ?? "",
+          author: metadata?.author ?? "",
+          title: metadata?.title ?? "",
+          isDefault: branch.name === defaultBranch,
+          pullRequestStatus: pullRequest?.state ?? "none",
+          pullRequest,
+          tags: [...(tagsByCommit.get(branch.commit) ?? [])],
+        } satisfies BranchSummary;
+      })
+    );
+  } finally {
+    fs.rmSync(repoDir, { recursive: true, force: true });
+  }
 }
 
 export async function listRepositoryCommits(

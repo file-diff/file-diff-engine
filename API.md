@@ -449,6 +449,7 @@ When `pullRequest` is present, it contains:
 | `number` | `number` | Pull request number |
 | `title` | `string` | Pull request title |
 | `url` | `string` | Pull request URL |
+| `state` | `"open" \| "closed"` | Pull request state when GitHub provides it |
 
 #### Error response
 
@@ -490,7 +491,8 @@ Example response:
       "pullRequest": {
         "number": 123,
         "title": "Add commit history endpoint",
-        "url": "https://github.com/facebook/react/pull/123"
+        "url": "https://github.com/facebook/react/pull/123",
+        "state": "open"
       },
       "tags": [
         "v1.0.0"
@@ -503,6 +505,116 @@ Example response:
       "title": "Prepare release",
       "branch": null,
       "parents": [],
+      "pullRequest": null,
+      "tags": []
+    }
+  ]
+}
+```
+
+---
+
+### `POST /api/jobs/branches`
+
+Lists repository branches with each branch head commit, default-branch flag, head tags, and pull request status.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `branches` | `array` | Repository branches ordered by branch name |
+
+Each `branches` item contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | Branch name |
+| `ref` | `string` | Full Git ref, for example `refs/heads/main` |
+| `commit` | `string` | Full head commit SHA |
+| `commitShort` | `string` | Short head commit SHA |
+| `date` | `string` | Head commit date/time in ISO-8601 format |
+| `author` | `string` | Head commit author name |
+| `title` | `string` | Head commit subject/title |
+| `isDefault` | `boolean` | Whether the branch is the repository default branch |
+| `pullRequestStatus` | `"open" \| "closed" \| "none"` | Pull request status for the branch head commit |
+| `pullRequest` | `object \| null` | Associated GitHub pull request when available |
+| `tags` | `string[]` | Tag names pointing at the branch head commit |
+
+When `pullRequest` is present, it contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `number` | `number` | Pull request number |
+| `title` | `string` | Pull request title |
+| `url` | `string` | Pull request URL |
+| `state` | `"open" \| "closed"` | Pull request state when GitHub provides it |
+
+#### Error response
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `error` | `string` | Error message |
+
+Common statuses:
+
+- `400 Bad Request` when `repo` is missing or invalid
+- `500 Internal Server Error` when branches cannot be listed
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/branches \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react"
+  }'
+```
+
+Example response:
+
+```json
+{
+  "repo": "facebook/react",
+  "branches": [
+    {
+      "name": "feature/summary",
+      "ref": "refs/heads/feature/summary",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "commitShort": "0123456",
+      "date": "2026-03-20T12:00:00Z",
+      "author": "Jane Developer",
+      "title": "Add branch summary endpoint",
+      "isDefault": false,
+      "pullRequestStatus": "open",
+      "pullRequest": {
+        "number": 123,
+        "title": "Add branch summary endpoint",
+        "url": "https://github.com/facebook/react/pull/123",
+        "state": "open"
+      },
+      "tags": [
+        "v1.0.0"
+      ]
+    },
+    {
+      "name": "main",
+      "ref": "refs/heads/main",
+      "commit": "1111111111111111111111111111111111111111",
+      "commitShort": "1111111",
+      "date": "2026-03-19T09:15:00Z",
+      "author": "Jane Developer",
+      "title": "Prepare release",
+      "isDefault": true,
+      "pullRequestStatus": "none",
       "pullRequest": null,
       "tags": []
     }

@@ -6,6 +6,7 @@ import { execSync } from "child_process";
 import type { FileRecord } from "../types";
 import {
   getFileTypeFromGitMode,
+  listRepositoryBranches,
   listRepositoryCommits,
   listRepositoryRefs,
   processRepository,
@@ -273,6 +274,87 @@ describe("repoProcessor – local clone simulation", () => {
         ])
       );
       expect(refs.filter((ref) => ref.ref === "refs/tags/v2.0.0")).toHaveLength(1);
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should list branches with head commit metadata, default branch, and head tags", async () => {
+    const testDir = path.join(os.tmpdir(), `fde-list-branches-test-${Date.now()}`);
+    const repoDir = path.join(testDir, "origin");
+
+    try {
+      createTestRepo(repoDir);
+      const defaultBranch = execSync("git branch --show-current", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+
+      execSync("git checkout -b feature/summary", { cwd: repoDir });
+      fs.writeFileSync(path.join(repoDir, "feature.txt"), "feature branch\n");
+      execSync("git add feature.txt", { cwd: repoDir });
+      execSync('git commit -m "feature branch commit"', {
+        cwd: repoDir,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: "2099-01-03T10:00:00Z",
+          GIT_COMMITTER_DATE: "2099-01-03T10:00:00Z",
+        },
+      });
+      const featureCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+      execSync("git tag v2.0.0", { cwd: repoDir });
+
+      execSync(`git checkout ${defaultBranch}`, { cwd: repoDir });
+      fs.writeFileSync(path.join(repoDir, "main.txt"), "main branch\n");
+      execSync("git add main.txt", { cwd: repoDir });
+      execSync('git commit -m "main branch commit"', {
+        cwd: repoDir,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: "2099-01-02T10:00:00Z",
+          GIT_COMMITTER_DATE: "2099-01-02T10:00:00Z",
+        },
+      });
+      const defaultBranchCommit = execSync("git rev-parse HEAD", {
+        cwd: repoDir,
+        encoding: "utf8",
+      }).trim();
+      execSync("git tag v1.1.0", { cwd: repoDir });
+
+      const branches = await listRepositoryBranches(`file://${repoDir}`);
+
+      expect(branches).toHaveLength(2);
+      expect(branches.map((branch) => branch.name)).toEqual([
+        "feature/summary",
+        defaultBranch,
+      ]);
+      expect(branches[0]).toMatchObject({
+        name: "feature/summary",
+        ref: "refs/heads/feature/summary",
+        commit: featureCommit,
+        author: "Test",
+        title: "feature branch commit",
+        isDefault: false,
+        pullRequestStatus: "none",
+        pullRequest: null,
+        tags: ["v2.0.0"],
+      });
+      expect(branches[0].date).toBe("2099-01-03T10:00:00Z");
+      expect(branches[1]).toMatchObject({
+        name: defaultBranch,
+        ref: `refs/heads/${defaultBranch}`,
+        commit: defaultBranchCommit,
+        author: "Test",
+        title: "main branch commit",
+        isDefault: true,
+        pullRequestStatus: "none",
+        pullRequest: null,
+        tags: ["v1.1.0"],
+      });
+      expect(branches[1].date).toBe("2099-01-02T10:00:00Z");
     } finally {
       fs.rmSync(testDir, { recursive: true, force: true });
     }
