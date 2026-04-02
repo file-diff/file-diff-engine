@@ -86,6 +86,21 @@ function withRepoArg(args: string[], repoUrl: string, trailingArgs: string[] = [
   return [...args, "--", repoUrl, ...trailingArgs];
 }
 
+function assertSafeGitRepositoryUrl(repoUrl: string): void {
+  const trimmedRepoUrl = repoUrl.trim();
+  if (!trimmedRepoUrl) {
+    throw new Error("Repository URL is required.");
+  }
+
+  if (trimmedRepoUrl.startsWith("-")) {
+    throw new Error("Repository URL cannot start with '-'.");
+  }
+
+  if (/[\0\r\n]/.test(trimmedRepoUrl)) {
+    throw new Error("Repository URL contains unsupported control characters.");
+  }
+}
+
 function isRetryableGitLockError(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
 
@@ -141,6 +156,7 @@ export async function resolveRefToCommitHash(
   repoUrl: string,
   ref: string
 ): Promise<string> {
+  assertSafeGitRepositoryUrl(repoUrl);
   const trimmedRef = ref.trim();
   if (!trimmedRef) {
     throw new Error("Git ref is required.");
@@ -181,6 +197,7 @@ export async function resolveRefToCommitHash(
 }
 
 export async function listRepositoryRefs(repoUrl: string): Promise<GitRefSummary[]> {
+  assertSafeGitRepositoryUrl(repoUrl);
   const output = await runGitCommand(
     process.cwd(),
     withRepoArg(["ls-remote", "--heads", "--tags"], repoUrl)
@@ -232,6 +249,7 @@ export async function listRepositoryCommits(
   repoUrl: string,
   limit: number
 ): Promise<CommitSummary[]> {
+  assertSafeGitRepositoryUrl(repoUrl);
   if (!Number.isInteger(limit) || limit <= 0) {
     throw new Error("Field 'limit' must be a positive integer.");
   }
@@ -559,6 +577,7 @@ async function getTrackedGitEntries(repoDir: string): Promise<Map<string, GitEnt
 async function getHeadReference(
   repoUrl: string
 ): Promise<{ branchRef: string | null; commit: string | null }> {
+  assertSafeGitRepositoryUrl(repoUrl);
   const output = await runGitCommand(
     process.cwd(),
     withRepoArg(["ls-remote", "--symref"], repoUrl, ["HEAD"])
