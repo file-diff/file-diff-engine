@@ -36,7 +36,7 @@ function mockGitCommands() {
         return;
       }
 
-      if (args[0] === "rev-parse") {
+      if (args[0] === "rev-parse" && args[1] && args[1] !== "HEAD") {
         callback(null, `${args[1]}\n`, "");
         return;
       }
