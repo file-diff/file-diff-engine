@@ -5,6 +5,7 @@ import path from "path";
 import { createHash } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { Command } from "commander";
 import { createPullRequest } from "../../services/githubApi";
 import { OperationLogEntry } from "../../types";
 import { getCommitShort } from "../../utils/commit";
@@ -158,7 +159,7 @@ export async function revertToCommit(
   }
 }
 
-export async function runRevertToCommitCli(argv: string[] = process.argv.slice(2)): Promise<void> {
+export async function runRevertToCommitCli(argv: string[] = process.argv): Promise<void> {
   const options = parseCliArgs(argv);
   const result = await revertToCommit(options);
   process.stdout.write(formatRevertToCommitCliOutput(result));
@@ -173,59 +174,29 @@ if (require.main === module) {
 }
 
 function parseCliArgs(argv: string[]): RevertToCommitOptions {
-  const options: RevertToCommitOptions = {
-    repo: "",
-    commit: "",
+  const program = new Command();
+
+  program
+    .name("revertToCommit")
+    .description("Revert a repository to a specific commit and create a pull request")
+    .requiredOption("--repo <repository>", "Repository URL or owner/repo format")
+    .requiredOption("--commit <sha>", "Full 40-character commit SHA to revert to")
+    .option("--branch <branch>", "Target branch to revert", "main")
+    .option("--github-key <token>", "GitHub personal access token")
+    .option("--cache-root <directory>", "Root directory for mirror cache")
+    .option("--work-dir <directory>", "Working directory for clone operations")
+    .parse(argv);
+
+  const opts = program.opts();
+
+  return {
+    repo: opts.repo,
+    commit: opts.commit,
+    branch: opts.branch,
+    githubKey: opts.githubKey,
+    cacheRootDir: opts.cacheRoot,
+    workDir: opts.workDir,
   };
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    const value = argv[index + 1];
-
-    if (arg === "--repo" && value) {
-      options.repo = value;
-      index += 1;
-      continue;
-    }
-
-    if (arg === "--commit" && value) {
-      options.commit = value;
-      index += 1;
-      continue;
-    }
-
-    if (arg === "--branch" && value) {
-      options.branch = value;
-      index += 1;
-      continue;
-    }
-
-    if (arg === "--github-key" && value) {
-      options.githubKey = value;
-      index += 1;
-      continue;
-    }
-
-    if (arg === "--cache-root" && value) {
-      options.cacheRootDir = value;
-      index += 1;
-      continue;
-    }
-
-    if (arg === "--work-dir" && value) {
-      options.workDir = value;
-      index += 1;
-      continue;
-    }
-
-    throw new Error(`Unsupported argument '${arg}'.`);
-  }
-
-  if (!options.repo || !options.commit) {
-    throw new Error("Both '--repo' and '--commit' are required.");
-  }
-
-  return options;
 }
 
 async function ensureMirrorCache(
