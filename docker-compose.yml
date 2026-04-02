@@ -21,6 +21,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       TMP_DIR: /app/tmp
       PUBLIC_GITHUB_TOKEN: ${PUBLIC_GITHUB_TOKEN:-}
+      PRIVATE_GITHUB_TOKEN: ${PRIVATE_GITHUB_TOKEN:-}
     ports:
       - "127.0.0.1:12986:12986"
     volumes:
