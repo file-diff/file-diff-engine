@@ -98,6 +98,11 @@ export interface ResolvePullRequestResponse {
   targetCommitShort: string;
 }
 
+/** User-facing log entry for a git or GitHub operation. */
+export interface OperationLogEntry {
+  message: string;
+}
+
 /** Response payload after creating a branch that restores a commit snapshot. */
 export interface RevertToCommitResponse {
   repo: string;
@@ -108,6 +113,7 @@ export interface RevertToCommitResponse {
   revertCommit: string;
   revertCommitShort: string;
   pullRequest: CommitPullRequestSummary | null;
+  log: OperationLogEntry[];
 }
 
 /** Supported Git ref types exposed by the API. */
