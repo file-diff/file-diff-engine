@@ -56,6 +56,12 @@ export interface ListRefsRequest {
   repo: string;
 }
 
+/** Payload sent when listing repository branches with branch head metadata. */
+export interface ListBranchesRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+}
+
 /** Payload sent when listing recent commits for a repository. */
 export interface ListCommitsRequest {
   /** GitHub repository in owner/repo format */
@@ -139,6 +145,31 @@ export interface CommitPullRequestSummary {
   number: number;
   title: string;
   url: string;
+  state?: "open" | "closed";
+}
+
+/** Pull request status associated with a branch head commit. */
+export type BranchPullRequestStatus = "open" | "closed" | "none";
+
+/** Response entry when listing repository branches with head metadata. */
+export interface BranchSummary {
+  name: string;
+  ref: string;
+  commit: string;
+  commitShort: string;
+  date: string;
+  author: string;
+  title: string;
+  isDefault: boolean;
+  pullRequestStatus: BranchPullRequestStatus;
+  pullRequest: CommitPullRequestSummary | null;
+  tags: string[];
+}
+
+/** Response payload when listing repository branches. */
+export interface ListBranchesResponse {
+  repo: string;
+  branches: BranchSummary[];
 }
 
 /** Response entry when listing recent commits for a repository. */

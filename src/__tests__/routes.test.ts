@@ -12,6 +12,7 @@ import {
 } from "../routes/jobs/downloadRoutes";
 import { Queue } from "bullmq";
 import type {
+  ListBranchesResponse,
   ListCommitsGraphResponse,
   GitCacheStatsResponse,
   ListCommitsResponse,
@@ -321,6 +322,80 @@ describe("Job Routes", () => {
     });
   });
 
+  it("POST /api/jobs/branches - should list branches for a repository", async () => {
+    const branches: ListBranchesResponse["branches"] = [
+      {
+        name: "feature/summary",
+        ref: "refs/heads/feature/summary",
+        commit: commitHash,
+        commitShort: commitHash.slice(0, 7),
+        date: "2026-03-20T12:00:00Z",
+        author: "Test User",
+        title: "Add feature",
+        isDefault: false,
+        pullRequestStatus: "open",
+        pullRequest: {
+          number: 123,
+          title: "Add feature",
+          url: "https://github.com/facebook/react/pull/123",
+          state: "open",
+        },
+        tags: ["v1.0.0"],
+      },
+      {
+        name: "main",
+        ref: "refs/heads/main",
+        commit: fileHash,
+        commitShort: fileHash.slice(0, 7),
+        date: "2026-03-19T12:00:00Z",
+        author: "Test User",
+        title: "Base commit",
+        isDefault: true,
+        pullRequestStatus: "none",
+        pullRequest: null,
+        tags: [],
+      },
+    ];
+    const listBranchesSpy = vi
+      .spyOn(repoProcessor, "listRepositoryBranches")
+      .mockResolvedValue(branches);
+
+    const res = await makeRequest(app, "POST", "/api/jobs/branches", {
+      repo: "https://github.com/facebook/react.git",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<ListBranchesResponse>({
+      repo: "facebook/react",
+      branches,
+    });
+    expect(listBranchesSpy).toHaveBeenCalledWith("https://github.com/facebook/react.git");
+  });
+
+  it("POST /api/jobs/branches - should reject missing repo", async () => {
+    const res = await makeRequest(app, "POST", "/api/jobs/branches", {});
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Field 'repo' is required.",
+    });
+  });
+
+  it("POST /api/jobs/branches - should return 500 when branches cannot be listed", async () => {
+    vi.spyOn(repoProcessor, "listRepositoryBranches").mockRejectedValue(
+      new Error("Unable to list branches for repository 'https://github.com/facebook/react.git'.")
+    );
+
+    const res = await makeRequest(app, "POST", "/api/jobs/branches", {
+      repo: "facebook/react",
+    });
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({
+      error: "Unable to list branches for repository 'https://github.com/facebook/react.git'.",
+    });
+  });
+
   it("POST /api/jobs/commits - should list commits for a repository", async () => {
     const listRepositoryCommitsSpy = vi
       .spyOn(repoProcessor, "listRepositoryCommits")
@@ -336,6 +411,7 @@ describe("Job Routes", () => {
             number: 123,
             title: "Add feature",
             url: "https://github.com/facebook/react/pull/123",
+            state: "open",
           },
           tags: ["v1.0.0"],
         },
@@ -361,6 +437,7 @@ describe("Job Routes", () => {
             number: 123,
             title: "Add feature",
             url: "https://github.com/facebook/react/pull/123",
+            state: "open",
           },
           tags: ["v1.0.0"],
         },

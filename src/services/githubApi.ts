@@ -47,6 +47,7 @@ interface GitHubCommitPullRequestApiResponse {
   number?: number;
   title?: string;
   html_url?: string;
+  state?: string;
 }
 
 interface GitHubCreatePullRequestApiRequest {
@@ -168,10 +169,18 @@ export async function getCommitPullRequest(
     return null;
   }
 
+  const state =
+    pullRequest.state?.trim().toLowerCase() === "open"
+      ? "open"
+      : pullRequest.state?.trim().toLowerCase() === "closed"
+        ? "closed"
+        : undefined;
+
   return {
     number: pullRequest.number,
     title: pullRequest.title?.trim() || "",
     url: pullRequest.html_url.trim(),
+    ...(state ? { state } : {}),
   };
 }
 
