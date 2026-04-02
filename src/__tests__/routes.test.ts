@@ -171,7 +171,10 @@ describe("Job Routes", () => {
         url: "https://github.com/facebook/react/pull/42",
       },
       log: [
-        { message: "Cloned branch 'main' from 'https://github.com/facebook/react.git'." },
+        {
+          message:
+            "Cloned branch 'main' from 'https://github.com/facebook/react.git' into the temporary workspace.",
+        },
         { message: "Pushed branch 'revert-to-0123456-1' to 'origin'." },
       ],
     };

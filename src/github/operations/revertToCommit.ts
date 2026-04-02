@@ -149,8 +149,8 @@ export async function revertToCommit(
       log,
     };
   } finally {
-    appendOperationLog(log, `Removed temporary workspace '${workDir}'.`);
     fs.rmSync(workDir, { recursive: true, force: true });
+    appendOperationLog(log, `Removed temporary workspace '${workDir}'.`);
   }
 }
 
