@@ -273,6 +273,93 @@ describe("Job Routes", () => {
     });
   });
 
+  it("POST /api/jobs/commits/graph - should return commit graph with nodes and edges", async () => {
+    const parentHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    vi.spyOn(repoProcessor, "listRepositoryCommits").mockResolvedValue([
+      {
+        commit: commitHash,
+        date: "2026-03-20T12:00:00Z",
+        author: "Test User",
+        title: "Add feature",
+        branch: "main",
+        parents: [parentHash],
+        pullRequest: null,
+        tags: [],
+      },
+      {
+        commit: parentHash,
+        date: "2026-03-19T09:15:00Z",
+        author: "Test User",
+        title: "Initial commit",
+        branch: null,
+        parents: [],
+        pullRequest: null,
+        tags: ["v1.0.0"],
+      },
+    ]);
+
+    const res = await makeRequest(app, "POST", "/api/jobs/commits/graph", {
+      repo: "facebook/react",
+      limit: 5,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      repo: "facebook/react",
+      graph: [
+        { id: commitHash, type: "node", colorKey: "main" },
+        { id: parentHash, type: "node" },
+        {
+          id: `${parentHash}-${commitHash}`,
+          type: "edge",
+          source: parentHash,
+          target: commitHash,
+        },
+      ],
+    });
+  });
+
+  it("POST /api/jobs/commits/graph - should reject an invalid limit", async () => {
+    const res = await makeRequest(app, "POST", "/api/jobs/commits/graph", {
+      repo: "facebook/react",
+      limit: -1,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Field 'limit' must be a positive integer.",
+    });
+  });
+
+  it("POST /api/jobs/commits/graph - should omit edges for parents not in the result set", async () => {
+    const externalParent = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    vi.spyOn(repoProcessor, "listRepositoryCommits").mockResolvedValue([
+      {
+        commit: commitHash,
+        date: "2026-03-20T12:00:00Z",
+        author: "Test User",
+        title: "Add feature",
+        branch: "feature-x",
+        parents: [externalParent],
+        pullRequest: null,
+        tags: [],
+      },
+    ]);
+
+    const res = await makeRequest(app, "POST", "/api/jobs/commits/graph", {
+      repo: "facebook/react",
+      limit: 1,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      repo: "facebook/react",
+      graph: [
+        { id: commitHash, type: "node", colorKey: "feature-x" },
+      ],
+    });
+  });
+
   it("POST /api/jobs/pull-request/resolve - should resolve a pull request URL", async () => {
     const resolvePullRequestSpy = vi
       .spyOn(githubApi, "resolvePullRequest")

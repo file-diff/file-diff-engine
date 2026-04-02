@@ -5,6 +5,9 @@ import type {
   ErrorResponse,
   ListCommitsRequest,
   ListCommitsResponse,
+  CommitGraphResponse,
+  CommitGraphElement,
+  CommitSummary,
   GitCacheStatsResponse,
   ListRefsRequest,
   ListRefsResponse,
@@ -195,6 +198,58 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
   });
 
   /**
+   * POST /api/jobs/commits/graph
+   * Body: { "repo": "owner/repo", "limit": 10 }
+   * Returns commit history as a graph of nodes and edges suitable for
+   * visualization tools.  Each commit is a node and each parent→child
+   * relationship is an edge.
+   */
+  app.post<{ Body: ListCommitsRequest }>("/commits/graph", async (request, reply) => {
+    let { repo, limit } = request.body ?? {};
+    if (!repo) {
+      const response: ErrorResponse = {
+        error: "Field 'repo' is required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (!Number.isInteger(limit) || limit <= 0) {
+      const response: ErrorResponse = {
+        error: "Field 'limit' must be a positive integer.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    try {
+      const commits = await repoProcessor.listRepositoryCommits(
+        repoProcessor.getRepositoryUrl(repo),
+        limit
+      );
+      const graph = buildCommitGraph(commits);
+      const response: CommitGraphResponse = {
+        repo,
+        graph,
+      };
+      return reply.code(200).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to list repository commits.";
+      const response: ErrorResponse = { error: message };
+      return reply.code(500).send(response);
+    }
+  });
+
+  /**
    * GET /api/jobs/organizations/:organization/repositories
    * Lists repositories in a GitHub organization.
    */
@@ -305,4 +360,38 @@ function getDirectorySize(dirPath: string): number {
       return size;
     }
   }, 0);
+}
+
+/**
+ * Converts a list of commits into a flat array of graph nodes and edges for
+ * visualization.  Each commit becomes a node whose optional `colorKey` is set
+ * to the branch name (when known).  For every parent of a commit that is also
+ * present in the commit list, an edge is created from the parent to the child.
+ */
+function buildCommitGraph(commits: CommitSummary[]): CommitGraphElement[] {
+  const commitSet = new Set(commits.map((c) => c.commit));
+  const elements: CommitGraphElement[] = [];
+
+  for (const commit of commits) {
+    elements.push({
+      id: commit.commit,
+      type: "node",
+      ...(commit.branch ? { colorKey: commit.branch } : {}),
+    });
+  }
+
+  for (const commit of commits) {
+    for (const parent of commit.parents) {
+      if (commitSet.has(parent)) {
+        elements.push({
+          id: `${parent}-${commit.commit}`,
+          type: "edge",
+          source: parent,
+          target: commit.commit,
+        });
+      }
+    }
+  }
+
+  return elements;
 }

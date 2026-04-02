@@ -459,6 +459,107 @@ Example response:
 
 ---
 
+### `POST /api/jobs/commits/graph`
+
+Returns commit history as a graph of nodes and edges suitable for visualization tools.
+Each commit becomes a node (with an optional `colorKey` derived from its branch name)
+and each parent→child relationship becomes an edge.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `limit` | `number` | Yes | Maximum number of commits to return. Must be a positive integer. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `graph` | `array` | Array of node and edge objects |
+
+Each **node** element contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Full commit SHA |
+| `type` | `"node"` | Always `"node"` |
+| `colorKey` | `string` (optional) | Branch name when the commit is the head of a branch |
+
+Each **edge** element contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Edge identifier (`<source>-<target>`) |
+| `type` | `"edge"` | Always `"edge"` |
+| `source` | `string` | Full SHA of the parent commit |
+| `target` | `string` | Full SHA of the child commit |
+
+Edges are only created for parent commits that appear in the returned node set.
+
+#### Error response
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `error` | `string` | Error message |
+
+Common statuses:
+
+- `400 Bad Request` when `repo` is missing or invalid, or `limit` is not a positive integer
+- `500 Internal Server Error` when commit history cannot be listed
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/commits/graph \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "limit": 3
+  }'
+```
+
+Example response:
+
+```json
+{
+  "repo": "facebook/react",
+  "graph": [
+    {
+      "id": "0123456789abcdef0123456789abcdef01234567",
+      "type": "node",
+      "colorKey": "main"
+    },
+    {
+      "id": "1111111111111111111111111111111111111111",
+      "type": "node"
+    },
+    {
+      "id": "2222222222222222222222222222222222222222",
+      "type": "node",
+      "colorKey": "feature-branch"
+    },
+    {
+      "id": "1111111111111111111111111111111111111111-0123456789abcdef0123456789abcdef01234567",
+      "type": "edge",
+      "source": "1111111111111111111111111111111111111111",
+      "target": "0123456789abcdef0123456789abcdef01234567"
+    },
+    {
+      "id": "1111111111111111111111111111111111111111-2222222222222222222222222222222222222222",
+      "type": "edge",
+      "source": "1111111111111111111111111111111111111111",
+      "target": "2222222222222222222222222222222222222222"
+    }
+  ]
+}
+```
+
+---
+
 ### `GET /api/jobs/organizations/:organization/repositories`
 
 Lists repositories available inside a GitHub organization.
