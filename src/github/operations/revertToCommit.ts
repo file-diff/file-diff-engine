@@ -5,6 +5,7 @@ import { createHash } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { createPullRequest } from "../../services/githubApi";
+import { OperationLogEntry } from "../../types";
 import { getCommitShort } from "../../utils/commit";
 import { createLogger } from "../../utils/logger";
 
@@ -34,6 +35,7 @@ export interface RevertToCommitResult {
     title: string;
     url: string;
   } | null;
+  log: OperationLogEntry[];
 }
 
 export async function revertToCommit(
@@ -53,6 +55,7 @@ export async function revertToCommit(
   const cloneDir = path.join(workDir, "repo");
   const cacheDir = getCacheDir(repoUrl, options.cacheRootDir);
   const gitEnv = getGitCommandEnv(githubKey);
+  const log: OperationLogEntry[] = [];
 
   logger.debug("Starting revert-to-commit operation", {
     repo,
@@ -67,7 +70,7 @@ export async function revertToCommit(
     fs.mkdirSync(workDir, { recursive: true });
 
     if (cacheDir) {
-      await ensureMirrorCache(repoUrl, cacheDir, gitEnv);
+      await ensureMirrorCache(repoUrl, cacheDir, gitEnv, log);
     }
 
     await runGitCommand(
@@ -84,13 +87,19 @@ export async function revertToCommit(
       ],
       gitEnv
     );
+    appendOperationLog(log, `Cloned branch '${branch}' from '${repoUrl}' into the temporary workspace.`);
     await runGitCommand(cloneDir, ["fetch", "--depth=1", "origin", commit], gitEnv);
+    appendOperationLog(log, `Fetched commit '${commit}' from 'origin'.`);
     const resolvedCommit = await runGitCommand(cloneDir, ["rev-parse", "FETCH_HEAD"], gitEnv);
+    appendOperationLog(log, `Resolved requested commit to '${resolvedCommit}'.`);
     const revertBranch = buildRevertBranchName(resolvedCommit);
 
     await configureCommitAuthor(cloneDir, gitEnv);
+    appendOperationLog(log, "Configured git author for the generated restore commit.");
     await runGitCommand(cloneDir, ["switch", "-c", revertBranch], gitEnv);
+    appendOperationLog(log, `Created branch '${revertBranch}' from '${branch}'.`);
     await runGitCommand(cloneDir, ["read-tree", "--reset", "-u", resolvedCommit], gitEnv);
+    appendOperationLog(log, `Reset branch contents to match commit '${resolvedCommit}'.`);
 
     const commitMessage = `Restore repository to commit ${getCommitShort(resolvedCommit)}`;
     await runGitCommand(
@@ -98,12 +107,15 @@ export async function revertToCommit(
       ["commit", "--allow-empty", "-m", commitMessage],
       gitEnv
     );
+    appendOperationLog(log, `Created restore commit '${commitMessage}'.`);
     const revertCommit = await runGitCommand(cloneDir, ["rev-parse", "HEAD"], gitEnv);
+    appendOperationLog(log, `Resolved generated restore commit to '${revertCommit}'.`);
     await runGitCommand(
       cloneDir,
       ["push", "--set-upstream", "origin", revertBranch],
       gitEnv
     );
+    appendOperationLog(log, `Pushed branch '${revertBranch}' to 'origin'.`);
 
     const pullRequest =
       githubKey && githubRepo
@@ -118,6 +130,12 @@ export async function revertToCommit(
             ].join("\n"),
           })
         : null;
+    if (pullRequest) {
+      appendOperationLog(
+        log,
+        `Created pull request #${pullRequest.number} (${pullRequest.url}) targeting '${branch}'.`
+      );
+    }
 
     return {
       repo,
@@ -128,8 +146,10 @@ export async function revertToCommit(
       revertCommit,
       revertCommitShort: getCommitShort(revertCommit),
       pullRequest,
+      log,
     };
   } finally {
+    appendOperationLog(log, `Removed temporary workspace '${workDir}'.`);
     fs.rmSync(workDir, { recursive: true, force: true });
   }
 }
@@ -137,7 +157,7 @@ export async function revertToCommit(
 export async function runRevertToCommitCli(argv: string[] = process.argv.slice(2)): Promise<void> {
   const options = parseCliArgs(argv);
   const result = await revertToCommit(options);
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  process.stdout.write(formatRevertToCommitCliOutput(result));
 }
 
 if (require.main === module) {
@@ -207,7 +227,8 @@ function parseCliArgs(argv: string[]): RevertToCommitOptions {
 async function ensureMirrorCache(
   repoUrl: string,
   cacheDir: string,
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
+  log: OperationLogEntry[]
 ): Promise<void> {
   fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
 
@@ -218,10 +239,12 @@ async function ensureMirrorCache(
       ["clone", "--mirror", "--", repoUrl, cacheDir],
       env
     );
+    appendOperationLog(log, `Created mirror cache for '${repoUrl}'.`);
     return;
   }
 
   await runGitCommand(cacheDir, ["remote", "update", "--prune"], env);
+  appendOperationLog(log, `Updated mirror cache for '${repoUrl}'.`);
 }
 
 async function configureCommitAuthor(
@@ -358,4 +381,31 @@ function getGitHubRepoName(repoValue: string): string | null {
     /^(?:https?:\/\/github\.com\/|git@github\.com:)?([^/]+)\/([^/]+?)(?:\.git)?\/?$/i
   );
   return match ? `${match[1]}/${match[2]}` : null;
+}
+
+function appendOperationLog(log: OperationLogEntry[], message: string): void {
+  log.push({ message });
+}
+
+export function formatRevertToCommitCliOutput(result: RevertToCommitResult): string {
+  const lines = [
+    "Revert completed successfully.",
+    `Repository: ${result.repo}`,
+    `Base branch: ${result.branch}`,
+    `Source commit: ${result.commit}`,
+    `Generated branch: ${result.revertBranch}`,
+    `Generated commit: ${result.revertCommit}`,
+    result.pullRequest
+      ? `Pull request: #${result.pullRequest.number} ${result.pullRequest.url}`
+      : "Pull request: not created",
+  ];
+
+  if (result.log.length > 0) {
+    lines.push("", "Operation log:");
+    result.log.forEach((entry, index) => {
+      lines.push(`  ${index + 1}. ${entry.message}`);
+    });
+  }
+
+  return `${lines.join("\n")}\n`;
 }

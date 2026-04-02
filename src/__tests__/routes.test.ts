@@ -170,6 +170,10 @@ describe("Job Routes", () => {
         title: "Restore main to 0123456",
         url: "https://github.com/facebook/react/pull/42",
       },
+      log: [
+        { message: "Cloned branch 'main' from 'https://github.com/facebook/react.git'." },
+        { message: "Pushed branch 'revert-to-0123456-1' to 'origin'." },
+      ],
     };
     const revertSpy = vi
       .spyOn(githubOperations, "revertToCommit")

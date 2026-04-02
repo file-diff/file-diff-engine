@@ -247,6 +247,7 @@ Status: `200 OK`
 | `revertCommit` | `string` | Commit created on the generated branch |
 | `revertCommitShort` | `string` | Short generated commit SHA |
 | `pullRequest` | `object \| null` | Pull request metadata when one was created |
+| `log` | `array<object>` | Ordered user-facing log of the git and GitHub operations performed |
 
 #### Common statuses
 
