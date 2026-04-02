@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import fs from "fs";
-import os from "os";
 import path from "path";
 import { createHash } from "crypto";
 import { execFile } from "child_process";
@@ -58,7 +57,9 @@ export async function revertToCommit(
   const workDir =
     options.workDir && options.workDir.trim()
       ? path.resolve(options.workDir)
-      : fs.mkdtempSync(path.join(os.tmpdir(), "fde-github-revert-"));
+      : fs.mkdtempSync(
+          path.join(path.resolve(process.env.TMP_DIR || "tmp"), "fde-github-revert-")
+        );
   const cloneDir = path.join(workDir, "repo");
   const cacheDir = getRepositoryCacheDir(repoUrl, workDir);
   const gitEnv = getGitCommandEnv(githubKey);
