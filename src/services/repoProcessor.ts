@@ -82,6 +82,10 @@ function getGitCommandEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+function withRepoArg(args: string[], repoUrl: string, trailingArgs: string[] = []): string[] {
+  return [...args, "--", repoUrl, ...trailingArgs];
+}
+
 function isRetryableGitLockError(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
 
@@ -154,9 +158,7 @@ export async function resolveRefToCommitHash(
         `refs/tags/${trimmedRef}`,
       ];
   const output = await runGitCommand(process.cwd(), [
-    "ls-remote",
-    repoUrl,
-    ...refCandidates,
+    ...withRepoArg(["ls-remote"], repoUrl, refCandidates),
   ]);
 
   const refsByName = new Map(
@@ -179,7 +181,10 @@ export async function resolveRefToCommitHash(
 }
 
 export async function listRepositoryRefs(repoUrl: string): Promise<GitRefSummary[]> {
-  const output = await runGitCommand(process.cwd(), ["ls-remote", "--heads", "--tags", repoUrl]);
+  const output = await runGitCommand(
+    process.cwd(),
+    withRepoArg(["ls-remote", "--heads", "--tags"], repoUrl)
+  );
   const refsByName = new Map<string, GitRefSummary>();
 
   for (const line of output.split("\n").filter(Boolean)) {
@@ -257,7 +262,7 @@ export async function listRepositoryCommits(
 
   try {
     const cloneArgs = ["clone", `--depth=${limit}`, "--no-single-branch"];
-    cloneArgs.push(repoUrl, repoDir);
+    cloneArgs.push("--", repoUrl, repoDir);
     await runGitCommand(process.cwd(), cloneArgs);
 
     const output = await runGitCommand(repoDir, [
@@ -381,6 +386,7 @@ export async function processRepository(
     await runGitCommandWithRetry(path.dirname(cacheDir), [
       "clone",
       "--no-checkout",
+      "--",
       repoUrl,
       cacheDir,
     ]);
@@ -553,7 +559,10 @@ async function getTrackedGitEntries(repoDir: string): Promise<Map<string, GitEnt
 async function getHeadReference(
   repoUrl: string
 ): Promise<{ branchRef: string | null; commit: string | null }> {
-  const output = await runGitCommand(process.cwd(), ["ls-remote", "--symref", repoUrl, "HEAD"]);
+  const output = await runGitCommand(
+    process.cwd(),
+    withRepoArg(["ls-remote", "--symref"], repoUrl, ["HEAD"])
+  );
   let branchRef: string | null = null;
   let commit: string | null = null;
 
