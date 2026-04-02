@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -42,7 +43,11 @@ export async function revertToCommit(
   const repo = options.repo.trim();
   const commit = normalizeCommit(options.commit);
   const branch = normalizeRef(options.branch?.trim() || "main", "Branch");
-  const githubKey = options.githubKey?.trim() || undefined;
+  const githubKey =
+    options.githubKey?.trim() ||
+    process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+    process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+    undefined;
   const repoUrl = getRepositoryUrl(repo);
   assertSafeGitRepositoryUrl(repoUrl);
   const githubRepo = getGitHubRepoName(repo) ?? getGitHubRepoName(repoUrl);
@@ -282,7 +287,10 @@ function getRepositoryUrl(repo: string): string {
 }
 
 function getGitCommandEnv(tokenOverride?: string): NodeJS.ProcessEnv {
-  const token = tokenOverride ?? process.env.PUBLIC_GITHUB_TOKEN?.trim();
+  const token =
+    tokenOverride?.trim() ||
+    process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+    process.env.PUBLIC_GITHUB_TOKEN?.trim();
   if (!token) {
     return process.env;
   }

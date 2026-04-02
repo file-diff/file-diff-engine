@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "main": "dist/server.js",
+  "bin": {
+    "revertToCommit": "dist/github/operations/revertToCommit.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
