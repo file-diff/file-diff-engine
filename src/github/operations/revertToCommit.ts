@@ -150,7 +150,6 @@ export async function revertToCommit(
     };
   } finally {
     fs.rmSync(workDir, { recursive: true, force: true });
-    appendOperationLog(log, `Removed temporary workspace '${workDir}'.`);
   }
 }
 

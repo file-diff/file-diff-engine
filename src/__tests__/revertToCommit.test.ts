@@ -76,7 +76,6 @@ describe("revertToCommit", () => {
         `Created restore commit 'Restore repository to commit ${firstCommit.slice(0, 7)}'.`,
         `Resolved generated restore commit to '${result.revertCommit}'.`,
         `Pushed branch '${result.revertBranch}' to 'origin'.`,
-        `Removed temporary workspace '${workDir}'.`,
       ]);
 
       const inspectDir = path.join(rootDir, "inspect");
