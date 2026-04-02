@@ -14,13 +14,14 @@ import { createLogger } from "../../utils/logger";
 const execFileAsync = promisify(execFile);
 const logger = createLogger("github-revert");
 const GITHUB_HOSTNAME = "github.com";
+const CACHE_COLLISION_MAX_ATTEMPTS = 3;
+const CACHE_COLLISION_RETRY_DELAY_MS = 100;
 
 export interface RevertToCommitOptions {
   repo: string;
   commit: string;
   branch?: string;
   githubKey?: string;
-  cacheRootDir?: string;
   workDir?: string;
 }
 
@@ -59,7 +60,7 @@ export async function revertToCommit(
       ? path.resolve(options.workDir)
       : fs.mkdtempSync(path.join(os.tmpdir(), "fde-github-revert-"));
   const cloneDir = path.join(workDir, "repo");
-  const cacheDir = getCacheDir(repoUrl, options.cacheRootDir);
+  const cacheDir = getRepositoryCacheDir(repoUrl, workDir);
   const gitEnv = getGitCommandEnv(githubKey);
   const log: OperationLogEntry[] = [];
 
@@ -74,29 +75,31 @@ export async function revertToCommit(
   try {
     fs.rmSync(cloneDir, { recursive: true, force: true });
     fs.mkdirSync(workDir, { recursive: true });
+    fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
 
-    if (cacheDir) {
-      await ensureMirrorCache(repoUrl, cacheDir, gitEnv, log);
+    if (!fs.existsSync(path.join(cacheDir, ".git"))) {
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+      await runGitCommandWithRetry(
+        path.dirname(cacheDir),
+        ["clone", "--no-checkout", "--", repoUrl, cacheDir],
+        gitEnv
+      );
+      appendOperationLog(log, `Created repository cache for '${repoUrl}'.`);
     }
 
-    await runGitCommand(
-      process.cwd(),
-      [
-        "clone",
-        "--branch",
-        branch,
-        "--single-branch",
-        ...(cacheDir ? ["--reference-if-able", cacheDir] : []),
-        "--",
-        repoUrl,
-        cloneDir,
-      ],
+    await runGitCommandWithRetry(
+      cacheDir,
+      ["fetch", "--depth=1", "origin", commit],
       gitEnv
     );
-    appendOperationLog(log, `Cloned branch '${branch}' from '${repoUrl}' into the temporary workspace.`);
-    await runGitCommand(cloneDir, ["fetch", "--depth=1", "origin", commit], gitEnv);
-    appendOperationLog(log, `Fetched commit '${commit}' from 'origin'.`);
-    const resolvedCommit = await runGitCommand(cloneDir, ["rev-parse", "FETCH_HEAD"], gitEnv);
+    appendOperationLog(log, `Fetched commit '${commit}' into repository cache.`);
+
+    fs.cpSync(cacheDir, cloneDir, { recursive: true });
+    await runGitCommand(cloneDir, ["fetch", "origin", branch], gitEnv);
+    await runGitCommand(cloneDir, ["checkout", "-B", branch, `origin/${branch}`], gitEnv);
+    appendOperationLog(log, `Checked out branch '${branch}' from '${repoUrl}' into the temporary workspace.`);
+
+    const resolvedCommit = await runGitCommand(cloneDir, ["rev-parse", commit], gitEnv);
     appendOperationLog(log, `Resolved requested commit to '${resolvedCommit}'.`);
     const revertBranch = buildRevertBranchName(resolvedCommit);
 
@@ -183,7 +186,6 @@ function parseCliArgs(argv: string[]): RevertToCommitOptions {
     .requiredOption("--commit <sha>", "Full 40-character commit SHA to revert to")
     .option("--branch <branch>", "Target branch to revert", "main")
     .option("--github-key <token>", "GitHub personal access token")
-    .option("--cache-root <directory>", "Root directory for mirror cache")
     .option("--work-dir <directory>", "Working directory for clone operations")
     .parse(argv);
 
@@ -194,32 +196,55 @@ function parseCliArgs(argv: string[]): RevertToCommitOptions {
     commit: opts.commit,
     branch: opts.branch,
     githubKey: opts.githubKey,
-    cacheRootDir: opts.cacheRoot,
     workDir: opts.workDir,
   };
 }
 
-async function ensureMirrorCache(
-  repoUrl: string,
-  cacheDir: string,
-  env: NodeJS.ProcessEnv,
-  log: OperationLogEntry[]
-): Promise<void> {
-  fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
+async function runGitCommandWithRetry(
+  cwd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv
+): Promise<string> {
+  let lastError: unknown;
 
-  if (!fs.existsSync(path.join(cacheDir, "HEAD"))) {
-    fs.rmSync(cacheDir, { recursive: true, force: true });
-    await runGitCommand(
-      process.cwd(),
-      ["clone", "--mirror", "--", repoUrl, cacheDir],
-      env
-    );
-    appendOperationLog(log, `Created mirror cache for '${repoUrl}'.`);
-    return;
+  for (let attempt = 1; attempt <= CACHE_COLLISION_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await runGitCommand(cwd, args, env);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= CACHE_COLLISION_MAX_ATTEMPTS || !isRetryableGitLockError(error)) {
+        throw error;
+      }
+
+      logger.warn("Git cache operation collided with another process, retrying", {
+        cwd,
+        command: `git ${args.join(" ")}`,
+        attempt,
+        maxAttempts: CACHE_COLLISION_MAX_ATTEMPTS,
+      });
+      await wait(CACHE_COLLISION_RETRY_DELAY_MS * attempt);
+    }
   }
 
-  await runGitCommand(cacheDir, ["remote", "update", "--prune"], env);
-  appendOperationLog(log, `Updated mirror cache for '${repoUrl}'.`);
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Git command failed after retries: git ${args.join(" ")}`);
+}
+
+function isRetryableGitLockError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+  return (
+    message.includes(".lock") ||
+    message.includes("another git process seems to be running") ||
+    message.includes("cannot lock ref")
+  );
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 async function configureCommitAuthor(
@@ -345,13 +370,9 @@ function buildRevertBranchName(commit: string): string {
   return `revert-to-${getCommitShort(commit)}-${Date.now()}`;
 }
 
-function getCacheDir(repoUrl: string, cacheRootDir?: string): string | null {
-  if (!cacheRootDir?.trim()) {
-    return null;
-  }
-
+function getRepositoryCacheDir(repoUrl: string, workDir: string): string {
   const cacheKey = createHash("sha256").update(repoUrl).digest("hex");
-  return path.join(path.resolve(cacheRootDir), cacheKey);
+  return path.join(path.dirname(path.resolve(workDir)), "repo-cache", cacheKey);
 }
 
 function getGitHubRepoName(repoValue: string): string | null {

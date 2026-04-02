@@ -202,13 +202,14 @@ describe("Job Routes", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(revertResponse);
-    expect(revertSpy).toHaveBeenCalledWith({
+    expect(revertSpy).toHaveBeenCalledWith(expect.objectContaining({
       repo: "facebook/react",
       commit: commitHash,
       branch: "main",
       githubKey: "portal-token",
-      cacheRootDir: path.join(path.resolve(process.env.TMP_DIR || "tmp"), "repo-cache"),
-    });
+    }));
+    const calledOptions = revertSpy.mock.calls[0][0];
+    expect(calledOptions.workDir).toContain(path.join("operations", "fde-github-revert-"));
   });
 
   it("POST /api/jobs/revert-to-commit - should require a valid bearer token", async () => {

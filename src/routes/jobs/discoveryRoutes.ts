@@ -140,7 +140,7 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
         commit,
         branch,
         githubKey,
-        cacheRootDir: path.join(tmpDir, "repo-cache"),
+        workDir: path.join(tmpDir, "operations", `fde-github-revert-${Date.now()}`),
       });
       return reply.code(200).send(response);
     } catch (error) {

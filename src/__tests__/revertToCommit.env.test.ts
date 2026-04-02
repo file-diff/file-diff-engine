@@ -26,13 +26,18 @@ function mockGitCommands() {
       _options: unknown,
       callback: (error: Error | null, stdout?: string, stderr?: string) => void
     ) => {
-      if (args[0] === "rev-parse" && args[1] === "FETCH_HEAD") {
-        callback(null, "0123456789abcdef0123456789abcdef01234567\n", "");
-        return;
+      if (args[0] === "clone" && args.includes("--no-checkout")) {
+        const targetDir = args[args.length - 1];
+        fs.mkdirSync(path.join(targetDir, ".git"), { recursive: true });
       }
 
       if (args[0] === "rev-parse" && args[1] === "HEAD") {
         callback(null, "89abcdef0123456789abcdef0123456789abcdef\n", "");
+        return;
+      }
+
+      if (args[0] === "rev-parse") {
+        callback(null, `${args[1]}\n`, "");
         return;
       }
 
@@ -72,7 +77,8 @@ describe("revertToCommit environment defaults", () => {
       url: "https://github.com/owner/repo/pull/123",
     });
 
-    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-revert-env-test-"));
+    const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fde-revert-env-test-"));
+    const workDir = path.join(testRoot, "work");
 
     try {
       const result = await revertToCommit({
@@ -97,7 +103,7 @@ describe("revertToCommit environment defaults", () => {
         })
       );
     } finally {
-      fs.rmSync(workDir, { recursive: true, force: true });
+      fs.rmSync(testRoot, { recursive: true, force: true });
     }
   });
 });

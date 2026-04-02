@@ -67,8 +67,9 @@ describe("revertToCommit", () => {
       expect(result.pullRequest).toBeNull();
       expect(fs.existsSync(workDir)).toBe(false);
       expect(result.log.map((entry) => entry.message)).toEqual([
-        `Cloned branch 'main' from 'file://${remoteDir}' into the temporary workspace.`,
-        `Fetched commit '${firstCommit}' from 'origin'.`,
+        `Created repository cache for 'file://${remoteDir}'.`,
+        `Fetched commit '${firstCommit}' into repository cache.`,
+        `Checked out branch 'main' from 'file://${remoteDir}' into the temporary workspace.`,
         `Resolved requested commit to '${firstCommit}'.`,
         "Configured git author for the generated restore commit.",
         `Created branch '${result.revertBranch}' from 'main'.`,
