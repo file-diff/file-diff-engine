@@ -342,7 +342,7 @@ describe("repoProcessor – local clone simulation", () => {
         pullRequest: null,
         tags: ["v2.0.0"],
       });
-      expect(branches[0].date).toBe("2099-01-03T10:00:00+00:00");
+      expect(branches[0].date).toBe("2099-01-03T10:00:00Z");
       expect(branches[1]).toMatchObject({
         name: defaultBranch,
         ref: `refs/heads/${defaultBranch}`,
@@ -354,7 +354,7 @@ describe("repoProcessor – local clone simulation", () => {
         pullRequest: null,
         tags: ["v1.1.0"],
       });
-      expect(branches[1].date).toBe("2099-01-02T10:00:00+00:00");
+      expect(branches[1].date).toBe("2099-01-02T10:00:00Z");
     } finally {
       fs.rmSync(testDir, { recursive: true, force: true });
     }

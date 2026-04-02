@@ -298,7 +298,7 @@ export async function listRepositoryBranches(repoUrl: string): Promise<BranchSum
 
     const output = await runGitCommand(repoDir, [
       "for-each-ref",
-      "--format=%(refname)%x1f%(objectname)%x1f%(committerdate:iso-strict)%x1f%(authorname)%x1f%(subject)",
+      `--format=%(refname)\x1f%(objectname)\x1f%(committerdate:iso-strict)\x1f%(authorname)\x1f%(subject)`,
       "refs/remotes/origin",
     ]);
     const metadataByBranch = new Map<
