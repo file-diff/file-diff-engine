@@ -45,7 +45,7 @@ export async function revertToCommit(
   const githubKey = options.githubKey?.trim() || undefined;
   const repoUrl = getRepositoryUrl(repo);
   assertSafeGitRepositoryUrl(repoUrl);
-  const githubRepo = getGitHubRepoName(repoUrl) ?? getGitHubRepoName(repo);
+  const githubRepo = getGitHubRepoName(repo) ?? getGitHubRepoName(repoUrl);
   const workDir =
     options.workDir && options.workDir.trim()
       ? path.resolve(options.workDir)

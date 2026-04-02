@@ -124,7 +124,15 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
       const message =
         error instanceof Error ? error.message : "Unable to revert repository to commit.";
       const response: ErrorResponse = { error: message };
-      return reply.code(500).send(response);
+      const statusCode =
+        message === "Repository URL is required." ||
+        message === "Field 'commit' must be a full 40-character commit SHA." ||
+        message.endsWith(" is required.") ||
+        message.includes("cannot start with '-'") ||
+        message.includes("unsupported control characters")
+          ? 400
+          : 500;
+      return reply.code(statusCode).send(response);
     }
   });
 
