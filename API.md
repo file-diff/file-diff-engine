@@ -220,6 +220,59 @@ Example response:
 
 ---
 
+### `POST /api/jobs/revert-to-commit`
+
+Creates a new branch from a base branch, rewrites the branch tree to match a past commit, pushes that branch, and optionally creates a pull request when `githubKey` is provided.
+
+This endpoint requires the server to be configured with `REVERT_TO_COMMIT_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `commit` | `string` | Yes | Full 40-character commit SHA whose tree should be restored. |
+| `branch` | `string` | No | Base branch to fork from before restoring the tree. Defaults to `main`. |
+| `githubKey` | `string` | No | Optional GitHub token. When provided, the service also creates a pull request from the generated branch back into `branch`. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `branch` | `string` | Base branch used for the new branch |
+| `commit` | `string` | Full source commit SHA |
+| `commitShort` | `string` | Short source commit SHA |
+| `revertBranch` | `string` | Generated branch name pushed to the remote |
+| `revertCommit` | `string` | Commit created on the generated branch |
+| `revertCommitShort` | `string` | Short generated commit SHA |
+| `pullRequest` | `object \| null` | Pull request metadata when one was created |
+| `log` | `array<object>` | Ordered user-facing log of the git and GitHub operations performed |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` or `commit` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `503 Service Unavailable` when the revert-to-commit bearer token is not configured
+- `500 Internal Server Error` for git or GitHub failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/revert-to-commit \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "branch": "main"
+  }'
+```
+
+---
+
 ### `POST /api/jobs/pull-request/resolve`
 
 Resolves a GitHub pull request URL into source and target commit hashes.

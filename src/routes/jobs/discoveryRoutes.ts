@@ -4,6 +4,8 @@ import type { FastifyInstance } from "fastify";
 import type {
   CommitGraphItem,
   ErrorResponse,
+  RevertToCommitRequest,
+  RevertToCommitResponse,
   ListCommitsRequest,
   ListCommitsGraphResponse,
   ListCommitsResponse,
@@ -16,10 +18,19 @@ import type {
   ResolvePullRequestRequest,
   ResolvePullRequestResponse,
 } from "../../types";
+import { revertToCommit } from "../../github/operations";
 import * as githubApi from "../../services/githubApi";
 import * as repoProcessor from "../../services/repoProcessor";
 import { getCommitShort } from "../../utils/commit";
-import { isValidOrganization, isValidRepo, logger, normalizeRepo } from "./shared";
+import {
+  getConfiguredBearerToken,
+  isValidOrganization,
+  isValidRepo,
+  logger,
+  matchesBearerToken,
+  normalizeRepo,
+  REVERT_TO_COMMIT_BEARER_TOKEN_ENV,
+} from "./shared";
 
 export function registerDiscoveryRoutes(app: FastifyInstance): void {
   /**
@@ -69,6 +80,81 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
           : message.startsWith("Unable to resolve git ref")
             ? 404
             : 500;
+      return reply.code(statusCode).send(response);
+    }
+  });
+
+  /**
+   * POST /api/jobs/revert-to-commit
+   * Body: { "repo": "owner/repo", "commit": "<sha>", "branch": "main" }
+   * Creates a new branch from the requested base branch with the tree restored to a past commit.
+   */
+  app.post<{ Body: RevertToCommitRequest }>("/revert-to-commit", async (request, reply) => {
+    const endpointBearerToken = getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
+    if (!endpointBearerToken) {
+      const response: ErrorResponse = {
+        error: "Revert-to-commit bearer token is not configured.",
+      };
+      return reply.code(503).send(response);
+    }
+
+    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
+      const response: ErrorResponse = {
+        error: "Bearer token is required.",
+      };
+      return reply.code(401).send(response);
+    }
+
+    let { repo, commit, branch, githubKey } = request.body ?? {};
+    if (!repo || !commit) {
+      const response: ErrorResponse = {
+        error: "Both 'repo' and 'commit' are required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+    commit = commit.trim().toLowerCase();
+    branch = branch?.trim() || "main";
+    githubKey = githubKey?.trim() || undefined;
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (!/^[a-f0-9]{40}$/.test(commit)) {
+      const response: ErrorResponse = {
+        error: "Field 'commit' must be a full 40-character commit SHA.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    try {
+      const tmpDir = path.resolve(process.env.TMP_DIR || "tmp");
+      const response: RevertToCommitResponse = await revertToCommit({
+        repo,
+        commit,
+        branch,
+        githubKey,
+        workDir: path.join(tmpDir, "operations", `fde-github-revert-${Date.now()}`),
+      });
+      return reply.code(200).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to revert repository to commit.";
+      const response: ErrorResponse = { error: message };
+      const statusCode =
+        message === "Repository URL is required." ||
+        message === "Field 'commit' must be a full 40-character commit SHA." ||
+        message.endsWith(" is required.") ||
+        message.includes("cannot start with '-'") ||
+        message.includes("unsupported control characters")
+          ? 400
+          : 500;
       return reply.code(statusCode).send(response);
     }
   });
