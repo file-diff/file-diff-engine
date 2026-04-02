@@ -224,6 +224,8 @@ Example response:
 
 Creates a new branch from a base branch, rewrites the branch tree to match a past commit, pushes that branch, and optionally creates a pull request when `githubKey` is provided.
 
+This endpoint requires the server to be configured with `REVERT_TO_COMMIT_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
 #### Request arguments
 
 | Field | Type | Required | Description |
@@ -251,12 +253,15 @@ Status: `200 OK`
 #### Common statuses
 
 - `400 Bad Request` when `repo` or `commit` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `503 Service Unavailable` when the revert-to-commit bearer token is not configured
 - `500 Internal Server Error` for git or GitHub failures
 
 #### Example
 
 ```bash
 curl -X POST https://your-host.example.com/api/jobs/revert-to-commit \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "repo": "facebook/react",
