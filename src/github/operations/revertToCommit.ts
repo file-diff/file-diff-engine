@@ -55,7 +55,6 @@ export async function revertToCommit(
     logger.warn(
       "No GitHub token provided; pull request creation will be skipped. Set the --github-key option or provide a token via environment variables."
     );
-    throw new Error("GitHub token is required to perform revert operation.");
   }
   const repoUrl = getRepositoryUrl(repo);
   assertSafeGitRepositoryUrl(repoUrl);
@@ -421,18 +420,20 @@ export function formatRevertToCommitCliOutput(result: RevertToCommitResult): str
   return `${lines.join("\n")}\n`;
 }
 
-function buildPullRequestBody(
+export function buildPullRequestBody(
   repoUrl: string,
   baseBranch: string,
   revertBranch: string,
   resolvedCommit: string
 ): string {
-  const compareUrl = buildGitHubCompareUrl(repoUrl, resolvedCommit, revertBranch);
+  const compareUrl = buildGitHubCompareUrl(repoUrl, baseBranch, revertBranch);
+  const commitUrl = buildGitHubCommitUrl(repoUrl, resolvedCommit);
+  const commitShort = getCommitShort(resolvedCommit);
 
   return [
-    `Restore \`${baseBranch}\` to the repository state from commit \`${resolvedCommit}\`.`,
+    `Restore \`${baseBranch}\` to the repository state from commit [\`${commitShort}\`](${commitUrl}).`,
     "",
-    `Compare changes: ${compareUrl}`,
+    `[Compare changes](${compareUrl}) between \`${baseBranch}\` and \`${revertBranch}\`.`,
     "",
     `- Source commit: \`${resolvedCommit}\``,
     `- Generated branch: \`${revertBranch}\``,
@@ -440,12 +441,21 @@ function buildPullRequestBody(
 }
 
 function buildGitHubCompareUrl(repoUrl: string, baseBranch: string, revertBranch: string): string {
+  const normalizedRepoUrl = normalizeGitHubHttpsUrl(repoUrl);
+  return `${normalizedRepoUrl}/compare/${encodeURIComponent(baseBranch)}...${encodeURIComponent(revertBranch)}`;
+}
+
+function buildGitHubCommitUrl(repoUrl: string, commit: string): string {
+  const normalizedRepoUrl = normalizeGitHubHttpsUrl(repoUrl);
+  return `${normalizedRepoUrl}/commit/${encodeURIComponent(commit)}`;
+}
+
+function normalizeGitHubHttpsUrl(repoUrl: string): string {
   const httpsUrl = repoUrl
     .replace(/^git@github\.com:/i, "https://github.com/")
-    .replace(/\.git$/i, "")
-    .replace(/^ssh:\/\/git@github\.com\//i, "https://github.com/");
+    .replace(/^ssh:\/\/git@github\.com\//i, "https://github.com/")
+    .replace(/\.git$/i, "");
 
-  const normalizedRepoUrl = httpsUrl.endsWith("/") ? httpsUrl.slice(0, -1) : httpsUrl;
-  return `${normalizedRepoUrl}/compare/${encodeURIComponent(baseBranch)}...${encodeURIComponent(revertBranch)}`;
+  return httpsUrl.endsWith("/") ? httpsUrl.slice(0, -1) : httpsUrl;
 }
 
