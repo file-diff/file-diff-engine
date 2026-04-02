@@ -33,13 +33,16 @@ async function makeRequest(
   app: FastifyInstance,
   method: string,
   url: string,
-  body?: unknown
+  body?: unknown,
+  headers?: Record<string, string>
 ): Promise<{ status: number; body: unknown }> {
   const response = await app.inject({
     method,
     url,
     payload: body,
-    headers: body ? { "content-type": "application/json" } : undefined,
+    headers: body
+      ? { "content-type": "application/json", ...headers }
+      : headers,
   });
 
   return {
@@ -61,6 +64,7 @@ describe("Job Routes", () => {
   const originalDownloadRateLimitMax = process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX;
   const originalDownloadRateLimitWindowMs =
     process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS;
+  const originalRevertBearerToken = process.env.REVERT_TO_COMMIT_BEARER_TOKEN;
 
   beforeEach(async () => {
     tempDirs = [];
@@ -94,6 +98,11 @@ describe("Job Routes", () => {
     } else {
       process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS =
         originalDownloadRateLimitWindowMs;
+    }
+    if (originalRevertBearerToken === undefined) {
+      delete process.env.REVERT_TO_COMMIT_BEARER_TOKEN;
+    } else {
+      process.env.REVERT_TO_COMMIT_BEARER_TOKEN = originalRevertBearerToken;
     }
     for (const tempDir of tempDirs) {
       fs.rmSync(tempDir, { recursive: true, force: true });
@@ -157,6 +166,7 @@ describe("Job Routes", () => {
   });
 
   it("POST /api/jobs/revert-to-commit - should run the revert operation", async () => {
+    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = " route-secret ";
     const revertResponse: RevertToCommitResponse = {
       repo: "facebook/react",
       branch: "main",
@@ -186,6 +196,8 @@ describe("Job Routes", () => {
       repo: "https://github.com/facebook/react.git",
       commit: commitHash,
       githubKey: " portal-token ",
+    }, {
+      authorization: "Bearer route-secret",
     });
 
     expect(res.status).toBe(200);
@@ -199,10 +211,50 @@ describe("Job Routes", () => {
     });
   });
 
+  it("POST /api/jobs/revert-to-commit - should require a valid bearer token", async () => {
+    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+
+    const res = await makeRequest(app, "POST", "/api/jobs/revert-to-commit", {
+      repo: "facebook/react",
+      commit: commitHash,
+    });
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      error: "Bearer token is required.",
+    });
+  });
+
+  it("POST /api/jobs/revert-to-commit - should fail closed when bearer auth is not configured", async () => {
+    delete process.env.REVERT_TO_COMMIT_BEARER_TOKEN;
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/revert-to-commit",
+      {
+        repo: "facebook/react",
+        commit: commitHash,
+      },
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({
+      error: "Revert-to-commit bearer token is not configured.",
+    });
+  });
+
   it("POST /api/jobs/revert-to-commit - should reject invalid commit hashes", async () => {
+    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+
     const res = await makeRequest(app, "POST", "/api/jobs/revert-to-commit", {
       repo: "facebook/react",
       commit: "abc123",
+    }, {
+      authorization: "Bearer route-secret",
     });
 
     expect(res.status).toBe(400);

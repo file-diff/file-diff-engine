@@ -9,6 +9,7 @@ API reference: [API.md](./API.md)
 - `REQUEST_DELAY_MS`: Adds a delay before every API request is handled. Defaults to `0` (disabled). Set `REQUEST_DELAY_MS=500` to simulate 500ms of latency during development.
 - `PRIVATE_GITHUB_TOKEN`: Optional GitHub token used by the `revertToCommit` CLI by default for GitHub git operations and pull request creation.
 - `PUBLIC_GITHUB_TOKEN`: Optional GitHub token used to authorize GitHub API requests and Git HTTPS operations so the service can use higher authenticated rate limits.
+- `REVERT_TO_COMMIT_BEARER_TOKEN`: Required bearer token for `POST /api/jobs/revert-to-commit`. Clients must send `Authorization: Bearer <token>`.
 
 ## CLI
 

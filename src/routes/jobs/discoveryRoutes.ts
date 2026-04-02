@@ -22,7 +22,15 @@ import { revertToCommit } from "../../github/operations";
 import * as githubApi from "../../services/githubApi";
 import * as repoProcessor from "../../services/repoProcessor";
 import { getCommitShort } from "../../utils/commit";
-import { isValidOrganization, isValidRepo, logger, normalizeRepo } from "./shared";
+import {
+  getConfiguredBearerToken,
+  isValidOrganization,
+  isValidRepo,
+  logger,
+  matchesBearerToken,
+  normalizeRepo,
+  REVERT_TO_COMMIT_BEARER_TOKEN_ENV,
+} from "./shared";
 
 export function registerDiscoveryRoutes(app: FastifyInstance): void {
   /**
@@ -82,6 +90,21 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
    * Creates a new branch from the requested base branch with the tree restored to a past commit.
    */
   app.post<{ Body: RevertToCommitRequest }>("/revert-to-commit", async (request, reply) => {
+    const endpointBearerToken = getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
+    if (!endpointBearerToken) {
+      const response: ErrorResponse = {
+        error: "Revert-to-commit bearer token is not configured.",
+      };
+      return reply.code(503).send(response);
+    }
+
+    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
+      const response: ErrorResponse = {
+        error: "Bearer token is required.",
+      };
+      return reply.code(401).send(response);
+    }
+
     let { repo, commit, branch, githubKey } = request.body ?? {};
     if (!repo || !commit) {
       const response: ErrorResponse = {

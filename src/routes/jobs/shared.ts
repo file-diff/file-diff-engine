@@ -1,4 +1,5 @@
 import path from "path";
+import { timingSafeEqual } from "crypto";
 import { Queue } from "bullmq";
 import { JobRepository } from "../../db/repository";
 import { createLogger } from "../../utils/logger";
@@ -6,6 +7,7 @@ import { createLogger } from "../../utils/logger";
 export const POSTGRES_UNIQUE_VIOLATION = "23505";
 export const DEFAULT_DOWNLOAD_RATE_LIMIT_MAX = 30;
 export const DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS = 60_000;
+export const REVERT_TO_COMMIT_BEARER_TOKEN_ENV = "REVERT_TO_COMMIT_BEARER_TOKEN";
 export const logger = createLogger("job-routes");
 
 export interface JobRoutesDependencies {
@@ -62,4 +64,32 @@ export function parsePositiveInteger(
   }
 
   return parsed;
+}
+
+export function getConfiguredBearerToken(envName: string): string | null {
+  const token = process.env[envName]?.trim();
+  return token ? token : null;
+}
+
+export function matchesBearerToken(
+  authorizationHeader: string | string[] | undefined,
+  expectedToken: string
+): boolean {
+  if (typeof authorizationHeader !== "string") {
+    return false;
+  }
+
+  const [scheme, ...credentials] = authorizationHeader.trim().split(/\s+/);
+  if (scheme?.toLowerCase() !== "bearer" || credentials.length !== 1) {
+    return false;
+  }
+
+  const providedToken = credentials[0];
+  const expectedBuffer = Buffer.from(expectedToken, "utf8");
+  const providedBuffer = Buffer.from(providedToken, "utf8");
+
+  return (
+    expectedBuffer.length === providedBuffer.length &&
+    timingSafeEqual(expectedBuffer, providedBuffer)
+  );
 }
