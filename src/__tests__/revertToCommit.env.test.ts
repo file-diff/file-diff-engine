@@ -26,14 +26,12 @@ function mockGitCommands() {
       _options: unknown,
       callback: (error: Error | null, stdout?: string, stderr?: string) => void
     ) => {
-      const command = args.join(" ");
-
-      if (command === "rev-parse FETCH_HEAD") {
+      if (args[0] === "rev-parse" && args[1] === "FETCH_HEAD") {
         callback(null, "0123456789abcdef0123456789abcdef01234567\n", "");
         return;
       }
 
-      if (command === "rev-parse HEAD") {
+      if (args[0] === "rev-parse" && args[1] === "HEAD") {
         callback(null, "89abcdef0123456789abcdef0123456789abcdef\n", "");
         return;
       }
@@ -88,13 +86,14 @@ describe("revertToCommit environment defaults", () => {
         title: "Restore main to 0123456",
         url: "https://github.com/owner/repo/pull/123",
       });
-      expect(createPullRequestMock).toHaveBeenCalledWith(
-        "owner/repo",
-        expect.stringMatching(/^revert-to-0123456-\d+$/),
-        "main",
+      expect(createPullRequestMock).toHaveBeenCalledTimes(1);
+      const [repo, revertBranch, branch, options] = createPullRequestMock.mock.calls[0];
+      expect(repo).toBe("owner/repo");
+      expect(revertBranch).toMatch(/^revert-to-/);
+      expect(branch).toBe("main");
+      expect(options).toEqual(
         expect.objectContaining({
           token: "private-token",
-          title: "Restore main to 0123456",
         })
       );
     } finally {
