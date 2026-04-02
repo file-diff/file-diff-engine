@@ -433,7 +433,7 @@ export function buildPullRequestBody(
   return [
     `Restore \`${baseBranch}\` to the repository state from commit [\`${commitShort}\`](${commitUrl}).`,
     "",
-    `[Compare changes](${compareUrl}) between \`${baseBranch}\` and \`${revertBranch}\`.`,
+    `Changelog (should be no files changes): [${resolvedCommit}..${revertBranch}](${compareUrl})`,
     "",
     `- Source commit: \`${resolvedCommit}\``,
     `- Generated branch: \`${revertBranch}\``,
