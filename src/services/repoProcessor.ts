@@ -82,6 +82,25 @@ function getGitCommandEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+function withRepoArg(args: string[], repoUrl: string, trailingArgs: string[] = []): string[] {
+  return [...args, "--", repoUrl, ...trailingArgs];
+}
+
+function assertSafeGitRepositoryUrl(repoUrl: string): void {
+  const trimmedRepoUrl = repoUrl.trim();
+  if (!trimmedRepoUrl) {
+    throw new Error("Repository URL is required.");
+  }
+
+  if (trimmedRepoUrl.startsWith("-")) {
+    throw new Error("Repository URL cannot start with '-'.");
+  }
+
+  if (/[\0\r\n]/.test(trimmedRepoUrl)) {
+    throw new Error("Repository URL contains unsupported control characters.");
+  }
+}
+
 function isRetryableGitLockError(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
 
@@ -137,6 +156,7 @@ export async function resolveRefToCommitHash(
   repoUrl: string,
   ref: string
 ): Promise<string> {
+  assertSafeGitRepositoryUrl(repoUrl);
   const trimmedRef = ref.trim();
   if (!trimmedRef) {
     throw new Error("Git ref is required.");
@@ -154,9 +174,7 @@ export async function resolveRefToCommitHash(
         `refs/tags/${trimmedRef}`,
       ];
   const output = await runGitCommand(process.cwd(), [
-    "ls-remote",
-    repoUrl,
-    ...refCandidates,
+    ...withRepoArg(["ls-remote"], repoUrl, refCandidates),
   ]);
 
   const refsByName = new Map(
@@ -179,7 +197,11 @@ export async function resolveRefToCommitHash(
 }
 
 export async function listRepositoryRefs(repoUrl: string): Promise<GitRefSummary[]> {
-  const output = await runGitCommand(process.cwd(), ["ls-remote", "--heads", "--tags", repoUrl]);
+  assertSafeGitRepositoryUrl(repoUrl);
+  const output = await runGitCommand(
+    process.cwd(),
+    withRepoArg(["ls-remote", "--heads", "--tags"], repoUrl)
+  );
   const refsByName = new Map<string, GitRefSummary>();
 
   for (const line of output.split("\n").filter(Boolean)) {
@@ -227,6 +249,7 @@ export async function listRepositoryCommits(
   repoUrl: string,
   limit: number
 ): Promise<CommitSummary[]> {
+  assertSafeGitRepositoryUrl(repoUrl);
   if (!Number.isInteger(limit) || limit <= 0) {
     throw new Error("Field 'limit' must be a positive integer.");
   }
@@ -257,7 +280,7 @@ export async function listRepositoryCommits(
 
   try {
     const cloneArgs = ["clone", `--depth=${limit}`, "--no-single-branch"];
-    cloneArgs.push(repoUrl, repoDir);
+    cloneArgs.push("--", repoUrl, repoDir);
     await runGitCommand(process.cwd(), cloneArgs);
 
     const output = await runGitCommand(repoDir, [
@@ -381,6 +404,7 @@ export async function processRepository(
     await runGitCommandWithRetry(path.dirname(cacheDir), [
       "clone",
       "--no-checkout",
+      "--",
       repoUrl,
       cacheDir,
     ]);
@@ -553,7 +577,11 @@ async function getTrackedGitEntries(repoDir: string): Promise<Map<string, GitEnt
 async function getHeadReference(
   repoUrl: string
 ): Promise<{ branchRef: string | null; commit: string | null }> {
-  const output = await runGitCommand(process.cwd(), ["ls-remote", "--symref", repoUrl, "HEAD"]);
+  assertSafeGitRepositoryUrl(repoUrl);
+  const output = await runGitCommand(
+    process.cwd(),
+    withRepoArg(["ls-remote", "--symref"], repoUrl, ["HEAD"])
+  );
   let branchRef: string | null = null;
   let commit: string | null = null;
 

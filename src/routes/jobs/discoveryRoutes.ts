@@ -2,8 +2,10 @@ import fs from "fs";
 import path from "path";
 import type { FastifyInstance } from "fastify";
 import type {
+  CommitGraphItem,
   ErrorResponse,
   ListCommitsRequest,
+  ListCommitsGraphResponse,
   ListCommitsResponse,
   GitCacheStatsResponse,
   ListRefsRequest,
@@ -195,6 +197,52 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
   });
 
   /**
+   * POST /api/jobs/commits/graph
+   * Body: { "repo": "owner/repo", "limit": 10 }
+   * Lists repository commits as node/edge items for visualization.
+   */
+  app.post<{ Body: ListCommitsRequest }>("/commits/graph", async (request, reply) => {
+    let { repo, limit } = request.body ?? {};
+    if (!repo) {
+      const response: ErrorResponse = {
+        error: "Field 'repo' is required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (!Number.isInteger(limit) || limit <= 0) {
+      const response: ErrorResponse = {
+        error: "Field 'limit' must be a positive integer.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    try {
+      const commits = await repoProcessor.listRepositoryCommits(
+        repoProcessor.getRepositoryUrl(repo),
+        limit
+      );
+      const response: ListCommitsGraphResponse = buildCommitGraph(commits);
+      return reply.code(200).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to list repository commits.";
+      const response: ErrorResponse = { error: message };
+      return reply.code(500).send(response);
+    }
+  });
+
+  /**
    * GET /api/jobs/organizations/:organization/repositories
    * Lists repositories in a GitHub organization.
    */
@@ -282,6 +330,29 @@ function getGitCacheStats(): GitCacheStatsResponse {
     totalSize: folders.reduce((sum, folder) => sum + folder.size, 0),
     folders,
   };
+}
+
+function buildCommitGraph(
+  commits: ListCommitsResponse["commits"]
+): ListCommitsGraphResponse {
+  const commitIds = new Set(commits.map((commit) => commit.commit));
+  const nodes: CommitGraphItem[] = commits.map((commit) => ({
+    id: commit.commit,
+    type: "node",
+    ...(commit.branch ? { colorKey: commit.branch } : {}),
+  }));
+  const edges: CommitGraphItem[] = commits.flatMap((commit) =>
+    commit.parents
+      .filter((parent) => commitIds.has(parent))
+      .map((parent) => ({
+        id: `${parent}->${commit.commit}`,
+        type: "edge",
+        source: parent,
+        target: commit.commit,
+      }))
+  );
+
+  return [...nodes, ...edges];
 }
 
 function getDirectorySize(dirPath: string): number {
