@@ -3,8 +3,10 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const execFileMock = vi.fn();
-const createPullRequestMock = vi.fn();
+const { execFileMock, createPullRequestMock } = vi.hoisted(() => ({
+  execFileMock: vi.fn(),
+  createPullRequestMock: vi.fn(),
+}));
 
 vi.mock("child_process", () => ({
   execFile: execFileMock,
