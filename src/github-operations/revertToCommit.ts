@@ -32,6 +32,39 @@ function validateRef(value: string, label: string): string {
 }
 
 /**
+ * Validates a repository name in "owner/repo" format or full URL.
+ */
+function validateRepo(repo: string): string {
+  const trimmed = repo.trim();
+  if (!trimmed) {
+    throw new Error("Repository name is required.");
+  }
+  if (trimmed.startsWith("-")) {
+    throw new Error("Repository name must not start with '-'.");
+  }
+  if (/[\0\r\n]/.test(trimmed)) {
+    throw new Error("Repository name contains invalid characters.");
+  }
+  if (!trimmed.includes("/")) {
+    throw new Error(
+      "Repository must be in 'owner/repo' format or a full URL."
+    );
+  }
+  return trimmed;
+}
+
+/**
+ * Validates that a cache directory path is safe to use.
+ */
+function validateCacheDir(cacheDir: string): string {
+  const resolved = path.resolve(cacheDir);
+  if (!resolved) {
+    throw new Error("Cache directory path is required.");
+  }
+  return resolved;
+}
+
+/**
  * Returns environment variables for git commands, optionally injecting
  * token-based authentication for github.com via git config overrides.
  */
@@ -223,16 +256,19 @@ export async function revertToCommit(
 
   const token =
     githubToken || process.env.PUBLIC_GITHUB_TOKEN?.trim() || undefined;
-  const repoUrl = getRepositoryUrl(repo);
 
+  const safeRepo = validateRepo(repo);
+  const repoUrl = getRepositoryUrl(safeRepo);
   const safeBranch = validateRef(branch, "Branch");
   const safeCommit = validateRef(commitHash, "Commit hash");
+  const safeCacheDir = cacheDir ? validateCacheDir(cacheDir) : undefined;
 
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-revert-"));
+  fs.chmodSync(workDir, 0o700);
   const cloneDir = path.join(workDir, "repo");
 
   logger.info("Starting revert-to-commit operation", {
-    repo,
+    repo: safeRepo,
     commitHash: safeCommit,
     branch: safeBranch,
     workDir,
@@ -240,9 +276,9 @@ export async function revertToCommit(
 
   try {
     // 1. Clone the repository (use cache if available, otherwise clone fresh)
-    if (cacheDir && fs.existsSync(path.join(cacheDir, ".git"))) {
-      logger.info("Using cached repository clone", { cacheDir });
-      fs.cpSync(cacheDir, cloneDir, { recursive: true });
+    if (safeCacheDir && fs.existsSync(path.join(safeCacheDir, ".git"))) {
+      logger.info("Using cached repository clone", { cacheDir: safeCacheDir });
+      fs.cpSync(safeCacheDir, cloneDir, { recursive: true });
       await runGit(cloneDir, ["fetch", "--all"], token);
     } else {
       logger.info("Cloning repository", { repoUrl });
@@ -342,7 +378,7 @@ export async function revertToCommit(
     if (token) {
       try {
         pullRequestUrl = await createPullRequest(
-          repo,
+          safeRepo,
           newBranch,
           safeBranch,
           resolvedCommit,
@@ -358,7 +394,7 @@ export async function revertToCommit(
     }
 
     logger.info("Revert-to-commit operation completed successfully", {
-      repo,
+      repo: safeRepo,
       newBranch,
       commitSha: resolvedCommit,
       pullRequestUrl,
