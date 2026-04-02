@@ -51,6 +51,12 @@ export async function revertToCommit(
     process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
     process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
     undefined;
+  if (!githubKey) {
+    logger.warn(
+      "No GitHub token provided; pull request creation will be skipped. Set the --github-key option or provide a token via environment variables."
+    );
+    throw new Error("GitHub token is required to perform revert operation.");
+  }
   const repoUrl = getRepositoryUrl(repo);
   assertSafeGitRepositoryUrl(repoUrl);
   const githubRepo = getGitHubRepoName(repo) ?? getGitHubRepoName(repoUrl);
@@ -132,12 +138,7 @@ export async function revertToCommit(
         ? await createPullRequest(githubRepo, revertBranch, branch, {
             token: githubKey,
             title: `Restore ${branch} to ${getCommitShort(resolvedCommit)}`,
-            body: [
-              `Restore \`${branch}\` to the repository state from commit \`${resolvedCommit}\`.`,
-              "",
-              `- Source commit: \`${resolvedCommit}\``,
-              `- Generated branch: \`${revertBranch}\``,
-            ].join("\n"),
+            body: buildPullRequestBody(repoUrl, branch, revertBranch, resolvedCommit),
           })
         : null;
     if (pullRequest) {
@@ -170,6 +171,16 @@ export async function runRevertToCommitCli(argv: string[] = process.argv): Promi
 }
 
 if (require.main === module) {
+  // Load .env when running from the CLI so local dev can provide tokens and settings.
+  try {
+    // Use dynamic import so this file can be imported without pulling dotenv in non-CLI code paths.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require("dotenv").config();
+  } catch (e) {
+    // If dotenv isn't installed or fails to load, continue without throwing - tokens may come from env.
+    logger.debug("dotenv not loaded; continuing without .env file.", { error: e });
+  }
+
   runRevertToCommitCli().catch((error) => {
     const message = error instanceof Error ? error.message : "Revert to commit failed.";
     process.stderr.write(`${message}\n`);
@@ -409,3 +420,32 @@ export function formatRevertToCommitCliOutput(result: RevertToCommitResult): str
 
   return `${lines.join("\n")}\n`;
 }
+
+function buildPullRequestBody(
+  repoUrl: string,
+  baseBranch: string,
+  revertBranch: string,
+  resolvedCommit: string
+): string {
+  const compareUrl = buildGitHubCompareUrl(repoUrl, resolvedCommit, revertBranch);
+
+  return [
+    `Restore \`${baseBranch}\` to the repository state from commit \`${resolvedCommit}\`.`,
+    "",
+    `Compare changes: ${compareUrl}`,
+    "",
+    `- Source commit: \`${resolvedCommit}\``,
+    `- Generated branch: \`${revertBranch}\``,
+  ].join("\n");
+}
+
+function buildGitHubCompareUrl(repoUrl: string, baseBranch: string, revertBranch: string): string {
+  const httpsUrl = repoUrl
+    .replace(/^git@github\.com:/i, "https://github.com/")
+    .replace(/\.git$/i, "")
+    .replace(/^ssh:\/\/git@github\.com\//i, "https://github.com/");
+
+  const normalizedRepoUrl = httpsUrl.endsWith("/") ? httpsUrl.slice(0, -1) : httpsUrl;
+  return `${normalizedRepoUrl}/compare/${encodeURIComponent(baseBranch)}...${encodeURIComponent(revertBranch)}`;
+}
+

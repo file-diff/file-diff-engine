@@ -2,11 +2,15 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { execSync } from "child_process";
-import { describe, expect, it } from "vitest";
-import {
-  formatRevertToCommitCliOutput,
-  revertToCommit,
-} from "../github/operations/revertToCommit";
+import { describe, expect, it, vi } from "vitest";
+
+const createPullRequestMock = vi.fn();
+
+vi.mock("../services/githubApi", () => ({
+  createPullRequest: createPullRequestMock,
+}));
+
+import { formatRevertToCommitCliOutput, revertToCommit } from "../github/operations/revertToCommit";
 
 function createRemoteRepository(rootDir: string): {
   sourceDir: string;
@@ -128,5 +132,41 @@ describe("revertToCommit", () => {
     expect(output).toContain("Operation log:");
     expect(output).toContain("1. Cloned branch 'main' from 'https://github.com/facebook/react.git'.");
     expect(output).toContain("2. Pushed branch 'revert-to-0123456-1' to 'origin'.");
+  });
+
+  it("includes a compare link in the pull request body when creating a PR", async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-revert-test-"));
+    const workDir = path.join(rootDir, "workspace");
+
+    try {
+      const { firstCommit } = createRemoteRepository(rootDir);
+
+      createPullRequestMock.mockResolvedValueOnce({
+        number: 7,
+        title: "Restore main to test",
+        url: "https://github.com/example/repo/pull/7",
+      });
+
+      await revertToCommit({
+        repo: "example/repo",
+        commit: firstCommit,
+        branch: "main",
+        githubKey: "token",
+        workDir,
+      });
+
+      expect(createPullRequestMock).toHaveBeenCalledTimes(1);
+      expect(createPullRequestMock).toHaveBeenCalledWith(
+        "example/repo",
+        expect.stringMatching(/^revert-to-[a-f0-9]{7}-\d+$/),
+        "main",
+        expect.objectContaining({
+          body: expect.stringContaining(`https://github.com/example/repo/compare/main...`),
+        })
+      );
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+      createPullRequestMock.mockReset();
+    }
   });
 });
