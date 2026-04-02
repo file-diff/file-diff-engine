@@ -49,6 +49,13 @@ interface GitHubCommitPullRequestApiResponse {
   html_url?: string;
 }
 
+interface GitHubCreatePullRequestApiRequest {
+  title: string;
+  head: string;
+  base: string;
+  body?: string;
+}
+
 interface GitHubErrorApiResponse {
   message?: string;
 }
@@ -168,6 +175,43 @@ export async function getCommitPullRequest(
   };
 }
 
+export async function createPullRequest(
+  repo: string,
+  head: string,
+  base: string,
+  options: {
+    title: string;
+    body?: string;
+    token?: string;
+  }
+): Promise<CommitPullRequestSummary> {
+  const [owner, repoName] = repo.split("/", 2);
+  const response = await getJson<GitHubCommitPullRequestApiResponse>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/pulls`,
+    {
+      notFoundMessage: `GitHub repository '${repo}' was not found.`,
+      method: "POST",
+      body: {
+        title: options.title,
+        head,
+        base,
+        ...(options.body ? { body: options.body } : {}),
+      } satisfies GitHubCreatePullRequestApiRequest,
+      token: options.token,
+    }
+  );
+
+  if (!response.number || !response.html_url) {
+    throw new GitHubApiError("GitHub pull request response was invalid.", 502);
+  }
+
+  return {
+    number: response.number,
+    title: response.title?.trim() || options.title,
+    url: response.html_url.trim(),
+  };
+}
+
 export async function getGitHubRateLimit(): Promise<GitHubRateLimitSummary> {
   const response = await getJson<GitHubRateLimitApiResponse>("/rate_limit", {
     notFoundMessage: "GitHub rate limit endpoint was not found.",
@@ -230,9 +274,18 @@ export function parsePullRequestUrl(
 
 async function getJson<T>(
   path: string,
-  options: { notFoundMessage: string }
+  options: {
+    notFoundMessage: string;
+    method?: "GET" | "POST";
+    body?: unknown;
+    token?: string;
+  }
 ): Promise<T> {
-  const response = await requestGitHub(path);
+  const response = await requestGitHub(path, {
+    method: options.method,
+    body: options.body,
+    token: options.token,
+  });
   if (response.statusCode === 404) {
     throw new GitHubApiError(options.notFoundMessage, 404);
   }
@@ -311,15 +364,24 @@ function getOwnerRepositoriesError(owner: string, errors: unknown[]): GitHubApiE
   return new GitHubApiError(`GitHub organization or user '${owner}' was not found.`, 404);
 }
 
-function requestGitHub(path: string): Promise<{ statusCode: number; body: string }> {
+function requestGitHub(
+  path: string,
+  options: {
+    method?: "GET" | "POST";
+    body?: unknown;
+    token?: string;
+  } = {}
+): Promise<{ statusCode: number; body: string }> {
   return new Promise((resolve, reject) => {
+    const method = options.method ?? "GET";
+    const requestBody = options.body === undefined ? undefined : JSON.stringify(options.body);
     const request = https.request(
       {
         protocol: "https:",
         hostname: GITHUB_API_HOSTNAME,
         path,
-        method: "GET",
-        headers: getRequestHeaders(),
+        method,
+        headers: getRequestHeaders(options.token, requestBody),
       },
       (response) => {
         const chunks: Buffer[] = [];
@@ -339,16 +401,26 @@ function requestGitHub(path: string): Promise<{ statusCode: number; body: string
       reject(new GitHubApiError(`GitHub API request failed: ${error.message}`, 502));
     });
 
+    if (requestBody) {
+      request.write(requestBody);
+    }
     request.end();
   });
 }
 
-function getRequestHeaders(): Record<string, string> {
+function getRequestHeaders(
+  tokenOverride?: string,
+  requestBody?: string
+): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "file-diff-engine",
   };
-  const token = process.env.PUBLIC_GITHUB_TOKEN?.trim();
+  if (requestBody !== undefined) {
+    headers["Content-Type"] = "application/json; charset=utf-8";
+    headers["Content-Length"] = String(Buffer.byteLength(requestBody));
+  }
+  const token = tokenOverride?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }

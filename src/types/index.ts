@@ -38,6 +38,18 @@ export interface ResolvePullRequestRequest {
   pullRequestUrl: string;
 }
 
+/** Payload sent when restoring a branch to the tree from a past commit. */
+export interface RevertToCommitRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Full 40-character commit SHA */
+  commit: string;
+  /** Branch to fork from before restoring the tree */
+  branch?: string;
+  /** Optional GitHub token; when provided a pull request is also created */
+  githubKey?: string;
+}
+
 /** Payload sent when listing Git refs for a repository. */
 export interface ListRefsRequest {
   /** GitHub repository in owner/repo format */
@@ -84,6 +96,18 @@ export interface ResolvePullRequestResponse {
   sourceCommitShort: string;
   targetCommit: string;
   targetCommitShort: string;
+}
+
+/** Response payload after creating a branch that restores a commit snapshot. */
+export interface RevertToCommitResponse {
+  repo: string;
+  branch: string;
+  commit: string;
+  commitShort: string;
+  revertBranch: string;
+  revertCommit: string;
+  revertCommitShort: string;
+  pullRequest: CommitPullRequestSummary | null;
 }
 
 /** Supported Git ref types exposed by the API. */

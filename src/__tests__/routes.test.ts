@@ -20,10 +20,12 @@ import type {
   JobFilesResponse,
   JobInfo,
   JobSummary,
+  RevertToCommitResponse,
   ResolveCommitResponse,
   ResolvePullRequestResponse,
 } from "../types";
 import { createTestDatabase } from "./helpers/testDatabase";
+import * as githubOperations from "../github/operations";
 import * as githubApi from "../services/githubApi";
 import * as repoProcessor from "../services/repoProcessor";
 
@@ -151,6 +153,54 @@ describe("Job Routes", () => {
     expect(res.body).toEqual({
       error:
         "Unable to resolve git ref 'missing-branch' for repository 'https://github.com/facebook/react.git'.",
+    });
+  });
+
+  it("POST /api/jobs/revert-to-commit - should run the revert operation", async () => {
+    const revertResponse: RevertToCommitResponse = {
+      repo: "facebook/react",
+      branch: "main",
+      commit: commitHash,
+      commitShort: commitHash.slice(0, 7),
+      revertBranch: "revert-to-0123456-1",
+      revertCommit: fileHash,
+      revertCommitShort: fileHash.slice(0, 7),
+      pullRequest: {
+        number: 42,
+        title: "Restore main to 0123456",
+        url: "https://github.com/facebook/react/pull/42",
+      },
+    };
+    const revertSpy = vi
+      .spyOn(githubOperations, "revertToCommit")
+      .mockResolvedValue(revertResponse);
+
+    const res = await makeRequest(app, "POST", "/api/jobs/revert-to-commit", {
+      repo: "https://github.com/facebook/react.git",
+      commit: commitHash,
+      githubKey: " portal-token ",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(revertResponse);
+    expect(revertSpy).toHaveBeenCalledWith({
+      repo: "facebook/react",
+      commit: commitHash,
+      branch: "main",
+      githubKey: "portal-token",
+      cacheRootDir: path.join(path.resolve(process.env.TMP_DIR || "tmp"), "repo-cache"),
+    });
+  });
+
+  it("POST /api/jobs/revert-to-commit - should reject invalid commit hashes", async () => {
+    const res = await makeRequest(app, "POST", "/api/jobs/revert-to-commit", {
+      repo: "facebook/react",
+      commit: "abc123",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Field 'commit' must be a full 40-character commit SHA.",
     });
   });
 

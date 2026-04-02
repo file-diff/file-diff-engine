@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import https from "https";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createPullRequest,
   GitHubApiError,
   listOrganizationRepositories,
   parsePullRequestUrl,
@@ -210,14 +211,65 @@ describe("githubApi", () => {
       statusCode: 404,
     });
   });
+
+  it("createPullRequest posts the expected payload", async () => {
+    mockGitHubRequests((path, respond, options) => {
+      expect(path).toBe("/repos/file-diff/file-diff-engine/pulls");
+      expect(options).toMatchObject({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer portal-token",
+          "Content-Type": "application/json; charset=utf-8",
+        }),
+      });
+      expect(JSON.parse(options.body ?? "{}")).toEqual({
+        title: "Restore main to 0123456",
+        head: "revert-to-0123456-1",
+        base: "main",
+        body: "Body",
+      });
+      respond({
+        statusCode: 201,
+        body: {
+          number: 42,
+          title: "Restore main to 0123456",
+          html_url: "https://github.com/file-diff/file-diff-engine/pull/42",
+        },
+      });
+    });
+
+    await expect(
+      createPullRequest("file-diff/file-diff-engine", "revert-to-0123456-1", "main", {
+        title: "Restore main to 0123456",
+        body: "Body",
+        token: "portal-token",
+      })
+    ).resolves.toEqual({
+      number: 42,
+      title: "Restore main to 0123456",
+      url: "https://github.com/file-diff/file-diff-engine/pull/42",
+    });
+  });
 });
 
 function mockGitHubRequests(
-  handleRequest: (path: string, respond: (response: MockGitHubResponse) => void) => void
+  handleRequest: (
+    path: string,
+    respond: (response: MockGitHubResponse) => void,
+    options: { method?: string; headers?: unknown; body?: string }
+  ) => void
 ): void {
   vi.spyOn(https, "request").mockImplementation((options, callback) => {
     const response = new EventEmitter() as EventEmitter & { statusCode?: number };
-    const request = new EventEmitter() as EventEmitter & { end: () => void };
+    let body = "";
+    const request = new EventEmitter() as EventEmitter & {
+      end: () => void;
+      write: (chunk: string | Buffer) => void;
+    };
+
+    request.write = (chunk) => {
+      body += chunk.toString();
+    };
 
     request.end = () => {
       const path = typeof options === "string" ? options : options.path;
@@ -225,12 +277,20 @@ function mockGitHubRequests(
         throw new Error("Expected GitHub API request path.");
       }
 
-      handleRequest(path, ({ statusCode, body }) => {
-        response.statusCode = statusCode;
-        callback?.(response as never);
-        response.emit("data", JSON.stringify(body));
-        response.emit("end");
-      });
+      handleRequest(
+        path,
+        ({ statusCode, body: responseBody }) => {
+          response.statusCode = statusCode;
+          callback?.(response as never);
+          response.emit("data", JSON.stringify(responseBody));
+          response.emit("end");
+        },
+        {
+          method: typeof options === "string" ? undefined : options.method,
+          headers: typeof options === "string" ? undefined : options.headers,
+          body,
+        }
+      );
     };
 
     return request as never;
