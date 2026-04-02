@@ -424,25 +424,23 @@ export function buildPullRequestBody(
   repoUrl: string,
   baseBranch: string,
   revertBranch: string,
-  resolvedCommit: string
+  sourceCommit: string,
 ): string {
-  const compareUrl = buildGitHubCompareUrl(repoUrl, baseBranch, revertBranch);
-  const commitUrl = buildGitHubCommitUrl(repoUrl, resolvedCommit);
-  const commitShort = getCommitShort(resolvedCommit);
+  const compareUrl = buildGitHubCompareUrl(repoUrl, sourceCommit, revertBranch);
+  const commitUrl = buildGitHubCommitUrl(repoUrl, sourceCommit);
+  const commitShort = getCommitShort(sourceCommit);
 
   return [
     `Restore \`${baseBranch}\` to the repository state from commit [\`${commitShort}\`](${commitUrl}).`,
     "",
-    `Changelog (should be no files changes): [${resolvedCommit}..${revertBranch}](${compareUrl})`,
-    "",
-    `- Source commit: \`${resolvedCommit}\``,
-    `- Generated branch: \`${revertBranch}\``,
+    "Direct comparison should show no differences between commits:",
+    `[${commitShort}..${revertBranch}](${compareUrl})`
   ].join("\n");
 }
 
 function buildGitHubCompareUrl(repoUrl: string, baseBranch: string, revertBranch: string): string {
   const normalizedRepoUrl = normalizeGitHubHttpsUrl(repoUrl);
-  return `${normalizedRepoUrl}/compare/${encodeURIComponent(baseBranch)}...${encodeURIComponent(revertBranch)}`;
+  return `${normalizedRepoUrl}/compare/${encodeURIComponent(baseBranch)}..${encodeURIComponent(revertBranch)}`;
 }
 
 function buildGitHubCommitUrl(repoUrl: string, commit: string): string {
