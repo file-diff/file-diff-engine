@@ -289,8 +289,7 @@ function getGitCommandEnv(tokenOverride?: string): NodeJS.ProcessEnv {
 
   const env = { ...process.env };
   const existingCount = Number.parseInt(env.GIT_CONFIG_COUNT ?? "0", 10);
-  const configCount =
-    Number.isInteger(existingCount) && existingCount >= 0 ? existingCount : 0;
+  const configCount = Number.isNaN(existingCount) || existingCount < 0 ? 0 : existingCount;
   const authHeader = Buffer.from(`x-access-token:${token}`, "utf8").toString("base64");
 
   env.GIT_CONFIG_COUNT = String(configCount + 1);
