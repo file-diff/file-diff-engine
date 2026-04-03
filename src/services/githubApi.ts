@@ -366,7 +366,7 @@ async function getJson<T>(
       method: options.method ?? "GET",
       path,
       statusCode: response.statusCode,
-      responseMessage,
+      responseMessage: response.body,
       documentationUrl: payload?.documentation_url,
       ...summarizeHeaders(response.headers),
     });
