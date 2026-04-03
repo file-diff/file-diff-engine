@@ -263,9 +263,9 @@ export async function createTask(
   token: string
 ): Promise<CreateTaskResponse> {
   const response = await getJson<GitHubTaskApiResponse>(
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/copilot/tasks`,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks`,
     {
-      notFoundMessage: `GitHub repository '${owner}/${repo}' was not found.`,
+      notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when creating tasks.`,
       method: "POST",
       body,
       token,
