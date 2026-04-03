@@ -486,15 +486,17 @@ function requestGitHub(
 
 function getGitHubResponseHeadersSummary(headers: IncomingHttpHeaders): Record<string, string> {
   const summary: Record<string, string> = {};
-  const requestId = getResponseHeader(headers, "x-github-request-id");
-  const acceptedPermissions = getResponseHeader(headers, "x-accepted-github-permissions");
-  const oauthScopes = getResponseHeader(headers, "x-oauth-scopes");
-  const rateLimitRemaining = getResponseHeader(headers, "x-ratelimit-remaining");
-
-  if (requestId) summary.requestId = requestId;
-  if (acceptedPermissions) summary.acceptedPermissions = acceptedPermissions;
-  if (oauthScopes) summary.oauthScopes = oauthScopes;
-  if (rateLimitRemaining) summary.rateLimitRemaining = rateLimitRemaining;
+  for (const [headerName, summaryKey] of [
+    ["x-github-request-id", "requestId"],
+    ["x-accepted-github-permissions", "acceptedPermissions"],
+    ["x-oauth-scopes", "oauthScopes"],
+    ["x-ratelimit-remaining", "rateLimitRemaining"],
+  ] as const) {
+    const value = getResponseHeader(headers, headerName);
+    if (value) {
+      summary[summaryKey] = value;
+    }
+  }
 
   return summary;
 }

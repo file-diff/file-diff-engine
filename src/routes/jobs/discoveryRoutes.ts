@@ -622,21 +622,37 @@ function getGitCacheStats(): GitCacheStatsResponse {
 }
 
 function summarizeCreateTaskPayload(body: CreateTaskRequest | undefined): Record<string, unknown> {
-  return {
-    ...(typeof body?.event_content === "string"
-      ? { eventContentLength: body.event_content.length }
-      : {}),
-    ...(typeof body?.agent_id === "number" ? { agentId: body.agent_id } : {}),
-    ...(typeof body?.problem_statement === "string"
-      ? { problemStatementLength: body.problem_statement.length }
-      : {}),
-    ...(typeof body?.model === "string" ? { model: body.model } : {}),
-    ...(typeof body?.custom_agent === "string" ? { customAgent: body.custom_agent } : {}),
-    ...(typeof body?.create_pull_request === "boolean"
-      ? { createPullRequest: body.create_pull_request }
-      : {}),
-    ...(typeof body?.base_ref === "string" ? { baseRef: body.base_ref } : {}),
-  };
+  const summary: Record<string, unknown> = {};
+
+  if (typeof body?.event_content === "string") {
+    summary.eventContentLength = body.event_content.length;
+  }
+
+  if (typeof body?.agent_id === "number") {
+    summary.agentId = body.agent_id;
+  }
+
+  if (typeof body?.problem_statement === "string") {
+    summary.problemStatementLength = body.problem_statement.length;
+  }
+
+  if (typeof body?.model === "string") {
+    summary.model = body.model;
+  }
+
+  if (typeof body?.custom_agent === "string") {
+    summary.customAgent = body.custom_agent;
+  }
+
+  if (typeof body?.create_pull_request === "boolean") {
+    summary.createPullRequest = body.create_pull_request;
+  }
+
+  if (typeof body?.base_ref === "string") {
+    summary.baseRef = body.base_ref;
+  }
+
+  return summary;
 }
 
 function buildCommitGraph(
