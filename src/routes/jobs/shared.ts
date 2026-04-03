@@ -8,6 +8,7 @@ export const POSTGRES_UNIQUE_VIOLATION = "23505";
 export const DEFAULT_DOWNLOAD_RATE_LIMIT_MAX = 30;
 export const DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS = 60_000;
 export const REVERT_TO_COMMIT_BEARER_TOKEN_ENV = "REVERT_TO_COMMIT_BEARER_TOKEN";
+export const MERGE_BRANCH_BEARER_TOKEN_ENV = "MERGE_BRANCH_BEARER_TOKEN";
 export const logger = createLogger("job-routes");
 
 export interface JobRoutesDependencies {

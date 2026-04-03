@@ -10,6 +10,7 @@ API reference: [API.md](./API.md)
 - `PRIVATE_GITHUB_TOKEN`: Optional GitHub token used by the `revertToCommit` CLI by default for GitHub git operations and pull request creation.
 - `PUBLIC_GITHUB_TOKEN`: Optional GitHub token used to authorize GitHub API requests and Git HTTPS operations so the service can use higher authenticated rate limits.
 - `REVERT_TO_COMMIT_BEARER_TOKEN`: Required bearer token for `POST /api/jobs/revert-to-commit`. Clients must send `Authorization: Bearer <token>`.
+- `MERGE_BRANCH_BEARER_TOKEN`: Required bearer token for `POST /api/jobs/merge-branch`. Clients must send `Authorization: Bearer <token>`.
 
 ## CLI
 

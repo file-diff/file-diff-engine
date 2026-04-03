@@ -38,6 +38,31 @@ export interface ResolvePullRequestRequest {
   pullRequestUrl: string;
 }
 
+/** Payload sent when merging one branch into another and creating a pull request. */
+export interface MergeBranchRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Base branch to merge into (default: "main") */
+  baseBranch?: string;
+  /** Branch whose changes are merged in */
+  otherBranch: string;
+  /** Optional GitHub token; when provided a pull request is also created */
+  githubKey?: string;
+}
+
+/** Response payload after merging a branch and optionally creating a pull request. */
+export interface MergeBranchResponse {
+  repo: string;
+  baseBranch: string;
+  otherBranch: string;
+  mergeBranch: string;
+  mergeCommit: string;
+  mergeCommitShort: string;
+  created: boolean;
+  pullRequest: CommitPullRequestSummary | null;
+  log: OperationLogEntry[];
+}
+
 /** Payload sent when restoring a branch to the tree from a past commit. */
 export interface RevertToCommitRequest {
   /** GitHub repository in owner/repo format */
