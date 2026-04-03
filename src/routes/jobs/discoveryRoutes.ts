@@ -623,7 +623,9 @@ function getGitCacheStats(): GitCacheStatsResponse {
 
 function summarizeCreateTaskPayload(body: CreateTaskRequest | undefined): Record<string, unknown> {
   return {
-    eventContentLength: typeof body?.event_content === "string" ? body.event_content.length : 0,
+    ...(typeof body?.event_content === "string"
+      ? { eventContentLength: body.event_content.length }
+      : {}),
     ...(typeof body?.agent_id === "number" ? { agentId: body.agent_id } : {}),
     ...(typeof body?.problem_statement === "string"
       ? { problemStatementLength: body.problem_statement.length }
