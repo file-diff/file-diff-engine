@@ -326,6 +326,55 @@ curl -X POST https://your-host.example.com/api/jobs/merge-branch \
 
 ---
 
+### `POST /api/jobs/create-task`
+
+Creates a new GitHub Copilot coding agent task for a repository. This endpoint proxies the request to the GitHub API using the server's `PRIVATE_GITHUB_TOKEN`.
+
+This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `event_content` | `string` | Yes | User's written prompt. |
+| `agent_id` | `integer` | No | Agent ID (optional, defaults to coding agent). |
+| `problem_statement` | `string` | No | Additional prompting for the agent. |
+| `model` | `string` | No | The model to use for this task (e.g. `claude-sonnet-4.6`, `gpt-5.2-codex`). |
+| `custom_agent` | `string` | No | Custom agent identifier. |
+| `create_pull_request` | `boolean` | No | Whether to create a PR. |
+| `base_ref` | `string` | No | Base ref for new branch/PR. |
+
+#### Success response
+
+Status: `201 Created`
+
+Returns the GitHub API response for the created task.
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` or `event_content` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `503 Service Unavailable` when the create-task bearer token or private GitHub token is not configured
+- `404 Not Found` when the repository is not found
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/create-task \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "event_content": "Fix the bug in the login form",
+    "model": "claude-sonnet-4.6",
+    "create_pull_request": true
+  }'
+```
+
+---
+
 ### `POST /api/jobs/pull-request/resolve`
 
 Resolves a GitHub pull request URL into source and target commit hashes.
