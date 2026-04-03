@@ -13,6 +13,8 @@ import type {
   ListRefsResponse,
   ListOrganizationRepositoriesResponse,
   GitCacheStatsResponse,
+  MergeBranchRequest,
+  MergeBranchResponse,
   RevertToCommitRequest,
   RevertToCommitResponse,
   ResolveCommitRequest,
@@ -20,7 +22,7 @@ import type {
   ResolvePullRequestRequest,
   ResolvePullRequestResponse,
 } from "../../types";
-import { revertToCommit } from "../../github/operations";
+import { revertToCommit, mergeBranch } from "../../github/operations";
 import * as githubApi from "../../services/githubApi";
 import * as repoProcessor from "../../services/repoProcessor";
 import { getCommitShort } from "../../utils/commit";
@@ -30,6 +32,7 @@ import {
   isValidRepo,
   logger,
   matchesBearerToken,
+  MERGE_BRANCH_BEARER_TOKEN_ENV,
   normalizeRepo,
   REVERT_TO_COMMIT_BEARER_TOKEN_ENV,
 } from "./shared";
@@ -152,6 +155,74 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
       const statusCode =
         message === "Repository URL is required." ||
         message === "Field 'commit' must be a full 40-character commit SHA." ||
+        message.endsWith(" is required.") ||
+        message.includes("cannot start with '-'") ||
+        message.includes("unsupported control characters")
+          ? 400
+          : 500;
+      return reply.code(statusCode).send(response);
+    }
+  });
+
+  /**
+   * POST /api/jobs/merge-branch
+   * Body: { "repo": "owner/repo", "otherBranch": "feature", "baseBranch": "main" }
+   * Creates a branch from baseBranch, merges otherBranch into it, and creates a pull request.
+   * If the merge branch already exists, merges otherBranch into it.
+   */
+  app.post<{ Body: MergeBranchRequest }>("/merge-branch", async (request, reply) => {
+    const endpointBearerToken = getConfiguredBearerToken(MERGE_BRANCH_BEARER_TOKEN_ENV);
+    if (!endpointBearerToken) {
+      const response: ErrorResponse = {
+        error: "Merge-branch bearer token is not configured.",
+      };
+      return reply.code(503).send(response);
+    }
+
+    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
+      const response: ErrorResponse = {
+        error: "Bearer token is required.",
+      };
+      return reply.code(401).send(response);
+    }
+
+    let { repo, baseBranch, otherBranch, githubKey } = request.body ?? {};
+    if (!repo || !otherBranch) {
+      const response: ErrorResponse = {
+        error: "Both 'repo' and 'otherBranch' are required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+    baseBranch = baseBranch?.trim() || "main";
+    otherBranch = otherBranch.trim();
+    githubKey = githubKey?.trim() || undefined;
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    try {
+      const tmpDir = path.resolve(process.env.TMP_DIR || "tmp");
+      const response: MergeBranchResponse = await mergeBranch({
+        repo,
+        baseBranch,
+        otherBranch,
+        githubKey,
+        workDir: path.join(tmpDir, "operations", `fde-github-merge-${Date.now()}`),
+      });
+      return reply.code(200).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to merge branch.";
+      const response: ErrorResponse = { error: message };
+      const statusCode =
+        message === "Repository URL is required." ||
         message.endsWith(" is required.") ||
         message.includes("cannot start with '-'") ||
         message.includes("unsupported control characters")

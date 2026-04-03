@@ -273,6 +273,59 @@ curl -X POST https://your-host.example.com/api/jobs/revert-to-commit \
 
 ---
 
+### `POST /api/jobs/merge-branch`
+
+Creates a deterministic branch from a base branch, merges another branch into it, pushes that branch, and optionally creates a pull request when `githubKey` is provided. If the merge branch already exists, the other branch is merged into it instead of creating a new one.
+
+This endpoint requires the server to be configured with `MERGE_BRANCH_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `baseBranch` | `string` | No | Base branch to create the merge branch from. Defaults to `main`. |
+| `otherBranch` | `string` | Yes | Branch whose changes are merged in. |
+| `githubKey` | `string` | No | Optional GitHub token. When provided, the service also creates a pull request from the merge branch back into `baseBranch`. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `baseBranch` | `string` | Base branch used |
+| `otherBranch` | `string` | Branch that was merged in |
+| `mergeBranch` | `string` | Deterministic merge branch name pushed to the remote |
+| `mergeCommit` | `string` | Commit SHA after the merge |
+| `mergeCommitShort` | `string` | Short merge commit SHA |
+| `created` | `boolean` | Whether the merge branch was newly created (`true`) or already existed (`false`) |
+| `pullRequest` | `object \| null` | Pull request metadata when one was created |
+| `log` | `array<object>` | Ordered user-facing log of the git and GitHub operations performed |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` or `otherBranch` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `503 Service Unavailable` when the merge-branch bearer token is not configured
+- `500 Internal Server Error` for git or GitHub failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/merge-branch \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "baseBranch": "main",
+    "otherBranch": "feature-branch"
+  }'
+```
+
+---
+
 ### `POST /api/jobs/pull-request/resolve`
 
 Resolves a GitHub pull request URL into source and target commit hashes.
