@@ -718,6 +718,53 @@ describe("Job Routes", () => {
     );
   });
 
+  it("POST /api/jobs/create-task - should log sanitized task details when GitHub returns not found", async () => {
+    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    process.env.PRIVATE_GITHUB_TOKEN = "private-token";
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(githubApi, "createTask").mockRejectedValue(
+      new githubApi.GitHubApiError(
+        "GitHub repository 'file-diff/file-diff-frontend' was not found.",
+        404
+      )
+    );
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-task",
+      {
+        repo: "file-diff/file-diff-frontend",
+        event_content: "Fix the login button on the homepage",
+        problem_statement: "Investigate repository lookup",
+        model: "claude-sonnet-4.6",
+        create_pull_request: true,
+      },
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({
+      error: "GitHub repository 'file-diff/file-diff-frontend' was not found.",
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[job-routes] Failed to create GitHub Copilot task"),
+      expect.objectContaining({
+        repo: "file-diff/file-diff-frontend",
+        statusCode: 404,
+        error: "GitHub repository 'file-diff/file-diff-frontend' was not found.",
+        payload: {
+          eventContentLength: 36,
+          problemStatementLength: 29,
+          model: "claude-sonnet-4.6",
+          createPullRequest: true,
+        },
+      })
+    );
+  });
+
   it("GET /agents/repos/:owner/:repo/tasks/:task_id - should return task info", async () => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
     process.env.PRIVATE_GITHUB_TOKEN = "private-token";

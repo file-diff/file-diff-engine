@@ -563,11 +563,25 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
     if (base_ref !== undefined) body.base_ref = base_ref;
 
     try {
+      logger.info("Creating GitHub Copilot task", {
+        repo,
+        payload: summarizeCreateTaskPayload(request.body),
+      });
       const result: CreateTaskResponse = await githubApi.createTask(owner, repoName, body, privateToken);
+      logger.info("Created GitHub Copilot task", {
+        repo,
+        taskId: result.id,
+      });
       return reply.code(201).send(result);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to create task.";
+      logger.warn("Failed to create GitHub Copilot task", {
+        repo,
+        statusCode: error instanceof githubApi.GitHubApiError ? error.statusCode : 500,
+        error: message,
+        payload: summarizeCreateTaskPayload(request.body),
+      });
       const response: ErrorResponse = { error: message };
       const statusCode =
         error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
@@ -604,6 +618,22 @@ function getGitCacheStats(): GitCacheStatsResponse {
     count: folders.length,
     totalSize: folders.reduce((sum, folder) => sum + folder.size, 0),
     folders,
+  };
+}
+
+function summarizeCreateTaskPayload(body: CreateTaskRequest | undefined): Record<string, unknown> {
+  return {
+    eventContentLength: typeof body?.event_content === "string" ? body.event_content.length : 0,
+    ...(typeof body?.agent_id === "number" ? { agentId: body.agent_id } : {}),
+    ...(typeof body?.problem_statement === "string"
+      ? { problemStatementLength: body.problem_statement.length }
+      : {}),
+    ...(typeof body?.model === "string" ? { model: body.model } : {}),
+    ...(typeof body?.custom_agent === "string" ? { customAgent: body.custom_agent } : {}),
+    ...(typeof body?.create_pull_request === "boolean"
+      ? { createPullRequest: body.create_pull_request }
+      : {}),
+    ...(typeof body?.base_ref === "string" ? { baseRef: body.base_ref } : {}),
   };
 }
 

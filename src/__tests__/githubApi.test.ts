@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import https from "https";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createTask,
   createPullRequest,
   GitHubApiError,
   listOrganizationRepositories,
@@ -250,6 +251,49 @@ describe("githubApi", () => {
       url: "https://github.com/file-diff/file-diff-engine/pull/42",
     });
   });
+
+  it("createTask logs GitHub 404 details before returning the sanitized not-found error", async () => {
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+
+    mockGitHubRequests((path, respond, options) => {
+      expect(path).toBe("/repos/file-diff/file-diff-frontend/copilot/tasks");
+      expect(options).toMatchObject({
+        method: "POST",
+      });
+      respond({
+        statusCode: 404,
+        body: {
+          message: "Not Found",
+          documentation_url: "https://docs.github.com/rest",
+        },
+      });
+    });
+
+    await expect(
+      createTask(
+        "file-diff",
+        "file-diff-frontend",
+        {
+          event_content: "Fix the repo lookup",
+          create_pull_request: true,
+        },
+        "portal-token"
+      )
+    ).rejects.toMatchObject({
+      message: "GitHub repository 'file-diff/file-diff-frontend' was not found.",
+      statusCode: 404,
+    });
+
+    expect(debugSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[github-api] GitHub API returned 404"),
+      expect.objectContaining({
+        method: "POST",
+        path: "/repos/file-diff/file-diff-frontend/copilot/tasks",
+        responseMessage: "Not Found",
+        documentationUrl: "https://docs.github.com/rest",
+      })
+    );
+  });
 });
 
 function mockGitHubRequests(
@@ -281,6 +325,15 @@ function mockGitHubRequests(
         path,
         ({ statusCode, body: responseBody }) => {
           response.statusCode = statusCode;
+          (response as EventEmitter & {
+            statusCode?: number;
+            headers?: Record<string, string>;
+          }).headers = {
+            "x-github-request-id": "request-id-123",
+            "x-accepted-github-permissions": "contents=read",
+            "x-oauth-scopes": "repo",
+            "x-ratelimit-remaining": "4999",
+          };
           callback?.(response as never);
           response.emit("data", JSON.stringify(responseBody));
           response.emit("end");

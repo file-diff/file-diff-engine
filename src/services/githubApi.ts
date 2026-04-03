@@ -1,4 +1,5 @@
 import https from "https";
+import type { IncomingHttpHeaders } from "http";
 import type {
   CommitPullRequestSummary,
   CreateTaskResponse,
@@ -8,10 +9,12 @@ import type {
   TaskInfoResponse,
 } from "../types";
 import { getCommitShort } from "../utils/commit";
+import { createLogger } from "../utils/logger";
 
 const GITHUB_HOSTNAME = "github.com";
 const GITHUB_API_HOSTNAME = "api.github.com";
 const GITHUB_REPOS_PAGE_SIZE = 100;
+const logger = createLogger("github-api");
 
 export class GitHubApiError extends Error {
   constructor(
@@ -61,6 +64,7 @@ interface GitHubCreatePullRequestApiRequest {
 
 interface GitHubErrorApiResponse {
   message?: string;
+  documentation_url?: string;
 }
 
 interface GitHubRateLimitApiBucket {
@@ -341,24 +345,40 @@ async function getJson<T>(
     body: options.body,
     token: options.token,
   });
+  const payload = safeParseJson<GitHubErrorApiResponse>(response.body);
+  const responseMessage = payload?.message?.trim();
   if (response.statusCode === 404) {
+    logger.debug("GitHub API returned 404", {
+      method: options.method ?? "GET",
+      path,
+      responseMessage,
+      documentationUrl: payload?.documentation_url,
+      ...getGitHubResponseHeadersSummary(response.headers),
+    });
     throw new GitHubApiError(options.notFoundMessage, 404);
   }
 
   if (response.statusCode < 200 || response.statusCode >= 300) {
-    const payload = safeParseJson<GitHubErrorApiResponse>(response.body);
     const message =
-      payload?.message?.trim() ||
+      responseMessage ||
       `GitHub API request failed with status ${response.statusCode}.`;
+    logger.warn("GitHub API request failed", {
+      method: options.method ?? "GET",
+      path,
+      statusCode: response.statusCode,
+      responseMessage,
+      documentationUrl: payload?.documentation_url,
+      ...getGitHubResponseHeadersSummary(response.headers),
+    });
     throw new GitHubApiError(message, response.statusCode);
   }
 
-  const payload = safeParseJson<T>(response.body);
-  if (payload === null) {
+  const successPayload = safeParseJson<T>(response.body);
+  if (successPayload === null) {
     throw new GitHubApiError("GitHub API returned an invalid JSON response.", 502);
   }
 
-  return payload;
+  return successPayload;
 }
 
 async function listRepositoriesForOwner(
@@ -426,7 +446,7 @@ function requestGitHub(
     body?: unknown;
     token?: string;
   } = {}
-): Promise<{ statusCode: number; body: string }> {
+): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
   return new Promise((resolve, reject) => {
     const method = options.method ?? "GET";
     const requestBody = options.body === undefined ? undefined : JSON.stringify(options.body);
@@ -447,6 +467,7 @@ function requestGitHub(
           resolve({
             statusCode: response.statusCode ?? 500,
             body: Buffer.concat(chunks).toString("utf8"),
+            headers: response.headers,
           });
         });
       }
@@ -461,6 +482,34 @@ function requestGitHub(
     }
     request.end();
   });
+}
+
+function getGitHubResponseHeadersSummary(headers: IncomingHttpHeaders): Record<string, string> {
+  const summary: Record<string, string> = {};
+  const requestId = getResponseHeader(headers, "x-github-request-id");
+  const acceptedPermissions = getResponseHeader(headers, "x-accepted-github-permissions");
+  const oauthScopes = getResponseHeader(headers, "x-oauth-scopes");
+  const rateLimitRemaining = getResponseHeader(headers, "x-ratelimit-remaining");
+
+  if (requestId) summary.requestId = requestId;
+  if (acceptedPermissions) summary.acceptedPermissions = acceptedPermissions;
+  if (oauthScopes) summary.oauthScopes = oauthScopes;
+  if (rateLimitRemaining) summary.rateLimitRemaining = rateLimitRemaining;
+
+  return summary;
+}
+
+function getResponseHeader(headers: IncomingHttpHeaders, name: string): string | undefined {
+  const value = headers[name];
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+
+  return undefined;
 }
 
 function getRequestHeaders(
