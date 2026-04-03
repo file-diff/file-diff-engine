@@ -245,6 +245,23 @@ export async function getGitHubRateLimit(): Promise<GitHubRateLimitSummary> {
   };
 }
 
+export async function createTask(
+  owner: string,
+  repo: string,
+  body: Record<string, unknown>,
+  token: string
+): Promise<Record<string, unknown>> {
+  return await getJson<Record<string, unknown>>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/copilot/tasks`,
+    {
+      notFoundMessage: `GitHub repository '${owner}/${repo}' was not found.`,
+      method: "POST",
+      body,
+      token,
+    }
+  );
+}
+
 export function parsePullRequestUrl(
   pullRequestUrl: string
 ): { owner: string; repo: string; pullNumber: number } {

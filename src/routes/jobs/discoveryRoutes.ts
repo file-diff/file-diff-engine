@@ -21,6 +21,8 @@ import type {
   ResolveCommitResponse,
   ResolvePullRequestRequest,
   ResolvePullRequestResponse,
+  CreateTaskRequest,
+  CreateTaskResponse,
 } from "../../types";
 import { revertToCommit, mergeBranch } from "../../github/operations";
 import * as githubApi from "../../services/githubApi";
@@ -32,6 +34,7 @@ import {
   isValidRepo,
   logger,
   matchesBearerToken,
+  CREATE_TASK_BEARER_TOKEN_ENV,
   MERGE_BRANCH_BEARER_TOKEN_ENV,
   normalizeRepo,
   REVERT_TO_COMMIT_BEARER_TOKEN_ENV,
@@ -497,6 +500,78 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
         error: "Unable to inspect git cache folders on disk.",
       };
       return reply.code(500).send(response);
+    }
+  });
+
+  /**
+   * POST /api/jobs/create-task
+   * Body: { "repo": "owner/repo", "event_content": "prompt text", ... }
+   * Creates a new GitHub Copilot coding agent task for a repository.
+   */
+  app.post<{ Body: CreateTaskRequest }>("/create-task", async (request, reply) => {
+    const endpointBearerToken = getConfiguredBearerToken(CREATE_TASK_BEARER_TOKEN_ENV);
+    if (!endpointBearerToken) {
+      const response: ErrorResponse = {
+        error: "Create-task bearer token is not configured.",
+      };
+      return reply.code(503).send(response);
+    }
+
+    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
+      const response: ErrorResponse = {
+        error: "Bearer token is required.",
+      };
+      return reply.code(401).send(response);
+    }
+
+    let { repo } = request.body ?? {};
+    const { event_content, agent_id, problem_statement, model, custom_agent, create_pull_request, base_ref } = request.body ?? {};
+
+    if (!repo || !event_content) {
+      const response: ErrorResponse = {
+        error: "Both 'repo' and 'event_content' are required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    const [owner, repoName] = repo.split("/", 2);
+
+    const privateToken = process.env.PRIVATE_GITHUB_TOKEN?.trim();
+    if (!privateToken) {
+      const response: ErrorResponse = {
+        error: "Private GitHub token is not configured.",
+      };
+      return reply.code(503).send(response);
+    }
+
+    const body: Record<string, unknown> = { event_content };
+    if (agent_id !== undefined) body.agent_id = agent_id;
+    if (problem_statement !== undefined) body.problem_statement = problem_statement;
+    if (model !== undefined) body.model = model;
+    if (custom_agent !== undefined) body.custom_agent = custom_agent;
+    if (create_pull_request !== undefined) body.create_pull_request = create_pull_request;
+    if (base_ref !== undefined) body.base_ref = base_ref;
+
+    try {
+      const result: CreateTaskResponse = await githubApi.createTask(owner, repoName, body, privateToken);
+      return reply.code(201).send(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to create task.";
+      const response: ErrorResponse = { error: message };
+      const statusCode =
+        error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+      return reply.code(statusCode).send(response);
     }
   });
 }

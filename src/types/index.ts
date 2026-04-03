@@ -347,3 +347,28 @@ export interface HealthResponse {
 export interface VersionResponse {
   version: string;
 }
+
+/** Payload sent when creating a new GitHub Copilot coding agent task. */
+export interface CreateTaskRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** User's written prompt (required) */
+  event_content: string;
+  /** Agent ID (optional, defaults to coding agent) */
+  agent_id?: number;
+  /** Additional prompting for the agent */
+  problem_statement?: string;
+  /** The model to use for this task */
+  model?: string;
+  /** Custom agent identifier */
+  custom_agent?: string;
+  /** Whether to create a PR */
+  create_pull_request?: boolean;
+  /** Base ref for new branch/PR */
+  base_ref?: string;
+}
+
+/** Response payload after creating a GitHub Copilot coding agent task. */
+export interface CreateTaskResponse {
+  [key: string]: unknown;
+}
