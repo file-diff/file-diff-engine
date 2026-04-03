@@ -115,9 +115,7 @@ export async function mergeBranch(
       branchCreated = false;
     } else {
       // Create a new branch from baseBranch
-      await runGitCommand(cloneDir, ["checkout", "-B", baseBranch, `origin/${baseBranch}`], gitEnv);
-      appendOperationLog(log, `Checked out base branch '${baseBranch}'.`);
-      await runGitCommand(cloneDir, ["switch", "-c", mergeBranchName], gitEnv);
+      await runGitCommand(cloneDir, ["checkout", "-b", mergeBranchName, `origin/${baseBranch}`], gitEnv);
       appendOperationLog(log, `Created branch '${mergeBranchName}' from '${baseBranch}'.`);
       branchCreated = true;
     }
