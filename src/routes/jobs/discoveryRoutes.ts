@@ -563,11 +563,25 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
     if (base_ref !== undefined) body.base_ref = base_ref;
 
     try {
+      logger.info("Creating GitHub Copilot task", {
+        repo,
+        payload: summarizeCreateTaskPayload(request.body),
+      });
       const result: CreateTaskResponse = await githubApi.createTask(owner, repoName, body, privateToken);
+      logger.info("Created GitHub Copilot task", {
+        repo,
+        taskId: result.id,
+      });
       return reply.code(201).send(result);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to create task.";
+      logger.warn("Failed to create GitHub Copilot task", {
+        repo,
+        statusCode: error instanceof githubApi.GitHubApiError ? error.statusCode : 500,
+        error: message,
+        payload: summarizeCreateTaskPayload(request.body),
+      });
       const response: ErrorResponse = { error: message };
       const statusCode =
         error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
@@ -605,6 +619,40 @@ function getGitCacheStats(): GitCacheStatsResponse {
     totalSize: folders.reduce((sum, folder) => sum + folder.size, 0),
     folders,
   };
+}
+
+function summarizeCreateTaskPayload(body: CreateTaskRequest | undefined): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+
+  if (typeof body?.event_content === "string") {
+    summary.eventContentLength = body.event_content.length;
+  }
+
+  if (typeof body?.agent_id === "number") {
+    summary.agentId = body.agent_id;
+  }
+
+  if (typeof body?.problem_statement === "string") {
+    summary.problemStatementLength = body.problem_statement.length;
+  }
+
+  if (typeof body?.model === "string") {
+    summary.model = body.model;
+  }
+
+  if (typeof body?.custom_agent === "string") {
+    summary.customAgent = body.custom_agent;
+  }
+
+  if (typeof body?.create_pull_request === "boolean") {
+    summary.createPullRequest = body.create_pull_request;
+  }
+
+  if (typeof body?.base_ref === "string") {
+    summary.baseRef = body.base_ref;
+  }
+
+  return summary;
 }
 
 function buildCommitGraph(
