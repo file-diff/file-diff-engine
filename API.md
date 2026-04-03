@@ -349,7 +349,9 @@ This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKE
 
 Status: `201 Created`
 
-Returns the GitHub API response for the created task.
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Created GitHub Copilot task id |
 
 #### Common statuses
 
@@ -371,6 +373,35 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
     "model": "claude-sonnet-4.6",
     "create_pull_request": true
   }'
+```
+
+---
+
+### `GET /agents/repos/:owner/:repo/tasks/:task_id`
+
+Returns the full GitHub Copilot task payload for an existing task.
+
+This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Success response
+
+Status: `200 OK`
+
+Returns the GitHub API response for the requested task, including task metadata, artifacts, and sessions when present.
+
+#### Common statuses
+
+- `400 Bad Request` when the repository path or task id is invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `503 Service Unavailable` when the create-task bearer token or private GitHub token is not configured
+- `404 Not Found` when the task is not found
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl https://your-host.example.com/agents/repos/facebook/react/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  -H "Authorization: Bearer <token>"
 ```
 
 ---
