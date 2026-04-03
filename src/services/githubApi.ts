@@ -1,9 +1,11 @@
 import https from "https";
 import type {
   CommitPullRequestSummary,
+  CreateTaskResponse,
   ListOrganizationRepositoriesResponse,
   OrganizationRepositorySummary,
   ResolvePullRequestResponse,
+  TaskInfoResponse,
 } from "../types";
 import { getCommitShort } from "../utils/commit";
 
@@ -71,6 +73,11 @@ interface GitHubRateLimitApiBucket {
 
 interface GitHubRateLimitApiResponse {
   rate?: GitHubRateLimitApiBucket;
+}
+
+interface GitHubTaskApiResponse {
+  id?: string;
+  [key: string]: unknown;
 }
 
 export interface GitHubRateLimitSummary {
@@ -250,13 +257,35 @@ export async function createTask(
   repo: string,
   body: Record<string, unknown>,
   token: string
-): Promise<Record<string, unknown>> {
-  return await getJson<Record<string, unknown>>(
+): Promise<CreateTaskResponse> {
+  const response = await getJson<GitHubTaskApiResponse>(
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/copilot/tasks`,
     {
       notFoundMessage: `GitHub repository '${owner}/${repo}' was not found.`,
       method: "POST",
       body,
+      token,
+    }
+  );
+
+  const taskId = response.id?.trim();
+  if (!taskId) {
+    throw new GitHubApiError("GitHub task response was invalid.", 502);
+  }
+
+  return { id: taskId };
+}
+
+export async function getTask(
+  owner: string,
+  repo: string,
+  taskId: string,
+  token: string
+): Promise<TaskInfoResponse> {
+  return await getJson<TaskInfoResponse>(
+    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks/${encodeURIComponent(taskId)}`,
+    {
+      notFoundMessage: `GitHub task '${taskId}' was not found in repository '${owner}/${repo}'.`,
       token,
     }
   );

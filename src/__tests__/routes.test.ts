@@ -13,6 +13,7 @@ import {
 import { Queue } from "bullmq";
 import type {
   ListBranchesResponse,
+  CreateTaskResponse,
   ListCommitsGraphResponse,
   GitCacheStatsResponse,
   ListCommitsResponse,
@@ -24,11 +25,13 @@ import type {
   RevertToCommitResponse,
   ResolveCommitResponse,
   ResolvePullRequestResponse,
+  TaskInfoResponse,
 } from "../types";
 import { createTestDatabase } from "./helpers/testDatabase";
 import * as githubOperations from "../github/operations";
 import * as githubApi from "../services/githubApi";
 import * as repoProcessor from "../services/repoProcessor";
+import { registerTaskRoutes } from "../routes/taskRoutes";
 
 async function makeRequest(
   app: FastifyInstance,
@@ -66,6 +69,8 @@ describe("Job Routes", () => {
   const originalDownloadRateLimitWindowMs =
     process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS;
   const originalRevertBearerToken = process.env.REVERT_TO_COMMIT_BEARER_TOKEN;
+  const originalCreateTaskBearerToken = process.env.CREATE_TASK_BEARER_TOKEN;
+  const originalPrivateGitHubToken = process.env.PRIVATE_GITHUB_TOKEN;
 
   beforeEach(async () => {
     tempDirs = [];
@@ -81,6 +86,7 @@ describe("Job Routes", () => {
     await app.register(createJobRoutes(mockQueue, jobRepo), {
       prefix: "/api/jobs",
     });
+    await app.register(registerTaskRoutes);
   });
 
   afterEach(async () => {
@@ -104,6 +110,16 @@ describe("Job Routes", () => {
       delete process.env.REVERT_TO_COMMIT_BEARER_TOKEN;
     } else {
       process.env.REVERT_TO_COMMIT_BEARER_TOKEN = originalRevertBearerToken;
+    }
+    if (originalCreateTaskBearerToken === undefined) {
+      delete process.env.CREATE_TASK_BEARER_TOKEN;
+    } else {
+      process.env.CREATE_TASK_BEARER_TOKEN = originalCreateTaskBearerToken;
+    }
+    if (originalPrivateGitHubToken === undefined) {
+      delete process.env.PRIVATE_GITHUB_TOKEN;
+    } else {
+      process.env.PRIVATE_GITHUB_TOKEN = originalPrivateGitHubToken;
     }
     for (const tempDir of tempDirs) {
       fs.rmSync(tempDir, { recursive: true, force: true });
@@ -661,6 +677,98 @@ describe("Job Routes", () => {
     expect(res.status).toBe(404);
     expect(res.body).toEqual({
       error: "GitHub organization 'missing-org' was not found.",
+    });
+  });
+
+  it("POST /api/jobs/create-task - should return only the task id", async () => {
+    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    process.env.PRIVATE_GITHUB_TOKEN = "private-token";
+    const createTaskSpy = vi.spyOn(githubApi, "createTask").mockResolvedValue({
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    });
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-task",
+      {
+        repo: "https://github.com/octocat/hello-world.git",
+        event_content: "Fix the login button on the homepage",
+        model: "claude-sonnet-4.6",
+        create_pull_request: true,
+      },
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual<CreateTaskResponse>({
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    });
+    expect(createTaskSpy).toHaveBeenCalledWith(
+      "octocat",
+      "hello-world",
+      {
+        event_content: "Fix the login button on the homepage",
+        model: "claude-sonnet-4.6",
+        create_pull_request: true,
+      },
+      "private-token"
+    );
+  });
+
+  it("GET /agents/repos/:owner/:repo/tasks/:task_id - should return task info", async () => {
+    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    process.env.PRIVATE_GITHUB_TOKEN = "private-token";
+    const taskInfo: TaskInfoResponse = {
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      state: "completed",
+      session_count: 1,
+      sessions: [
+        {
+          id: "s1a2b3c4-d5e6-7890-abcd-ef1234567890",
+          task_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          state: "completed",
+          base_ref: "main",
+          head_ref: "copilot/fix-1",
+        },
+      ],
+    };
+    const getTaskSpy = vi.spyOn(githubApi, "getTask").mockResolvedValue(taskInfo);
+
+    const res = await makeRequest(
+      app,
+      "GET",
+      "/agents/repos/octocat/hello-world/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      undefined,
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<TaskInfoResponse>(taskInfo);
+    expect(getTaskSpy).toHaveBeenCalledWith(
+      "octocat",
+      "hello-world",
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "private-token"
+    );
+  });
+
+  it("GET /agents/repos/:owner/:repo/tasks/:task_id - should require a valid bearer token", async () => {
+    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+
+    const res = await makeRequest(
+      app,
+      "GET",
+      "/agents/repos/octocat/hello-world/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    );
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      error: "Bearer token is required.",
     });
   });
 

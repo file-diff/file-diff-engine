@@ -370,5 +370,11 @@ export interface CreateTaskRequest {
 
 /** Response payload after creating a GitHub Copilot coding agent task. */
 export interface CreateTaskResponse {
+  /** Created task id */
+  id: string;
+}
+
+/** Response payload for a GitHub Copilot coding agent task lookup. */
+export interface TaskInfoResponse {
   [key: string]: unknown;
 }
