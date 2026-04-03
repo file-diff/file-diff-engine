@@ -555,10 +555,8 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
     }
 
     const body: Record<string, unknown> = { event_content };
-    if (agent_id !== undefined) body.agent_id = agent_id;
     if (problem_statement !== undefined) body.problem_statement = problem_statement;
     if (model !== undefined) body.model = model;
-    if (custom_agent !== undefined) body.custom_agent = custom_agent;
     if (create_pull_request !== undefined) body.create_pull_request = create_pull_request;
     if (base_ref !== undefined) body.base_ref = base_ref;
 

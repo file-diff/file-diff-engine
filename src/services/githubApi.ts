@@ -263,7 +263,7 @@ export async function createTask(
   token: string
 ): Promise<CreateTaskResponse> {
   const response = await getJson<GitHubTaskApiResponse>(
-    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks`,
+    `/agents/repos/${owner}/${repo}/tasks`,
     {
       notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when creating tasks.`,
       method: "POST",
