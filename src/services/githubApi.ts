@@ -353,7 +353,7 @@ async function getJson<T>(
       path,
       responseMessage,
       documentationUrl: payload?.documentation_url,
-      ...getGitHubResponseHeadersSummary(response.headers),
+      ...summarizeHeaders(response.headers),
     });
     throw new GitHubApiError(options.notFoundMessage, 404);
   }
@@ -368,7 +368,7 @@ async function getJson<T>(
       statusCode: response.statusCode,
       responseMessage,
       documentationUrl: payload?.documentation_url,
-      ...getGitHubResponseHeadersSummary(response.headers),
+      ...summarizeHeaders(response.headers),
     });
     throw new GitHubApiError(message, response.statusCode);
   }
@@ -484,7 +484,7 @@ function requestGitHub(
   });
 }
 
-function getGitHubResponseHeadersSummary(headers: IncomingHttpHeaders): Record<string, string> {
+function summarizeHeaders(headers: IncomingHttpHeaders): Record<string, string> {
   const summary: Record<string, string> = {};
   for (const [headerName, summaryKey] of [
     ["x-github-request-id", "requestId"],

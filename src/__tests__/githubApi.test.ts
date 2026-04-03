@@ -14,6 +14,11 @@ interface MockGitHubResponse {
   body: unknown;
 }
 
+type MockResponse = EventEmitter & {
+  statusCode?: number;
+  headers?: Record<string, string>;
+};
+
 describe("githubApi", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -304,7 +309,7 @@ function mockGitHubRequests(
   ) => void
 ): void {
   vi.spyOn(https, "request").mockImplementation((options, callback) => {
-    const response = new EventEmitter() as EventEmitter & { statusCode?: number };
+    const response = new EventEmitter() as MockResponse;
     let body = "";
     const request = new EventEmitter() as EventEmitter & {
       end: () => void;
@@ -325,10 +330,7 @@ function mockGitHubRequests(
         path,
         ({ statusCode, body: responseBody }) => {
           response.statusCode = statusCode;
-          (response as EventEmitter & {
-            statusCode?: number;
-            headers?: Record<string, string>;
-          }).headers = {
+          response.headers = {
             "x-github-request-id": "request-id-123",
             "x-accepted-github-permissions": "contents=read",
             "x-oauth-scopes": "repo",
