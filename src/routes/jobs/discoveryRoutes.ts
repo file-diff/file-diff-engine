@@ -515,7 +515,7 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
       return reply.code(400).send(response);
     }
 
-    if (!head || head.startsWith("-")) {
+    if (head.startsWith("-")) {
       const response: ErrorResponse = {
         error: "Field 'head' must be a non-empty branch name and cannot start with '-'.",
       };
