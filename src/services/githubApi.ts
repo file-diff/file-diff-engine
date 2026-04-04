@@ -13,6 +13,7 @@ import { createLogger } from "../utils/logger";
 
 const GITHUB_HOSTNAME = "github.com";
 const GITHUB_API_HOSTNAME = "api.github.com";
+const GITHUB_COPILOT_API_HOSTNAME = "api.individual.githubcopilot.com";
 const GITHUB_REPOS_PAGE_SIZE = 100;
 const logger = createLogger("github-api");
 
@@ -409,8 +410,8 @@ export async function createTask(
   body: Record<string, unknown>,
   token: string
 ): Promise<CreateTaskResponse> {
-  const response = await getJson<GitHubTaskApiResponse>(
-    `/agents/repos/${owner}/${repo}/tasks`,
+  const response = await getCopilotJson<GitHubTaskApiResponse>(
+    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks`,
     {
       notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when creating tasks.`,
       method: "POST",
@@ -433,7 +434,7 @@ export async function getTask(
   taskId: string,
   token: string
 ): Promise<TaskInfoResponse> {
-  return await getJson<TaskInfoResponse>(
+  return await getCopilotJson<TaskInfoResponse>(
     `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks/${encodeURIComponent(taskId)}`,
     {
       notFoundMessage: `GitHub task '${taskId}' was not found in repository '${owner}/${repo}'.`,
@@ -533,6 +534,60 @@ async function getJson<T>(
   return successPayload;
 }
 
+async function getCopilotJson<T>(
+  path: string,
+  options: {
+    notFoundMessage: string;
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    body?: unknown;
+    token: string;
+  }
+): Promise<T> {
+  const response = await requestCopilot(path, {
+    method: options.method,
+    body: options.body,
+    token: options.token,
+  });
+  const payload = safeParseJson<GitHubErrorApiResponse>(response.body);
+  const responseMessage = payload?.message?.trim();
+  if (response.statusCode === 404) {
+    logger.debug("GitHub API returned 404", {
+      method: options.method ?? "GET",
+      path,
+      responseMessage,
+      documentationUrl: payload?.documentation_url,
+      ...summarizeHeaders(response.headers),
+    });
+    throw new GitHubApiError(options.notFoundMessage, 404);
+  }
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    const message =
+      responseMessage ||
+      `GitHub API request failed with status ${response.statusCode}.`;
+    logger.warn("GitHub API request failed", {
+      method: options.method ?? "GET",
+      path,
+      statusCode: response.statusCode,
+      responseMessage: response.body,
+      documentationUrl: payload?.documentation_url,
+      ...summarizeHeaders(response.headers),
+    });
+    throw new GitHubApiError(message, response.statusCode);
+  }
+
+  if (response.statusCode === 204 || !response.body.trim()) {
+    return {} as T;
+  }
+
+  const successPayload = safeParseJson<T>(response.body);
+  if (successPayload === null) {
+    throw new GitHubApiError("GitHub API returned an invalid JSON response.", 502);
+  }
+
+  return successPayload;
+}
+
 async function listRepositoriesForOwner(
   owner: string,
   ownerType: "orgs" | "users",
@@ -599,16 +654,44 @@ function requestGitHub(
     token?: string;
   } = {}
 ): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
+  return requestJson(GITHUB_API_HOSTNAME, path, getRequestHeaders(options.token, options.body), options);
+}
+
+function requestCopilot(
+  path: string,
+  options: {
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    body?: unknown;
+    token: string;
+  }
+): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
+  return requestJson(
+    GITHUB_COPILOT_API_HOSTNAME,
+    path,
+    getCopilotRequestHeaders(options.token, options.body),
+    options
+  );
+}
+
+function requestJson(
+  hostname: string,
+  path: string,
+  headers: Record<string, string>,
+  options: {
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    body?: unknown;
+  } = {}
+): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
   return new Promise((resolve, reject) => {
     const method = options.method ?? "GET";
     const requestBody = options.body === undefined ? undefined : JSON.stringify(options.body);
     const request = https.request(
       {
         protocol: "https:",
-        hostname: GITHUB_API_HOSTNAME,
+        hostname,
         path,
         method,
-        headers: getRequestHeaders(options.token, requestBody),
+        headers: getJsonRequestHeaders(headers, requestBody),
       },
       (response) => {
         const chunks: Buffer[] = [];
@@ -666,23 +749,39 @@ function getResponseHeader(headers: IncomingHttpHeaders, name: string): string |
   return undefined;
 }
 
-function getRequestHeaders(
-  tokenOverride?: string,
-  requestBody?: string
-): Record<string, string> {
+function getRequestHeaders(tokenOverride?: string, body?: unknown): Record<string, string> {
+  const token = tokenOverride?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim();
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "file-diff-engine",
   };
-  if (requestBody !== undefined) {
-    headers["Content-Type"] = "application/json; charset=utf-8";
-    headers["Content-Length"] = String(Buffer.byteLength(requestBody));
-  }
-  const token = tokenOverride?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
   return headers;
+}
+
+function getCopilotRequestHeaders(token: string, _body?: unknown): Record<string, string> {
+  return {
+    Accept: "application/json",
+    "User-Agent": "file-diff-engine",
+    Authorization: `GitHub-Bearer ${token.trim()}`,
+  };
+}
+
+function getJsonRequestHeaders(
+  headers: Record<string, string>,
+  requestBody?: string
+): Record<string, string> {
+  if (requestBody === undefined) {
+    return headers;
+  }
+
+  return {
+    ...headers,
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": String(Buffer.byteLength(requestBody)),
+  };
 }
 
 function safeParseJson<T>(body: string): T | null {
