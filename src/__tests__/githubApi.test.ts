@@ -254,6 +254,7 @@ describe("githubApi", () => {
       number: 42,
       title: "Restore main to 0123456",
       url: "https://github.com/file-diff/file-diff-engine/pull/42",
+      draft: false,
     });
   });
 

@@ -470,6 +470,77 @@ curl -X POST https://your-host.example.com/api/jobs/pull-request/merge \
 
 ---
 
+### `POST /api/jobs/pull-request/open`
+
+Opens a new pull request on GitHub. By default, the title and description are derived from the last commit on the head branch.
+
+This endpoint requires the server to be configured with `GITHUB_OPERATIONS_BEARER_TOKEN` (or falls back to `REVERT_TO_COMMIT_BEARER_TOKEN`) and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `head` | `string` | Yes | Head branch containing the changes. |
+| `base` | `string` | No | Base branch to merge into. Defaults to `main`. |
+| `title` | `string` | No | Pull request title. Defaults to the first line of the last commit message on the head branch. |
+| `body` | `string` | No | Pull request body/description. Defaults to the full last commit message on the head branch. |
+| `draft` | `boolean` | No | Whether to create as a draft pull request. Defaults to `false` (ready for review). |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+
+#### Success response
+
+Status: `201 Created`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `pullNumber` | `number` | Created pull request number |
+| `title` | `string` | Pull request title |
+| `url` | `string` | Pull request URL |
+| `draft` | `boolean` | Whether the pull request was created as a draft |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` or `head` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `404 Not Found` when the repository or branch does not exist
+- `422 Unprocessable Entity` when a pull request already exists for the head/base pair
+- `503 Service Unavailable` when the bearer token is not configured
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+Open a draft pull request:
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/pull-request/open \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "head": "feature-branch",
+    "base": "main",
+    "draft": true
+  }'
+```
+
+Open a ready-to-review pull request with a custom title:
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/pull-request/open \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "head": "feature-branch",
+    "title": "Add login feature",
+    "body": "This PR adds the login feature with OAuth support."
+  }'
+```
+
+---
+
 ### `POST /api/jobs/create-task`
 
 Creates a new GitHub Copilot coding agent task for a repository. This endpoint proxies the request to the GitHub API using the server's `PRIVATE_GITHUB_TOKEN`.

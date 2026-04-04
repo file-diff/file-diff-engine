@@ -29,6 +29,8 @@ import type {
   MarkPullRequestReadyResponse,
   MergePullRequestRequest,
   MergePullRequestResponse,
+  OpenPullRequestRequest,
+  OpenPullRequestResponse,
 } from "../../types";
 import { revertToCommit, mergeBranch } from "../../github/operations";
 import * as githubApi from "../../services/githubApi";
@@ -460,6 +462,118 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to merge pull request.";
+      const response: ErrorResponse = { error: message };
+      const statusCode =
+        error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+      return reply.code(statusCode).send(response);
+    }
+  });
+
+  /**
+   * POST /api/jobs/pull-request/open
+   * Body: { "repo": "owner/repo", "head": "feature-branch", "base": "main", "draft": true }
+   * Opens a new pull request. Defaults to the last commit message on the head branch
+   * for the title and description if not provided.
+   */
+  app.post<{ Body: OpenPullRequestRequest }>("/pull-request/open", async (request, reply) => {
+    const endpointBearerToken = getConfiguredBearerToken(GITHUB_OPERATIONS_BEARER_TOKEN_ENV)
+      ?? getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
+    if (!endpointBearerToken) {
+      const response: ErrorResponse = {
+        error: "GitHub operations bearer token is not configured.",
+      };
+      return reply.code(503).send(response);
+    }
+
+    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
+      const response: ErrorResponse = {
+        error: "Bearer token is required.",
+      };
+      return reply.code(401).send(response);
+    }
+
+    let { repo, head, base, title, body: prBody, draft, githubKey } = request.body ?? {};
+    if (!repo || !head) {
+      const response: ErrorResponse = {
+        error: "Both 'repo' and 'head' are required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+    head = head.trim();
+    base = base?.trim() || "main";
+    title = title?.trim() || undefined;
+    prBody = prBody?.trim() || undefined;
+    githubKey = githubKey?.trim() || undefined;
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (!head || head.startsWith("-")) {
+      const response: ErrorResponse = {
+        error: "Field 'head' must be a non-empty branch name and cannot start with '-'.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (base.startsWith("-")) {
+      const response: ErrorResponse = {
+        error: "Field 'base' must be a valid branch name and cannot start with '-'.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (draft !== undefined && typeof draft !== "boolean") {
+      const response: ErrorResponse = {
+        error: "Field 'draft' must be a boolean.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    const token =
+      githubKey ||
+      process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+      undefined;
+
+    // If no title provided, fetch the last commit on the head branch to use as default
+    if (!title) {
+      const lastCommit = await githubApi.getLastCommitOnBranch(repo, head, token);
+      if (lastCommit?.message) {
+        const firstLine = lastCommit.message.split("\n")[0].trim();
+        title = firstLine || head;
+        if (!prBody) {
+          prBody = lastCommit.message;
+        }
+      } else {
+        title = head;
+      }
+    }
+
+    try {
+      const result = await githubApi.createPullRequest(repo, head, base, {
+        title,
+        body: prBody,
+        draft: draft ?? false,
+        token,
+      });
+      const response: OpenPullRequestResponse = {
+        repo,
+        pullNumber: result.number,
+        title: result.title,
+        url: result.url,
+        draft: result.draft,
+      };
+      return reply.code(201).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to open pull request.";
       const response: ErrorResponse = { error: message };
       const statusCode =
         error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
