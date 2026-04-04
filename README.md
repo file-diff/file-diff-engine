@@ -11,6 +11,7 @@ API reference: [API.md](./API.md)
 - `PUBLIC_GITHUB_TOKEN`: Optional GitHub token used to authorize GitHub API requests and Git HTTPS operations so the service can use higher authenticated rate limits.
 - `REVERT_TO_COMMIT_BEARER_TOKEN`: Required bearer token for `POST /api/jobs/revert-to-commit`. Clients must send `Authorization: Bearer <token>`.
 - `MERGE_BRANCH_BEARER_TOKEN`: Required bearer token for `POST /api/jobs/merge-branch`. Clients must send `Authorization: Bearer <token>`.
+- `GITHUB_OPERATIONS_BEARER_TOKEN`: Optional bearer token for `POST /api/jobs/delete-remote-branch`, `POST /api/jobs/pull-request/ready`, and `POST /api/jobs/pull-request/merge`. Falls back to `REVERT_TO_COMMIT_BEARER_TOKEN` when not set.
 
 ## CLI
 

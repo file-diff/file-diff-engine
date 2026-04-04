@@ -326,6 +326,150 @@ curl -X POST https://your-host.example.com/api/jobs/merge-branch \
 
 ---
 
+### `POST /api/jobs/delete-remote-branch`
+
+Deletes a remote branch from a GitHub repository.
+
+This endpoint requires the server to be configured with `GITHUB_OPERATIONS_BEARER_TOKEN` (or falls back to `REVERT_TO_COMMIT_BEARER_TOKEN`) and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `branch` | `string` | Yes | Branch name to delete from the remote. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `branch` | `string` | Deleted branch name |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` or `branch` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `404 Not Found` when the branch does not exist
+- `503 Service Unavailable` when the bearer token is not configured
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/delete-remote-branch \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "branch": "feature-branch"
+  }'
+```
+
+---
+
+### `POST /api/jobs/pull-request/ready`
+
+Marks a draft pull request as ready for review.
+
+This endpoint requires the server to be configured with `GITHUB_OPERATIONS_BEARER_TOKEN` (or falls back to `REVERT_TO_COMMIT_BEARER_TOKEN`) and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `pullNumber` | `number` | Yes | Pull request number. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `pullNumber` | `number` | Pull request number |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` or `pullNumber` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `404 Not Found` when the pull request does not exist
+- `503 Service Unavailable` when the bearer token is not configured
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/pull-request/ready \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "pullNumber": 123
+  }'
+```
+
+---
+
+### `POST /api/jobs/pull-request/merge`
+
+Merges a pull request on GitHub.
+
+This endpoint requires the server to be configured with `GITHUB_OPERATIONS_BEARER_TOKEN` (or falls back to `REVERT_TO_COMMIT_BEARER_TOKEN`) and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `pullNumber` | `number` | Yes | Pull request number. |
+| `commitTitle` | `string` | No | Title for the merge commit. |
+| `commitMessage` | `string` | No | Message body for the merge commit. |
+| `mergeMethod` | `string` | No | Merge method: `merge`, `squash`, or `rebase`. Defaults to `merge`. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `pullNumber` | `number` | Pull request number |
+| `merged` | `boolean` | Whether the pull request was successfully merged |
+| `message` | `string` | Message returned by GitHub |
+| `sha` | `string` | Merge commit SHA |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` or `pullNumber` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `404 Not Found` when the pull request does not exist
+- `405 Method Not Allowed` when the pull request is not mergeable
+- `409 Conflict` when there is a merge conflict
+- `503 Service Unavailable` when the bearer token is not configured
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/pull-request/merge \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "pullNumber": 123,
+    "mergeMethod": "squash"
+  }'
+```
+
+---
+
 ### `POST /api/jobs/create-task`
 
 Creates a new GitHub Copilot coding agent task for a repository. This endpoint proxies the request to the GitHub API using the server's `PRIVATE_GITHUB_TOKEN`.
