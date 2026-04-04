@@ -53,6 +53,7 @@ interface GitHubCommitPullRequestApiResponse {
   title?: string;
   html_url?: string;
   state?: string;
+  draft?: boolean;
 }
 
 interface GitHubCreatePullRequestApiRequest {
@@ -60,6 +61,7 @@ interface GitHubCreatePullRequestApiRequest {
   head: string;
   base: string;
   body?: string;
+  draft?: boolean;
 }
 
 interface GitHubErrorApiResponse {
@@ -208,9 +210,10 @@ export async function createPullRequest(
   options: {
     title: string;
     body?: string;
+    draft?: boolean;
     token?: string;
   }
-): Promise<CommitPullRequestSummary> {
+): Promise<CreatePullRequestResult> {
   const [owner, repoName] = repo.split("/", 2);
   const response = await getJson<GitHubCommitPullRequestApiResponse>(
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/pulls`,
@@ -222,6 +225,7 @@ export async function createPullRequest(
         head,
         base,
         ...(options.body ? { body: options.body } : {}),
+        ...(options.draft !== undefined ? { draft: options.draft } : {}),
       } satisfies GitHubCreatePullRequestApiRequest,
       token: options.token,
     }
@@ -235,7 +239,12 @@ export async function createPullRequest(
     number: response.number,
     title: response.title?.trim() || options.title,
     url: response.html_url.trim(),
+    draft: response.draft === true,
   };
+}
+
+export interface CreatePullRequestResult extends CommitPullRequestSummary {
+  draft: boolean;
 }
 
 export async function deleteRemoteBranch(
@@ -256,6 +265,42 @@ export async function deleteRemoteBranch(
       token,
     }
   );
+}
+
+export interface BranchLastCommit {
+  sha: string;
+  message: string;
+}
+
+export async function getLastCommitOnBranch(
+  repo: string,
+  branch: string,
+  token?: string
+): Promise<BranchLastCommit | null> {
+  const [owner, repoName] = repo.split("/", 2);
+  const encodedBranch = branch
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  try {
+    const response = await getJson<{
+      commit?: { sha?: string; commit?: { message?: string } };
+    }>(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/branches/${encodedBranch}`,
+      {
+        notFoundMessage: `Branch '${branch}' was not found in repository '${repo}'.`,
+        token,
+      }
+    );
+    const sha = response.commit?.sha?.trim();
+    const message = response.commit?.commit?.message?.trim() || "";
+    if (!sha) {
+      return null;
+    }
+    return { sha, message };
+  } catch {
+    return null;
+  }
 }
 
 export async function markPullRequestReady(

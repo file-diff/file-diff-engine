@@ -435,3 +435,30 @@ export interface MergePullRequestResponse {
   message: string;
   sha: string;
 }
+
+/** Payload sent when opening a new pull request. */
+export interface OpenPullRequestRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Head branch containing the changes */
+  head: string;
+  /** Base branch to merge into (default: "main") */
+  base?: string;
+  /** Pull request title (defaults to last commit message on the head branch) */
+  title?: string;
+  /** Pull request body/description (defaults to last commit message body on the head branch) */
+  body?: string;
+  /** Whether to create as a draft pull request (default: false) */
+  draft?: boolean;
+  /** Optional GitHub token */
+  githubKey?: string;
+}
+
+/** Response payload after opening a pull request. */
+export interface OpenPullRequestResponse {
+  repo: string;
+  pullNumber: number;
+  title: string;
+  url: string;
+  draft: boolean;
+}
