@@ -411,7 +411,7 @@ export async function createTask(
   token: string
 ): Promise<CreateTaskResponse> {
   const response = await getCopilotJson<GitHubTaskApiResponse>(
-    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks`,
+    `/agents/repos/${owner}/${repo}/tasks`,
     {
       notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when creating tasks.`,
       method: "POST",
@@ -549,6 +549,7 @@ function parseJsonResponse<T>(
     throw new GitHubApiError(message, response.statusCode);
   }
 
+  // 204 No Content is a valid success response (e.g. DELETE operations)
   if (response.statusCode === 204 || !response.body.trim()) {
     return {} as T;
   }
