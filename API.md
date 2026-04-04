@@ -543,7 +543,7 @@ curl -X POST https://your-host.example.com/api/jobs/pull-request/open \
 
 ### `POST /api/jobs/create-task`
 
-Creates a new GitHub Copilot coding agent task for a repository. This endpoint proxies the request to the GitHub API using the server's `PRIVATE_GITHUB_TOKEN`.
+Creates a new GitHub Copilot coding agent task for a repository. This endpoint proxies the request to `https://api.individual.githubcopilot.com/` using the server's `COPILOT_GITHUB_TOKEN` as `Authorization: GitHub-Bearer <token>`.
 
 This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -572,7 +572,7 @@ Status: `201 Created`
 
 - `400 Bad Request` when `repo` or `event_content` is missing or invalid
 - `401 Unauthorized` when the bearer token is missing or invalid
-- `503 Service Unavailable` when the create-task bearer token or private GitHub token is not configured
+- `503 Service Unavailable` when the create-task bearer token or Copilot GitHub token is not configured
 - `404 Not Found` when the repository is not found
 - `500 Internal Server Error` for GitHub API failures
 
@@ -608,7 +608,7 @@ Returns the GitHub API response for the requested task, including task metadata,
 
 - `400 Bad Request` when the repository path or task id is invalid
 - `401 Unauthorized` when the bearer token is missing or invalid
-- `503 Service Unavailable` when the create-task bearer token or private GitHub token is not configured
+- `503 Service Unavailable` when the create-task bearer token or Copilot GitHub token is not configured
 - `404 Not Found` when the task is not found
 - `500 Internal Server Error` for GitHub API failures
 

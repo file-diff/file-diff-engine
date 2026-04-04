@@ -13,6 +13,7 @@ import { createLogger } from "../utils/logger";
 
 const GITHUB_HOSTNAME = "github.com";
 const GITHUB_API_HOSTNAME = "api.github.com";
+const GITHUB_COPILOT_API_HOSTNAME = "api.individual.githubcopilot.com";
 const GITHUB_REPOS_PAGE_SIZE = 100;
 const logger = createLogger("github-api");
 
@@ -409,7 +410,7 @@ export async function createTask(
   body: Record<string, unknown>,
   token: string
 ): Promise<CreateTaskResponse> {
-  const response = await getJson<GitHubTaskApiResponse>(
+  const response = await getCopilotJson<GitHubTaskApiResponse>(
     `/agents/repos/${owner}/${repo}/tasks`,
     {
       notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when creating tasks.`,
@@ -433,7 +434,7 @@ export async function getTask(
   taskId: string,
   token: string
 ): Promise<TaskInfoResponse> {
-  return await getJson<TaskInfoResponse>(
+  return await getCopilotJson<TaskInfoResponse>(
     `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks/${encodeURIComponent(taskId)}`,
     {
       notFoundMessage: `GitHub task '${taskId}' was not found in repository '${owner}/${repo}'.`,
@@ -492,6 +493,34 @@ async function getJson<T>(
     body: options.body,
     token: options.token,
   });
+  return parseJsonResponse(path, options, response);
+}
+
+async function getCopilotJson<T>(
+  path: string,
+  options: {
+    notFoundMessage: string;
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    body?: unknown;
+    token: string;
+  }
+): Promise<T> {
+  const response = await requestCopilot(path, {
+    method: options.method,
+    body: options.body,
+    token: options.token,
+  });
+  return parseJsonResponse(path, options, response);
+}
+
+function parseJsonResponse<T>(
+  path: string,
+  options: {
+    notFoundMessage: string;
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  },
+  response: { statusCode: number; body: string; headers: IncomingHttpHeaders }
+): T {
   const payload = safeParseJson<GitHubErrorApiResponse>(response.body);
   const responseMessage = payload?.message?.trim();
   if (response.statusCode === 404) {
@@ -599,16 +628,44 @@ function requestGitHub(
     token?: string;
   } = {}
 ): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
+  return requestJson(GITHUB_API_HOSTNAME, path, getRequestHeaders(options.token), options);
+}
+
+function requestCopilot(
+  path: string,
+  options: {
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    body?: unknown;
+    token: string;
+  }
+): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
+  return requestJson(
+    GITHUB_COPILOT_API_HOSTNAME,
+    path,
+    getCopilotRequestHeaders(options.token),
+    options
+  );
+}
+
+function requestJson(
+  hostname: string,
+  path: string,
+  headers: Record<string, string>,
+  options: {
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    body?: unknown;
+  } = {}
+): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
   return new Promise((resolve, reject) => {
     const method = options.method ?? "GET";
     const requestBody = options.body === undefined ? undefined : JSON.stringify(options.body);
     const request = https.request(
       {
         protocol: "https:",
-        hostname: GITHUB_API_HOSTNAME,
+        hostname,
         path,
         method,
-        headers: getRequestHeaders(options.token, requestBody),
+        headers: getJsonRequestHeaders(headers, requestBody),
       },
       (response) => {
         const chunks: Buffer[] = [];
@@ -666,23 +723,39 @@ function getResponseHeader(headers: IncomingHttpHeaders, name: string): string |
   return undefined;
 }
 
-function getRequestHeaders(
-  tokenOverride?: string,
-  requestBody?: string
-): Record<string, string> {
+function getRequestHeaders(tokenOverride?: string): Record<string, string> {
+  const token = tokenOverride?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim();
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "file-diff-engine",
   };
-  if (requestBody !== undefined) {
-    headers["Content-Type"] = "application/json; charset=utf-8";
-    headers["Content-Length"] = String(Buffer.byteLength(requestBody));
-  }
-  const token = tokenOverride?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
   return headers;
+}
+
+function getCopilotRequestHeaders(token: string): Record<string, string> {
+  return {
+    Accept: "application/json",
+    "User-Agent": "file-diff-engine",
+    Authorization: `GitHub-Bearer ${token.trim()}`,
+  };
+}
+
+function getJsonRequestHeaders(
+  headers: Record<string, string>,
+  requestBody?: string
+): Record<string, string> {
+  if (requestBody === undefined) {
+    return headers;
+  }
+
+  return {
+    ...headers,
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": String(Buffer.byteLength(requestBody)),
+  };
 }
 
 function safeParseJson<T>(body: string): T | null {

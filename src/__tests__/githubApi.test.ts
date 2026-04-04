@@ -262,7 +262,13 @@ describe("githubApi", () => {
     const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
 
     mockGitHubRequests((path, respond, options) => {
-      expect(path).toBe("/repos/file-diff/file-diff-frontend/copilot/tasks");
+      expect(path).toBe("/agents/repos/file-diff/file-diff-frontend/tasks");
+      expect(options).toMatchObject({
+        hostname: "api.individual.githubcopilot.com",
+        headers: expect.objectContaining({
+          Authorization: "GitHub-Bearer portal-token",
+        }),
+      });
       expect(options).toMatchObject({
         method: "POST",
       });
@@ -285,16 +291,20 @@ describe("githubApi", () => {
         },
         "portal-token"
       )
-    ).rejects.toMatchObject({
-      message: "GitHub repository 'file-diff/file-diff-frontend' was not found.",
-      statusCode: 404,
+    ).rejects.toSatisfy((error) => {
+      expect(error).toBeInstanceOf(GitHubApiError);
+      expect((error as GitHubApiError).message).toBe(
+        "GitHub repository 'file-diff/file-diff-frontend' was not found when creating tasks."
+      );
+      expect((error as GitHubApiError).statusCode).toBe(404);
+      return true;
     });
 
     expect(debugSpy).toHaveBeenCalledWith(
       expect.stringContaining("[github-api] GitHub API returned 404"),
       expect.objectContaining({
         method: "POST",
-        path: "/repos/file-diff/file-diff-frontend/copilot/tasks",
+        path: "/agents/repos/file-diff/file-diff-frontend/tasks",
         responseMessage: "Not Found",
         documentationUrl: "https://docs.github.com/rest",
       })
@@ -306,7 +316,7 @@ function mockGitHubRequests(
   handleRequest: (
     path: string,
     respond: (response: MockGitHubResponse) => void,
-    options: { method?: string; headers?: unknown; body?: string }
+    options: { method?: string; hostname?: string; headers?: unknown; body?: string }
   ) => void
 ): void {
   vi.spyOn(https, "request").mockImplementation((options, callback) => {
@@ -343,6 +353,7 @@ function mockGitHubRequests(
         },
         {
           method: typeof options === "string" ? undefined : options.method,
+          hostname: typeof options === "string" ? undefined : options.hostname,
           headers: typeof options === "string" ? undefined : options.headers,
           body,
         }

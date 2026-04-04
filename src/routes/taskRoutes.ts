@@ -48,16 +48,16 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send(response);
     }
 
-    const privateToken = process.env.PRIVATE_GITHUB_TOKEN?.trim();
-    if (!privateToken) {
+    const copilotToken = process.env.COPILOT_GITHUB_TOKEN?.trim();
+    if (!copilotToken) {
       const response: ErrorResponse = {
-        error: "Private GitHub token is not configured.",
+        error: "Copilot GitHub token is not configured.",
       };
       return reply.code(503).send(response);
     }
 
     try {
-      const result = await githubApi.getTask(owner, repo, taskId, privateToken);
+      const result = await githubApi.getTask(owner, repo, taskId, copilotToken);
       return reply.code(200).send(result);
     } catch (error) {
       const message =

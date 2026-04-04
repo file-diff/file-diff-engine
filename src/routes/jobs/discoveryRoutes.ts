@@ -892,10 +892,10 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
 
     const [owner, repoName] = repo.split("/", 2);
 
-    const privateToken = process.env.PRIVATE_GITHUB_TOKEN?.trim();
-    if (!privateToken) {
+    const copilotToken = process.env.COPILOT_GITHUB_TOKEN?.trim();
+    if (!copilotToken) {
       const response: ErrorResponse = {
-        error: "Private GitHub token is not configured.",
+        error: "Copilot GitHub token is not configured.",
       };
       return reply.code(503).send(response);
     }
@@ -911,7 +911,7 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
         repo,
         payload: summarizeCreateTaskPayload(request.body),
       });
-      const result: CreateTaskResponse = await githubApi.createTask(owner, repoName, body, privateToken);
+      const result: CreateTaskResponse = await githubApi.createTask(owner, repoName, body, copilotToken);
       logger.info("Created GitHub Copilot task", {
         repo,
         taskId: result.id,

@@ -71,6 +71,7 @@ describe("Job Routes", () => {
   const originalRevertBearerToken = process.env.REVERT_TO_COMMIT_BEARER_TOKEN;
   const originalCreateTaskBearerToken = process.env.CREATE_TASK_BEARER_TOKEN;
   const originalPrivateGitHubToken = process.env.PRIVATE_GITHUB_TOKEN;
+  const originalCopilotGitHubToken = process.env.COPILOT_GITHUB_TOKEN;
 
   beforeEach(async () => {
     tempDirs = [];
@@ -120,6 +121,11 @@ describe("Job Routes", () => {
       delete process.env.PRIVATE_GITHUB_TOKEN;
     } else {
       process.env.PRIVATE_GITHUB_TOKEN = originalPrivateGitHubToken;
+    }
+    if (originalCopilotGitHubToken === undefined) {
+      delete process.env.COPILOT_GITHUB_TOKEN;
+    } else {
+      process.env.COPILOT_GITHUB_TOKEN = originalCopilotGitHubToken;
     }
     for (const tempDir of tempDirs) {
       fs.rmSync(tempDir, { recursive: true, force: true });
@@ -682,7 +688,7 @@ describe("Job Routes", () => {
 
   it("POST /api/jobs/create-task - should return only the task id", async () => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
-    process.env.PRIVATE_GITHUB_TOKEN = "private-token";
+    process.env.COPILOT_GITHUB_TOKEN = "copilot-token";
     const createTaskSpy = vi.spyOn(githubApi, "createTask").mockResolvedValue({
       id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     });
@@ -714,13 +720,13 @@ describe("Job Routes", () => {
         model: "claude-sonnet-4.6",
         create_pull_request: true,
       },
-      "private-token"
+      "copilot-token"
     );
   });
 
   it("POST /api/jobs/create-task - should log sanitized task details when GitHub returns not found", async () => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
-    process.env.PRIVATE_GITHUB_TOKEN = "private-token";
+    process.env.COPILOT_GITHUB_TOKEN = "copilot-token";
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(githubApi, "createTask").mockRejectedValue(
       new githubApi.GitHubApiError(
@@ -767,7 +773,7 @@ describe("Job Routes", () => {
 
   it("GET /agents/repos/:owner/:repo/tasks/:task_id - should return task info", async () => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
-    process.env.PRIVATE_GITHUB_TOKEN = "private-token";
+    process.env.COPILOT_GITHUB_TOKEN = "copilot-token";
     const taskInfo: TaskInfoResponse = {
       id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       state: "completed",
@@ -800,7 +806,7 @@ describe("Job Routes", () => {
       "octocat",
       "hello-world",
       "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "private-token"
+      "copilot-token"
     );
   });
 
