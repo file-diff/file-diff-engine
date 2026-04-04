@@ -654,7 +654,7 @@ function requestGitHub(
     token?: string;
   } = {}
 ): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
-  return requestJson(GITHUB_API_HOSTNAME, path, getRequestHeaders(options.token, options.body), options);
+  return requestJson(GITHUB_API_HOSTNAME, path, getRequestHeaders(options.token), options);
 }
 
 function requestCopilot(
@@ -668,7 +668,7 @@ function requestCopilot(
   return requestJson(
     GITHUB_COPILOT_API_HOSTNAME,
     path,
-    getCopilotRequestHeaders(options.token, options.body),
+    getCopilotRequestHeaders(options.token),
     options
   );
 }
@@ -749,7 +749,7 @@ function getResponseHeader(headers: IncomingHttpHeaders, name: string): string |
   return undefined;
 }
 
-function getRequestHeaders(tokenOverride?: string, body?: unknown): Record<string, string> {
+function getRequestHeaders(tokenOverride?: string): Record<string, string> {
   const token = tokenOverride?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim();
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -761,7 +761,7 @@ function getRequestHeaders(tokenOverride?: string, body?: unknown): Record<strin
   return headers;
 }
 
-function getCopilotRequestHeaders(token: string, _body?: unknown): Record<string, string> {
+function getCopilotRequestHeaders(token: string): Record<string, string> {
   return {
     Accept: "application/json",
     "User-Agent": "file-diff-engine",
