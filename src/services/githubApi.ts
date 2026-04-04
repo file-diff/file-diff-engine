@@ -67,6 +67,12 @@ interface GitHubErrorApiResponse {
   documentation_url?: string;
 }
 
+interface GitHubMergePullRequestApiResponse {
+  sha?: string;
+  merged?: boolean;
+  message?: string;
+}
+
 interface GitHubRateLimitApiBucket {
   limit?: number;
   remaining?: number;
@@ -232,6 +238,102 @@ export async function createPullRequest(
   };
 }
 
+export async function deleteRemoteBranch(
+  repo: string,
+  branch: string,
+  token?: string
+): Promise<void> {
+  const [owner, repoName] = repo.split("/", 2);
+  const encodedRef = branch
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  await getJson<Record<string, unknown>>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/git/refs/heads/${encodedRef}`,
+    {
+      notFoundMessage: `Branch '${branch}' was not found in repository '${repo}'.`,
+      method: "DELETE",
+      token,
+    }
+  );
+}
+
+export async function markPullRequestReady(
+  repo: string,
+  pullNumber: number,
+  token?: string
+): Promise<void> {
+  const [owner, repoName] = repo.split("/", 2);
+
+  // First, get the PR node ID via REST
+  const pr = await getJson<{ node_id?: string }>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/pulls/${pullNumber}`,
+    {
+      notFoundMessage: `Pull request #${pullNumber} was not found in repository '${repo}'.`,
+      token,
+    }
+  );
+
+  const nodeId = pr.node_id?.trim();
+  if (!nodeId) {
+    throw new GitHubApiError(
+      `Pull request #${pullNumber} in repository '${repo}' did not include a node ID.`,
+      502
+    );
+  }
+
+  // Use the GraphQL API to mark the PR as ready for review
+  const mutation = `mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { number } } }`;
+  await getJson<Record<string, unknown>>(
+    "/graphql",
+    {
+      notFoundMessage: `Pull request #${pullNumber} was not found in repository '${repo}'.`,
+      method: "POST",
+      body: { query: mutation, variables: { id: nodeId } },
+      token,
+    }
+  );
+}
+
+export async function mergePullRequest(
+  repo: string,
+  pullNumber: number,
+  options?: {
+    commitTitle?: string;
+    commitMessage?: string;
+    mergeMethod?: "merge" | "squash" | "rebase";
+    token?: string;
+  }
+): Promise<MergePullRequestResult> {
+  const [owner, repoName] = repo.split("/", 2);
+  const body: Record<string, unknown> = {};
+  if (options?.commitTitle) body.commit_title = options.commitTitle;
+  if (options?.commitMessage) body.commit_message = options.commitMessage;
+  if (options?.mergeMethod) body.merge_method = options.mergeMethod;
+
+  const response = await getJson<GitHubMergePullRequestApiResponse>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/pulls/${pullNumber}/merge`,
+    {
+      notFoundMessage: `Pull request #${pullNumber} was not found in repository '${repo}'.`,
+      method: "PUT",
+      body,
+      token: options?.token,
+    }
+  );
+
+  return {
+    merged: response.merged === true,
+    message: response.message?.trim() || "",
+    sha: response.sha?.trim() || "",
+  };
+}
+
+export interface MergePullRequestResult {
+  merged: boolean;
+  message: string;
+  sha: string;
+}
+
 export async function getGitHubRateLimit(): Promise<GitHubRateLimitSummary> {
   const response = await getJson<GitHubRateLimitApiResponse>("/rate_limit", {
     notFoundMessage: "GitHub rate limit endpoint was not found.",
@@ -335,7 +437,7 @@ async function getJson<T>(
   path: string,
   options: {
     notFoundMessage: string;
-    method?: "GET" | "POST";
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
     token?: string;
   }
@@ -371,6 +473,11 @@ async function getJson<T>(
       ...summarizeHeaders(response.headers),
     });
     throw new GitHubApiError(message, response.statusCode);
+  }
+
+  // 204 No Content is a valid success response (e.g. DELETE operations)
+  if (response.statusCode === 204 || !response.body.trim()) {
+    return {} as T;
   }
 
   const successPayload = safeParseJson<T>(response.body);
@@ -442,7 +549,7 @@ function getOwnerRepositoriesError(owner: string, errors: unknown[]): GitHubApiE
 function requestGitHub(
   path: string,
   options: {
-    method?: "GET" | "POST";
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
     token?: string;
   } = {}

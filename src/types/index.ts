@@ -378,3 +378,60 @@ export interface CreateTaskResponse {
 export interface TaskInfoResponse {
   [key: string]: unknown;
 }
+
+/** Payload sent when deleting a remote branch from a GitHub repository. */
+export interface DeleteRemoteBranchRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Branch name to delete */
+  branch: string;
+  /** Optional GitHub token */
+  githubKey?: string;
+}
+
+/** Response payload after deleting a remote branch. */
+export interface DeleteRemoteBranchResponse {
+  repo: string;
+  branch: string;
+}
+
+/** Payload sent when marking a pull request as ready for review. */
+export interface MarkPullRequestReadyRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Pull request number */
+  pullNumber: number;
+  /** Optional GitHub token */
+  githubKey?: string;
+}
+
+/** Response payload after marking a pull request as ready for review. */
+export interface MarkPullRequestReadyResponse {
+  repo: string;
+  pullNumber: number;
+}
+
+/** Payload sent when merging a pull request. */
+export interface MergePullRequestRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Pull request number */
+  pullNumber: number;
+  /** Optional commit title for the merge commit */
+  commitTitle?: string;
+  /** Optional commit message for the merge commit */
+  commitMessage?: string;
+  /** Merge method: merge, squash, or rebase (default: merge) */
+  mergeMethod?: "merge" | "squash" | "rebase";
+  /** Optional GitHub token */
+  githubKey?: string;
+}
+
+/** Response payload after merging a pull request. */
+export interface MergePullRequestResponse {
+  repo: string;
+  pullNumber: number;
+  merged: boolean;
+  message: string;
+  sha: string;
+}

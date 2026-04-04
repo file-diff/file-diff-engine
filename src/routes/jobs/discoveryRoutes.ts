@@ -23,6 +23,12 @@ import type {
   ResolvePullRequestResponse,
   CreateTaskRequest,
   CreateTaskResponse,
+  DeleteRemoteBranchRequest,
+  DeleteRemoteBranchResponse,
+  MarkPullRequestReadyRequest,
+  MarkPullRequestReadyResponse,
+  MergePullRequestRequest,
+  MergePullRequestResponse,
 } from "../../types";
 import { revertToCommit, mergeBranch } from "../../github/operations";
 import * as githubApi from "../../services/githubApi";
@@ -35,6 +41,7 @@ import {
   logger,
   matchesBearerToken,
   CREATE_TASK_BEARER_TOKEN_ENV,
+  GITHUB_OPERATIONS_BEARER_TOKEN_ENV,
   MERGE_BRANCH_BEARER_TOKEN_ENV,
   normalizeRepo,
   REVERT_TO_COMMIT_BEARER_TOKEN_ENV,
@@ -231,6 +238,231 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
         message.includes("unsupported control characters")
           ? 400
           : 500;
+      return reply.code(statusCode).send(response);
+    }
+  });
+
+  /**
+   * POST /api/jobs/delete-remote-branch
+   * Body: { "repo": "owner/repo", "branch": "branch-name" }
+   * Deletes a remote branch from a GitHub repository.
+   */
+  app.post<{ Body: DeleteRemoteBranchRequest }>("/delete-remote-branch", async (request, reply) => {
+    const endpointBearerToken = getConfiguredBearerToken(GITHUB_OPERATIONS_BEARER_TOKEN_ENV)
+      ?? getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
+    if (!endpointBearerToken) {
+      const response: ErrorResponse = {
+        error: "GitHub operations bearer token is not configured.",
+      };
+      return reply.code(503).send(response);
+    }
+
+    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
+      const response: ErrorResponse = {
+        error: "Bearer token is required.",
+      };
+      return reply.code(401).send(response);
+    }
+
+    let { repo, branch, githubKey } = request.body ?? {};
+    if (!repo || !branch) {
+      const response: ErrorResponse = {
+        error: "Both 'repo' and 'branch' are required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+    branch = branch.trim();
+    githubKey = githubKey?.trim() || undefined;
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (!branch || branch.startsWith("-")) {
+      const response: ErrorResponse = {
+        error: "Field 'branch' must be a non-empty branch name and cannot start with '-'.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    const token =
+      githubKey ||
+      process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+      undefined;
+
+    try {
+      await githubApi.deleteRemoteBranch(repo, branch, token);
+      const response: DeleteRemoteBranchResponse = { repo, branch };
+      return reply.code(200).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to delete remote branch.";
+      const response: ErrorResponse = { error: message };
+      const statusCode =
+        error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+      return reply.code(statusCode).send(response);
+    }
+  });
+
+  /**
+   * POST /api/jobs/pull-request/ready
+   * Body: { "repo": "owner/repo", "pullNumber": 123 }
+   * Marks a draft pull request as ready for review.
+   */
+  app.post<{ Body: MarkPullRequestReadyRequest }>("/pull-request/ready", async (request, reply) => {
+    const endpointBearerToken = getConfiguredBearerToken(GITHUB_OPERATIONS_BEARER_TOKEN_ENV)
+      ?? getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
+    if (!endpointBearerToken) {
+      const response: ErrorResponse = {
+        error: "GitHub operations bearer token is not configured.",
+      };
+      return reply.code(503).send(response);
+    }
+
+    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
+      const response: ErrorResponse = {
+        error: "Bearer token is required.",
+      };
+      return reply.code(401).send(response);
+    }
+
+    let { repo, pullNumber, githubKey } = request.body ?? {};
+    if (!repo || !pullNumber) {
+      const response: ErrorResponse = {
+        error: "Both 'repo' and 'pullNumber' are required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+    githubKey = githubKey?.trim() || undefined;
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (!Number.isInteger(pullNumber) || pullNumber <= 0) {
+      const response: ErrorResponse = {
+        error: "Field 'pullNumber' must be a positive integer.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    const token =
+      githubKey ||
+      process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+      undefined;
+
+    try {
+      await githubApi.markPullRequestReady(repo, pullNumber, token);
+      const response: MarkPullRequestReadyResponse = { repo, pullNumber };
+      return reply.code(200).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to mark pull request as ready.";
+      const response: ErrorResponse = { error: message };
+      const statusCode =
+        error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+      return reply.code(statusCode).send(response);
+    }
+  });
+
+  /**
+   * POST /api/jobs/pull-request/merge
+   * Body: { "repo": "owner/repo", "pullNumber": 123, "mergeMethod": "squash" }
+   * Merges a pull request.
+   */
+  app.post<{ Body: MergePullRequestRequest }>("/pull-request/merge", async (request, reply) => {
+    const endpointBearerToken = getConfiguredBearerToken(GITHUB_OPERATIONS_BEARER_TOKEN_ENV)
+      ?? getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
+    if (!endpointBearerToken) {
+      const response: ErrorResponse = {
+        error: "GitHub operations bearer token is not configured.",
+      };
+      return reply.code(503).send(response);
+    }
+
+    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
+      const response: ErrorResponse = {
+        error: "Bearer token is required.",
+      };
+      return reply.code(401).send(response);
+    }
+
+    let { repo, pullNumber, commitTitle, commitMessage, mergeMethod, githubKey } = request.body ?? {};
+    if (!repo || !pullNumber) {
+      const response: ErrorResponse = {
+        error: "Both 'repo' and 'pullNumber' are required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+    githubKey = githubKey?.trim() || undefined;
+    commitTitle = commitTitle?.trim() || undefined;
+    commitMessage = commitMessage?.trim() || undefined;
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (!Number.isInteger(pullNumber) || pullNumber <= 0) {
+      const response: ErrorResponse = {
+        error: "Field 'pullNumber' must be a positive integer.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (mergeMethod && !["merge", "squash", "rebase"].includes(mergeMethod)) {
+      const response: ErrorResponse = {
+        error: "Field 'mergeMethod' must be one of 'merge', 'squash', or 'rebase'.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    const token =
+      githubKey ||
+      process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+      undefined;
+
+    try {
+      const result = await githubApi.mergePullRequest(repo, pullNumber, {
+        commitTitle,
+        commitMessage,
+        mergeMethod,
+        token,
+      });
+      const response: MergePullRequestResponse = {
+        repo,
+        pullNumber,
+        merged: result.merged,
+        message: result.message,
+        sha: result.sha,
+      };
+      return reply.code(200).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to merge pull request.";
+      const response: ErrorResponse = { error: message };
+      const statusCode =
+        error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
       return reply.code(statusCode).send(response);
     }
   });
