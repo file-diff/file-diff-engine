@@ -493,45 +493,7 @@ async function getJson<T>(
     body: options.body,
     token: options.token,
   });
-  const payload = safeParseJson<GitHubErrorApiResponse>(response.body);
-  const responseMessage = payload?.message?.trim();
-  if (response.statusCode === 404) {
-    logger.debug("GitHub API returned 404", {
-      method: options.method ?? "GET",
-      path,
-      responseMessage,
-      documentationUrl: payload?.documentation_url,
-      ...summarizeHeaders(response.headers),
-    });
-    throw new GitHubApiError(options.notFoundMessage, 404);
-  }
-
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    const message =
-      responseMessage ||
-      `GitHub API request failed with status ${response.statusCode}.`;
-    logger.warn("GitHub API request failed", {
-      method: options.method ?? "GET",
-      path,
-      statusCode: response.statusCode,
-      responseMessage: response.body,
-      documentationUrl: payload?.documentation_url,
-      ...summarizeHeaders(response.headers),
-    });
-    throw new GitHubApiError(message, response.statusCode);
-  }
-
-  // 204 No Content is a valid success response (e.g. DELETE operations)
-  if (response.statusCode === 204 || !response.body.trim()) {
-    return {} as T;
-  }
-
-  const successPayload = safeParseJson<T>(response.body);
-  if (successPayload === null) {
-    throw new GitHubApiError("GitHub API returned an invalid JSON response.", 502);
-  }
-
-  return successPayload;
+  return parseJsonResponse(path, options, response);
 }
 
 async function getCopilotJson<T>(
@@ -548,6 +510,17 @@ async function getCopilotJson<T>(
     body: options.body,
     token: options.token,
   });
+  return parseJsonResponse(path, options, response);
+}
+
+function parseJsonResponse<T>(
+  path: string,
+  options: {
+    notFoundMessage: string;
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  },
+  response: { statusCode: number; body: string; headers: IncomingHttpHeaders }
+): T {
   const payload = safeParseJson<GitHubErrorApiResponse>(response.body);
   const responseMessage = payload?.message?.trim();
   if (response.statusCode === 404) {
