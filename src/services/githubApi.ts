@@ -1,5 +1,4 @@
 import https from "https";
-import http from "http";
 import type { IncomingHttpHeaders } from "http";
 import type {
   CommitPullRequestSummary,
@@ -127,12 +126,14 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
     throw new GitHubApiError("GITHUB_BEARER_PROVIDER_URL is not a valid URL.", 503);
   }
 
-  const transport = parsedUrl.protocol === "https:" ? https : http;
+  if (parsedUrl.protocol !== "https:") {
+    throw new GitHubApiError("GITHUB_BEARER_PROVIDER_URL must use HTTPS.", 503);
+  }
 
   const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
-    const request = transport.request(
+    const request = https.request(
       {
-        protocol: parsedUrl.protocol,
+        protocol: "https:",
         hostname: parsedUrl.hostname,
         port: parsedUrl.port || undefined,
         path: parsedUrl.pathname + parsedUrl.search,
@@ -140,6 +141,7 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
         headers: {
           Accept: "application/json",
           "User-Agent": "file-diff-engine",
+          // GITHUB_BEARER_PROVIDER_BEARER is sent as-is in the Authorization header
           Authorization: providerBearer,
         },
       },
@@ -158,7 +160,7 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
     );
 
     request.on("error", (error) => {
-      reject(new GitHubApiError(`Bearer provider request failed: ${error.message}`, 502));
+      reject(new GitHubApiError(`Bearer provider request failed (${parsedUrl.hostname}): ${error.message}`, 502));
     });
 
     request.end();
@@ -166,7 +168,7 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
 
   if (response.statusCode < 200 || response.statusCode >= 300) {
     throw new GitHubApiError(
-      `Bearer provider returned status ${response.statusCode}.`,
+      `Bearer provider (${parsedUrl.hostname}) returned status ${response.statusCode}.`,
       502
     );
   }
