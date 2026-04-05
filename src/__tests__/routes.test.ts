@@ -688,7 +688,7 @@ describe("Job Routes", () => {
 
   it("POST /api/jobs/create-task - should return only the task id", async () => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
-    process.env.COPILOT_GITHUB_TOKEN = "copilot-token";
+    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
     const createTaskSpy = vi.spyOn(githubApi, "createTask").mockResolvedValue({
       id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     });
@@ -720,13 +720,13 @@ describe("Job Routes", () => {
         model: "claude-sonnet-4.6",
         create_pull_request: true,
       },
-      "copilot-token"
+      "GitHub-Bearer copilot-token"
     );
   });
 
   it("POST /api/jobs/create-task - should log sanitized task details when GitHub returns not found", async () => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
-    process.env.COPILOT_GITHUB_TOKEN = "copilot-token";
+    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(githubApi, "createTask").mockRejectedValue(
       new githubApi.GitHubApiError(
@@ -773,7 +773,7 @@ describe("Job Routes", () => {
 
   it("GET /agents/repos/:owner/:repo/tasks/:task_id - should return task info", async () => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
-    process.env.COPILOT_GITHUB_TOKEN = "copilot-token";
+    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
     const taskInfo: TaskInfoResponse = {
       id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       state: "completed",
@@ -806,7 +806,7 @@ describe("Job Routes", () => {
       "octocat",
       "hello-world",
       "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "copilot-token"
+      "GitHub-Bearer copilot-token"
     );
   });
 
