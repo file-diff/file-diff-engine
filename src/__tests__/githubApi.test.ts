@@ -5,6 +5,7 @@ import {
   createTask,
   createPullRequest,
   GitHubApiError,
+  listTasks,
   listOrganizationRepositories,
   parsePullRequestUrl,
 } from "../services/githubApi";
@@ -309,6 +310,41 @@ describe("githubApi", () => {
         documentationUrl: "https://docs.github.com/rest",
       })
     );
+  });
+
+  it("listTasks requests the repository task listing from the Copilot API", async () => {
+    mockGitHubRequests((path, respond, options) => {
+      expect(path).toBe("/agents/repos/file-diff/file-diff-frontend/tasks");
+      expect(options).toMatchObject({
+        hostname: "api.individual.githubcopilot.com",
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "GitHub-Bearer portal-token",
+        }),
+      });
+      respond({
+        statusCode: 200,
+        body: [
+          {
+            id: "a1b2c3d4",
+            state: "queued",
+          },
+        ],
+      });
+    });
+
+    await expect(
+      listTasks(
+        "file-diff",
+        "file-diff-frontend",
+        "GitHub-Bearer portal-token"
+      )
+    ).resolves.toEqual([
+      {
+        id: "a1b2c3d4",
+        state: "queued",
+      },
+    ]);
   });
 });
 

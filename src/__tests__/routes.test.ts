@@ -14,6 +14,7 @@ import { Queue } from "bullmq";
 import type {
   ListBranchesResponse,
   CreateTaskResponse,
+  ListTasksResponse,
   ListCommitsGraphResponse,
   GitCacheStatsResponse,
   ListCommitsResponse,
@@ -806,6 +807,40 @@ describe("Job Routes", () => {
       "octocat",
       "hello-world",
       "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "GitHub-Bearer copilot-token"
+    );
+  });
+
+  it("GET /agents/repos/:owner/:repo/tasks - should return repository tasks", async () => {
+    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
+    const tasks: ListTasksResponse = [
+      {
+        id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        state: "completed",
+      },
+      {
+        id: "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+        state: "queued",
+      },
+    ];
+    const listTasksSpy = vi.spyOn(githubApi, "listTasks").mockResolvedValue(tasks);
+
+    const res = await makeRequest(
+      app,
+      "GET",
+      "/agents/repos/octocat/hello-world/tasks",
+      undefined,
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<ListTasksResponse>(tasks);
+    expect(listTasksSpy).toHaveBeenCalledWith(
+      "octocat",
+      "hello-world",
       "GitHub-Bearer copilot-token"
     );
   });

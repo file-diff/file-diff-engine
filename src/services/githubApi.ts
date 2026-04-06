@@ -3,6 +3,7 @@ import type { IncomingHttpHeaders } from "http";
 import type {
   CommitPullRequestSummary,
   CreateTaskResponse,
+  ListTasksResponse,
   ListOrganizationRepositoriesResponse,
   OrganizationRepositorySummary,
   ResolvePullRequestResponse,
@@ -521,6 +522,20 @@ export async function getTask(
     `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks/${encodeURIComponent(taskId)}`,
     {
       notFoundMessage: `GitHub task '${taskId}' was not found in repository '${owner}/${repo}'.`,
+      authorizationHeader,
+    }
+  );
+}
+
+export async function listTasks(
+  owner: string,
+  repo: string,
+  authorizationHeader: string
+): Promise<ListTasksResponse> {
+  return await getCopilotJson<ListTasksResponse>(
+    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks`,
+    {
+      notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when listing tasks.`,
       authorizationHeader,
     }
   );
