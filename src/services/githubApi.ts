@@ -136,7 +136,7 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
   const response = await requestJson(
     parsedUrl.hostname,
     "/bearer",
-    getCopilotRequestHeaders(providerBearer),
+    getCopilotRequestHeaders("Bearer " + providerBearer),
     { method: "GET", port: parsedUrl.port || undefined }
   );
 
