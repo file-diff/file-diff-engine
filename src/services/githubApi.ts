@@ -761,6 +761,8 @@ function requestJson(
     port?: string | number;
   } = {}
 ): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
+  logger.info(`Requesting ${hostname}${path} with method ${options.method ?? "GET"}`);
+  logger.info("Request headers", { hostname, path, headers, method: options.method ?? "GET" });
   return new Promise((resolve, reject) => {
     const method = options.method ?? "GET";
     const requestBody = options.body === undefined ? undefined : JSON.stringify(options.body);
