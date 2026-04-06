@@ -126,10 +126,6 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
     throw new GitHubApiError("GITHUB_BEARER_PROVIDER_URL is not a valid URL.", 503);
   }
 
-  if (parsedUrl.protocol !== "https:") {
-    throw new GitHubApiError("GITHUB_BEARER_PROVIDER_URL must use HTTPS.", 503);
-  }
-
   const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
     const request = https.request(
       {
