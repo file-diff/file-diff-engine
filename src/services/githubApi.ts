@@ -135,7 +135,7 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
   // Use the shared requestJson helper so this is a standard JSON request.
   const response = await requestJson(
     parsedUrl.hostname,
-    parsedUrl.pathname + parsedUrl.search,
+    "/bearer",
     getCopilotRequestHeaders(providerBearer),
     { method: "GET", port: parsedUrl.port || undefined }
   );
