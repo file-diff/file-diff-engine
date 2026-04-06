@@ -11,7 +11,6 @@ import type {
 } from "../types";
 import { getCommitShort } from "../utils/commit";
 import { createLogger } from "../utils/logger";
-import * as http from "node:http";
 
 const GITHUB_HOSTNAME = "github.com";
 const GITHUB_API_HOSTNAME = "api.github.com";
@@ -133,45 +132,30 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
     providerUrl,
   });
 
-  const response = await new Promise<{
-    statusCode: number;
-    body: string;
-    headers: IncomingHttpHeaders;
-  }>((resolve, reject) => {
-    const request = http.request(
-      {
-        protocol: parsedUrl.protocol,
-        hostname: parsedUrl.hostname,
-        port: parsedUrl.port || undefined,
-        path: "/bearer",
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${providerBearer}`,
-          "User-Agent": "file-diff-engine",
-        },
+  const requestUrl = new URL("/bearer", parsedUrl);
+
+  let fetchResponse: Response;
+  try {
+    fetchResponse = await fetch(requestUrl, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${providerBearer}`,
+        "User-Agent": "file-diff-engine",
       },
-      (providerResponse) => {
-        const chunks: Buffer[] = [];
-        providerResponse.on("data", (chunk) => {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        });
-        providerResponse.on("end", () => {
-          resolve({
-            statusCode: providerResponse.statusCode ?? 500,
-            body: Buffer.concat(chunks).toString("utf8"),
-            headers: providerResponse.headers,
-          });
-        });
-      }
-    );
-
-    request.on("error", (error) => {
-      reject(new GitHubApiError(`Bearer provider request failed: ${error.message}`, 502));
     });
+  } catch (error) {
+    throw new GitHubApiError(
+      `Bearer provider request failed: ${error instanceof Error ? error.message : String(error)}`,
+      502
+    );
+  }
 
-    request.end();
-  });
+  const response = {
+    statusCode: fetchResponse.status,
+    body: await fetchResponse.text(),
+    headers: normalizeFetchHeaders(fetchResponse.headers),
+  };
 
   logger.info("GitHub Copilot bearer provider response", {
     providerUrl,
@@ -868,6 +852,16 @@ function getResponseHeader(headers: IncomingHttpHeaders, name: string): string |
   }
 
   return undefined;
+}
+
+function normalizeFetchHeaders(headers: Headers): IncomingHttpHeaders {
+  const normalizedHeaders: IncomingHttpHeaders = {};
+
+  for (const [name, value] of headers.entries()) {
+    normalizedHeaders[name] = value;
+  }
+
+  return normalizedHeaders;
 }
 
 function getRequestHeaders(tokenOverride?: string): Record<string, string> {
