@@ -29,6 +29,8 @@ services:
       MERGE_BRANCH_BEARER_TOKEN: ${MERGE_BRANCH_BEARER_TOKEN:-}
       CREATE_TASK_BEARER_TOKEN: ${CREATE_TASK_BEARER_TOKEN:-}
       GITHUB_OPERATIONS_BEARER_TOKEN: ${GITHUB_OPERATIONS_BEARER_TOKEN:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:12986:12986"
     volumes:
