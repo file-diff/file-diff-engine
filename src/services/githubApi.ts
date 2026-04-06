@@ -109,6 +109,7 @@ interface BearerProviderResponse {
 }
 
 export async function fetchCopilotAuthorizationHeader(): Promise<string> {
+  logger.info("Fetching GitHub Copilot authorization header from bearer provider.");
   const providerUrl = process.env.GITHUB_BEARER_PROVIDER_URL?.trim();
   const providerBearer = process.env.GITHUB_BEARER_PROVIDER_BEARER?.trim();
 
@@ -126,6 +127,10 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
   } catch {
     throw new GitHubApiError("GITHUB_BEARER_PROVIDER_URL is not a valid URL.", 503);
   }
+  logger.info("Sending request to GitHub Copilot bearer provider", {
+    providerUrl,
+    providerBearer,
+  });
 
   const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
     const request = https.request(
