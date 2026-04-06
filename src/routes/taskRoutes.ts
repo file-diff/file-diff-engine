@@ -17,7 +17,8 @@ const logger = createLogger("task-routes");
 
 async function validateTaskRepoAuthorization(
   owner: string,
-  repo: string
+  repo: string,
+  authorizationHeader: string | string[] | undefined
 ): Promise<
   | { ok: true; copilotAuthorizationHeader: string }
   | { ok: false; statusCode: number; response: ErrorResponse }
@@ -33,6 +34,16 @@ async function validateTaskRepoAuthorization(
     };
   }
   logger.info("Validating bearer token for task route", { endpointBearerToken });
+
+  if (!matchesBearerToken(authorizationHeader, endpointBearerToken)) {
+    return {
+      ok: false,
+      statusCode: 401,
+      response: {
+        error: "Bearer token is required.",
+      },
+    };
+  }
 
   if (!isValidRepo(`${owner}/${repo}`)) {
     return {
@@ -74,7 +85,7 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       repo: string;
     };
   }>(
-    "/api/agents/repos/:owner/:repo/tasks",
+    "/agents/repos/:owner/:repo/tasks",
     {
       preHandler: app.rateLimit({
         max: TASK_ROUTE_RATE_LIMIT_MAX,
@@ -86,7 +97,8 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       logger.info("Received request to list tasks for repo", { owner, repo });
       const authorizedRequest = await validateTaskRepoAuthorization(
         owner,
-        repo
+        repo,
+        request.headers.authorization
       );
       logger.info("Request authorized", { owner, repo, authorizedRequest });
       if (!authorizedRequest.ok) {
@@ -119,7 +131,7 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       task_id: string;
     }
   }>(
-    "/api/agents/repos/:owner/:repo/tasks/:task_id",
+    "/agents/repos/:owner/:repo/tasks/:task_id",
     {
       preHandler: app.rateLimit({
         max: TASK_ROUTE_RATE_LIMIT_MAX,
@@ -138,7 +150,8 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
 
       const authorizedRequest = await validateTaskRepoAuthorization(
         owner,
-        repo
+        repo,
+        request.headers.authorization
       );
       if (!authorizedRequest.ok) {
         return reply.code(authorizedRequest.statusCode).send(authorizedRequest.response);
