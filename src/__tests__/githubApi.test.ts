@@ -289,7 +289,7 @@ describe("githubApi", () => {
           event_content: "Fix the repo lookup",
           create_pull_request: true,
         },
-        "portal-token"
+        "GitHub-Bearer portal-token"
       )
     ).rejects.toSatisfy((error) => {
       expect(error).toBeInstanceOf(GitHubApiError);

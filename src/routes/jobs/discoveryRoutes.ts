@@ -892,12 +892,17 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
 
     const [owner, repoName] = repo.split("/", 2);
 
-    const copilotToken = process.env.COPILOT_GITHUB_TOKEN?.trim();
-    if (!copilotToken) {
-      const response: ErrorResponse = {
-        error: "Copilot GitHub token is not configured.",
-      };
-      return reply.code(503).send(response);
+    let copilotAuthorizationHeader: string;
+    try {
+      copilotAuthorizationHeader = await githubApi.fetchCopilotAuthorizationHeader();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to fetch Copilot authorization header.";
+      logger.warn("Failed to fetch Copilot authorization header", { error: message });
+      const response: ErrorResponse = { error: message };
+      const statusCode =
+        error instanceof githubApi.GitHubApiError ? error.statusCode : 503;
+      return reply.code(statusCode).send(response);
     }
 
     const body: Record<string, unknown> = { event_content };
@@ -911,7 +916,7 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
         repo,
         payload: summarizeCreateTaskPayload(request.body),
       });
-      const result: CreateTaskResponse = await githubApi.createTask(owner, repoName, body, copilotToken);
+      const result: CreateTaskResponse = await githubApi.createTask(owner, repoName, body, copilotAuthorizationHeader);
       logger.info("Created GitHub Copilot task", {
         repo,
         taskId: result.id,

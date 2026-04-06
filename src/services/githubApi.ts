@@ -101,6 +101,93 @@ export interface GitHubRateLimitSummary {
   resource: string;
 }
 
+interface BearerProviderResponse {
+  source?: string;
+  authorization_header?: string;
+  bearer_token?: string;
+}
+
+export async function fetchCopilotAuthorizationHeader(): Promise<string> {
+  const providerUrl = process.env.GITHUB_BEARER_PROVIDER_URL?.trim();
+  const providerBearer = process.env.GITHUB_BEARER_PROVIDER_BEARER?.trim();
+
+  if (!providerUrl) {
+    throw new GitHubApiError("GITHUB_BEARER_PROVIDER_URL is not configured.", 503);
+  }
+
+  if (!providerBearer) {
+    throw new GitHubApiError("GITHUB_BEARER_PROVIDER_BEARER is not configured.", 503);
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(providerUrl);
+  } catch {
+    throw new GitHubApiError("GITHUB_BEARER_PROVIDER_URL is not a valid URL.", 503);
+  }
+
+  if (parsedUrl.protocol !== "https:") {
+    throw new GitHubApiError("GITHUB_BEARER_PROVIDER_URL must use HTTPS.", 503);
+  }
+
+  const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+    const request = https.request(
+      {
+        protocol: "https:",
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || undefined,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "file-diff-engine",
+          // GITHUB_BEARER_PROVIDER_BEARER is sent as-is in the Authorization header
+          Authorization: providerBearer,
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk) => {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        res.on("end", () => {
+          resolve({
+            statusCode: res.statusCode ?? 500,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      }
+    );
+
+    request.on("error", (error) => {
+      reject(new GitHubApiError(`Bearer provider request failed (${parsedUrl.hostname}): ${error.message}`, 502));
+    });
+
+    request.end();
+  });
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new GitHubApiError(
+      `Bearer provider (${parsedUrl.hostname}) returned status ${response.statusCode}.`,
+      502
+    );
+  }
+
+  let parsed: BearerProviderResponse;
+  try {
+    parsed = JSON.parse(response.body);
+  } catch {
+    throw new GitHubApiError("Bearer provider returned invalid JSON.", 502);
+  }
+
+  const authorizationHeader = parsed.authorization_header?.trim();
+  if (!authorizationHeader) {
+    throw new GitHubApiError("Bearer provider response did not contain an authorization_header.", 502);
+  }
+
+  return authorizationHeader;
+}
+
 export async function resolvePullRequest(
   pullRequestUrl: string
 ): Promise<ResolvePullRequestResponse> {
@@ -408,7 +495,7 @@ export async function createTask(
   owner: string,
   repo: string,
   body: Record<string, unknown>,
-  token: string
+  authorizationHeader: string
 ): Promise<CreateTaskResponse> {
   const response = await getCopilotJson<GitHubTaskApiResponse>(
     `/agents/repos/${owner}/${repo}/tasks`,
@@ -416,7 +503,7 @@ export async function createTask(
       notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when creating tasks.`,
       method: "POST",
       body,
-      token,
+      authorizationHeader,
     }
   );
 
@@ -432,13 +519,13 @@ export async function getTask(
   owner: string,
   repo: string,
   taskId: string,
-  token: string
+  authorizationHeader: string
 ): Promise<TaskInfoResponse> {
   return await getCopilotJson<TaskInfoResponse>(
     `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks/${encodeURIComponent(taskId)}`,
     {
       notFoundMessage: `GitHub task '${taskId}' was not found in repository '${owner}/${repo}'.`,
-      token,
+      authorizationHeader,
     }
   );
 }
@@ -502,13 +589,13 @@ async function getCopilotJson<T>(
     notFoundMessage: string;
     method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
-    token: string;
+    authorizationHeader: string;
   }
 ): Promise<T> {
   const response = await requestCopilot(path, {
     method: options.method,
     body: options.body,
-    token: options.token,
+    authorizationHeader: options.authorizationHeader,
   });
   return parseJsonResponse(path, options, response);
 }
@@ -636,13 +723,13 @@ function requestCopilot(
   options: {
     method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
-    token: string;
+    authorizationHeader: string;
   }
 ): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
   return requestJson(
     GITHUB_COPILOT_API_HOSTNAME,
     path,
-    getCopilotRequestHeaders(options.token),
+    getCopilotRequestHeaders(options.authorizationHeader),
     options
   );
 }
@@ -735,11 +822,11 @@ function getRequestHeaders(tokenOverride?: string): Record<string, string> {
   return headers;
 }
 
-function getCopilotRequestHeaders(token: string): Record<string, string> {
+function getCopilotRequestHeaders(authorizationHeader: string): Record<string, string> {
   return {
     Accept: "application/json",
     "User-Agent": "file-diff-engine",
-    Authorization: `GitHub-Bearer ${token.trim()}`,
+    Authorization: authorizationHeader,
   };
 }
 
