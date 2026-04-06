@@ -621,6 +621,35 @@ curl https://your-host.example.com/agents/repos/facebook/react/tasks/a1b2c3d4-e5
 
 ---
 
+### `GET /agents/repos/:owner/:repo/tasks`
+
+Returns the GitHub Copilot task listing for a repository.
+
+This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Success response
+
+Status: `200 OK`
+
+Returns the GitHub API response for the repository task listing.
+
+#### Common statuses
+
+- `400 Bad Request` when the repository path is invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `503 Service Unavailable` when the create-task bearer token or Copilot GitHub token is not configured
+- `404 Not Found` when the repository is not found
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl https://your-host.example.com/agents/repos/facebook/react/tasks \
+  -H "Authorization: Bearer <token>"
+```
+
+---
+
 ### `POST /api/jobs/pull-request/resolve`
 
 Resolves a GitHub pull request URL into source and target commit hashes.
