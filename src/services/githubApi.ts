@@ -132,25 +132,59 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
     providerUrl,
   });
 
-  // Use the shared requestJson helper so this is a standard JSON request.
-  const response = await requestJson(
-    parsedUrl.hostname,
-    "/bearer",
-    getCopilotRequestHeaders("Bearer " + providerBearer),
-    { method: "GET", port: parsedUrl.port || undefined }
-  );
+  const response = await new Promise<{
+    statusCode: number;
+    body: string;
+    headers: IncomingHttpHeaders;
+  }>((resolve, reject) => {
+    const request = https.request(
+      {
+        protocol: parsedUrl.protocol || "https:",
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || undefined,
+        path: "/bearer",
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${providerBearer}`,
+          "User-Agent": "file-diff-engine",
+        },
+      },
+      (providerResponse) => {
+        const chunks: Buffer[] = [];
+        providerResponse.on("data", (chunk) => {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        providerResponse.on("end", () => {
+          resolve({
+            statusCode: providerResponse.statusCode ?? 500,
+            body: Buffer.concat(chunks).toString("utf8"),
+            headers: providerResponse.headers,
+          });
+        });
+      }
+    );
+
+    request.on("error", (error) => {
+      reject(new GitHubApiError(`Bearer provider request failed: ${error.message}`, 502));
+    });
+
+    request.end();
+  });
+
+  logger.info("GitHub Copilot bearer provider response", {
+    providerUrl,
+    statusCode: response.statusCode,
+    responseBody: getLoggableResponseBody(response.body),
+    ...summarizeHeaders(response.headers),
+  });
 
   if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new GitHubApiError(
-      `Bearer provider (${parsedUrl.hostname}) returned status ${response.statusCode}.`,
-      502
-    );
+    throw new GitHubApiError(`Bearer provider returned status ${response.statusCode}.`, 502);
   }
 
-  let parsed: BearerProviderResponse;
-  try {
-    parsed = JSON.parse(response.body);
-  } catch {
+  const parsed = safeParseJson<BearerProviderResponse>(response.body);
+  if (!parsed) {
     throw new GitHubApiError("Bearer provider returned invalid JSON.", 502);
   }
 
@@ -158,6 +192,10 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
   if (!authorizationHeader) {
     throw new GitHubApiError("Bearer provider response did not contain an authorization_header.", 502);
   }
+
+  logger.info("Resolved GitHub Copilot authorization header", {
+    authorizationHeader,
+  });
 
   return authorizationHeader;
 }

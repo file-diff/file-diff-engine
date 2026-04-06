@@ -16,7 +16,6 @@ const TASK_ROUTE_RATE_LIMIT_WINDOW_MS = 60_000;
 const logger = createLogger("task-routes");
 
 async function validateTaskRepoAuthorization(
-  authorizationHeader: string | string[] | undefined,
   owner: string,
   repo: string
 ): Promise<
@@ -34,16 +33,6 @@ async function validateTaskRepoAuthorization(
     };
   }
   logger.info("Validating bearer token for task route", { endpointBearerToken });
-
-  if (!matchesBearerToken(authorizationHeader, endpointBearerToken)) {
-    return {
-      ok: false,
-      statusCode: 401,
-      response: {
-        error: "Bearer token is required.",
-      },
-    };
-  }
 
   if (!isValidRepo(`${owner}/${repo}`)) {
     return {
@@ -96,7 +85,6 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       const { owner, repo } = request.params;
       logger.info("Received request to list tasks for repo", { owner, repo });
       const authorizedRequest = await validateTaskRepoAuthorization(
-        request.headers.authorization,
         owner,
         repo
       );
@@ -149,7 +137,6 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const authorizedRequest = await validateTaskRepoAuthorization(
-        request.headers.authorization,
         owner,
         repo
       );
