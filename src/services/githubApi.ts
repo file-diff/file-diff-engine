@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import { getCommitShort } from "../utils/commit";
 import { createLogger } from "../utils/logger";
+import * as http from "node:http";
 
 const GITHUB_HOSTNAME = "github.com";
 const GITHUB_API_HOSTNAME = "api.github.com";
@@ -137,9 +138,9 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
     body: string;
     headers: IncomingHttpHeaders;
   }>((resolve, reject) => {
-    const request = https.request(
+    const request = http.request(
       {
-        protocol: parsedUrl.protocol || "https:",
+        protocol: parsedUrl.protocol,
         hostname: parsedUrl.hostname,
         port: parsedUrl.port || undefined,
         path: "/bearer",
