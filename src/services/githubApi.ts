@@ -532,6 +532,8 @@ export async function listTasks(
   repo: string,
   authorizationHeader: string
 ): Promise<ListTasksResponse> {
+  logger.info("Get copilot json");
+
   return await getCopilotJson<ListTasksResponse>(
     `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks`,
     {
