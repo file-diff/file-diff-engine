@@ -2,6 +2,7 @@ import rateLimit from "@fastify/rate-limit";
 import type { FastifyPluginAsync } from "fastify";
 import type { ErrorResponse } from "../types";
 import * as githubApi from "../services/githubApi";
+import { createLogger } from "../utils/logger";
 import {
   CREATE_TASK_BEARER_TOKEN_ENV,
   getConfiguredBearerToken,
@@ -11,6 +12,8 @@ import {
 
 const TASK_ROUTE_RATE_LIMIT_MAX = 60;
 const TASK_ROUTE_RATE_LIMIT_WINDOW_MS = 60_000;
+
+const logger = createLogger("task-routes");
 
 async function validateTaskRepoAuthorization(
   authorizationHeader: string | string[] | undefined,
@@ -90,6 +93,7 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
     },
     async (request, reply) => {
       const { owner, repo } = request.params;
+      logger.info("Received request to list tasks for repo", { owner, repo });
       const authorizedRequest = await validateTaskRepoAuthorization(
         request.headers.authorization,
         owner,
