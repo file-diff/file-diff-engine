@@ -103,6 +103,7 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       if (!authorizedRequest.ok) {
         return reply.code(authorizedRequest.statusCode).send(authorizedRequest.response);
       }
+      logger.info("Request authorized2", { owner, repo });
 
       try {
         const result = await githubApi.listTasks(
