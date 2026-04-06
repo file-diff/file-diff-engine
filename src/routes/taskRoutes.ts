@@ -83,6 +83,10 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
   }>(
     "/agents/repos/:owner/:repo/tasks",
     {
+      preHandler: app.rateLimit({
+        max: TASK_ROUTE_RATE_LIMIT_MAX,
+        timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
+      }),
       config: {
         rateLimit: {
           max: TASK_ROUTE_RATE_LIMIT_MAX,
@@ -128,6 +132,10 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
   }>(
     "/agents/repos/:owner/:repo/tasks/:task_id",
     {
+      preHandler: app.rateLimit({
+        max: TASK_ROUTE_RATE_LIMIT_MAX,
+        timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
+      }),
       config: {
         rateLimit: {
           max: TASK_ROUTE_RATE_LIMIT_MAX,

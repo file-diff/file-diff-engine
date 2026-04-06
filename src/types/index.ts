@@ -380,7 +380,9 @@ export interface TaskInfoResponse {
 }
 
 /** Response payload for listing GitHub Copilot coding agent tasks for a repository. */
-export type ListTasksResponse = unknown[] | Record<string, unknown>;
+export type ListTasksResponse =
+  | Array<Record<string, unknown>>
+  | Record<string, unknown>;
 
 /** Payload sent when deleting a remote branch from a GitHub repository. */
 export interface DeleteRemoteBranchRequest {
