@@ -136,7 +136,7 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
 
   let fetchResponse: Response;
   try {
-    fetchResponse = await fetch(requestUrl, {
+    fetchResponse = await fetch(providerUrl + "/bearer", {
       method: "GET",
       headers: {
         Accept: "application/json",
