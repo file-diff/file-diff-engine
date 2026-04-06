@@ -33,6 +33,7 @@ async function validateTaskRepoAuthorization(
       },
     };
   }
+  logger.info("Validating bearer token for task route", { endpointBearerToken });
 
   if (!matchesBearerToken(authorizationHeader, endpointBearerToken)) {
     return {
