@@ -127,46 +127,18 @@ export async function fetchCopilotAuthorizationHeader(): Promise<string> {
   } catch {
     throw new GitHubApiError("GITHUB_BEARER_PROVIDER_URL is not a valid URL.", 503);
   }
+
   logger.info("Sending request to GitHub Copilot bearer provider", {
     providerUrl,
-    providerBearer,
   });
 
-  const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
-    const request = https.request(
-      {
-        protocol: "https:",
-        hostname: parsedUrl.hostname,
-        port: parsedUrl.port || undefined,
-        path: parsedUrl.pathname + parsedUrl.search,
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "file-diff-engine",
-          // GITHUB_BEARER_PROVIDER_BEARER is sent as-is in the Authorization header
-          Authorization: providerBearer,
-        },
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (chunk) => {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        });
-        res.on("end", () => {
-          resolve({
-            statusCode: res.statusCode ?? 500,
-            body: Buffer.concat(chunks).toString("utf8"),
-          });
-        });
-      }
-    );
-
-    request.on("error", (error) => {
-      reject(new GitHubApiError(`Bearer provider request failed (${parsedUrl.hostname}): ${error.message}`, 502));
-    });
-
-    request.end();
-  });
+  // Use the shared requestJson helper so this is a standard JSON request.
+  const response = await requestJson(
+    parsedUrl.hostname,
+    parsedUrl.pathname + parsedUrl.search,
+    getCopilotRequestHeaders(providerBearer),
+    { method: "GET", port: parsedUrl.port || undefined }
+  );
 
   if (response.statusCode < 200 || response.statusCode >= 300) {
     throw new GitHubApiError(
@@ -786,6 +758,7 @@ function requestJson(
   options: {
     method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
+    port?: string | number;
   } = {}
 ): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
   return new Promise((resolve, reject) => {
@@ -795,6 +768,7 @@ function requestJson(
       {
         protocol: "https:",
         hostname,
+        port: options.port === undefined ? undefined : Number(options.port),
         path,
         method,
         headers: getJsonRequestHeaders(headers, requestBody),
