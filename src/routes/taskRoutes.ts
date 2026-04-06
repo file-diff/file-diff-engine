@@ -88,7 +88,7 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
         owner,
         repo
       );
-      logger.info("Request authorized", { owner, repo });
+      logger.info("Request authorized", { owner, repo, authorizedRequest });
       if (!authorizedRequest.ok) {
         return reply.code(authorizedRequest.statusCode).send(authorizedRequest.response);
       }
