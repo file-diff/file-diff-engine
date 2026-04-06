@@ -8,7 +8,7 @@ import {
   matchesBearerToken,
 } from "./jobs/shared";
 
-async function getAuthorizedTaskRepoRequest(
+async function validateTaskRepoAuthorization(
   authorizationHeader: string | string[] | undefined,
   owner: string,
   repo: string
@@ -22,7 +22,7 @@ async function getAuthorizedTaskRepoRequest(
       ok: false,
       statusCode: 503,
       response: {
-        error: "Task bearer token is not configured.",
+        error: "Create-task bearer token is not configured.",
       },
     };
   }
@@ -76,7 +76,7 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
     };
   }>("/agents/repos/:owner/:repo/tasks", async (request, reply) => {
     const { owner, repo } = request.params;
-    const authorizedRequest = await getAuthorizedTaskRepoRequest(
+    const authorizedRequest = await validateTaskRepoAuthorization(
       request.headers.authorization,
       owner,
       repo
@@ -118,7 +118,7 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send(response);
     }
 
-    const authorizedRequest = await getAuthorizedTaskRepoRequest(
+    const authorizedRequest = await validateTaskRepoAuthorization(
       request.headers.authorization,
       owner,
       repo
