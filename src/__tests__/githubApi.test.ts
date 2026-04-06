@@ -5,6 +5,7 @@ import {
   createTask,
   createPullRequest,
   GitHubApiError,
+  getTask,
   listTasks,
   listOrganizationRepositories,
   parsePullRequestUrl,
@@ -312,6 +313,65 @@ describe("githubApi", () => {
     );
   });
 
+  it("createTask logs the Copilot request and response details", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    mockGitHubRequests((path, respond, options) => {
+      expect(path).toBe("/agents/repos/file-diff/file-diff-frontend/tasks");
+      expect(options).toMatchObject({
+        hostname: "api.individual.githubcopilot.com",
+        method: "POST",
+      });
+      respond({
+        statusCode: 201,
+        body: {
+          id: "task-123",
+          state: "queued",
+        },
+      });
+    });
+
+    await expect(
+      createTask(
+        "file-diff",
+        "file-diff-frontend",
+        {
+          event_content: "Fix the repo lookup",
+          create_pull_request: true,
+        },
+        "GitHub-Bearer portal-token"
+      )
+    ).resolves.toEqual({ id: "task-123" });
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[github-api] Sending GitHub Copilot API request"),
+      expect.objectContaining({
+        method: "POST",
+        path: "/agents/repos/file-diff/file-diff-frontend/tasks",
+        authorizationScheme: "GitHub-Bearer",
+        authorizationTokenLength: "portal-token".length,
+        authorizationTokenPreview: "port…oken",
+        requestBody: {
+          event_content: "Fix the repo lookup",
+          create_pull_request: true,
+        },
+      })
+    );
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[github-api] Received GitHub Copilot API response"),
+      expect.objectContaining({
+        method: "POST",
+        path: "/agents/repos/file-diff/file-diff-frontend/tasks",
+        statusCode: 201,
+        responseBody: {
+          id: "task-123",
+          state: "queued",
+        },
+        requestId: "request-id-123",
+      })
+    );
+  });
+
   it("listTasks requests the repository task listing from the Copilot API", async () => {
     mockGitHubRequests((path, respond, options) => {
       expect(path).toBe("/agents/repos/file-diff/file-diff-frontend/tasks");
@@ -345,6 +405,99 @@ describe("githubApi", () => {
         state: "queued",
       },
     ]);
+  });
+
+  it("getTask logs Copilot task lookup calls", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    mockGitHubRequests((path, respond, options) => {
+      expect(path).toBe("/agents/repos/file-diff/file-diff-frontend/tasks/a1b2c3d4");
+      expect(options).toMatchObject({
+        hostname: "api.individual.githubcopilot.com",
+        method: "GET",
+      });
+      respond({
+        statusCode: 200,
+        body: {
+          id: "a1b2c3d4",
+          state: "completed",
+        },
+      });
+    });
+
+    await expect(
+      getTask(
+        "file-diff",
+        "file-diff-frontend",
+        "a1b2c3d4",
+        "GitHub-Bearer portal-token"
+      )
+    ).resolves.toEqual({
+      id: "a1b2c3d4",
+      state: "completed",
+    });
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[github-api] Sending GitHub Copilot API request"),
+      expect.objectContaining({
+        method: "GET",
+        path: "/agents/repos/file-diff/file-diff-frontend/tasks/a1b2c3d4",
+        authorizationScheme: "GitHub-Bearer",
+        authorizationTokenLength: "portal-token".length,
+        authorizationTokenPreview: "port…oken",
+      })
+    );
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[github-api] Received GitHub Copilot API response"),
+      expect.objectContaining({
+        method: "GET",
+        path: "/agents/repos/file-diff/file-diff-frontend/tasks/a1b2c3d4",
+        statusCode: 200,
+        responseBody: {
+          id: "a1b2c3d4",
+          state: "completed",
+        },
+      })
+    );
+  });
+
+  it("logs the full Copilot authorization header when explicitly enabled", async () => {
+    const original = process.env.LOG_COPILOT_API_AUTH_HEADER;
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    process.env.LOG_COPILOT_API_AUTH_HEADER = "true";
+
+    mockGitHubRequests((path, respond) => {
+      expect(path).toBe("/agents/repos/file-diff/file-diff-frontend/tasks");
+      respond({
+        statusCode: 200,
+        body: [],
+      });
+    });
+
+    try {
+      await expect(
+        listTasks(
+          "file-diff",
+          "file-diff-frontend",
+          "GitHub-Bearer portal-token"
+        )
+      ).resolves.toEqual([]);
+    } finally {
+      if (original === undefined) {
+        delete process.env.LOG_COPILOT_API_AUTH_HEADER;
+      } else {
+        process.env.LOG_COPILOT_API_AUTH_HEADER = original;
+      }
+    }
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[github-api] Sending GitHub Copilot API request"),
+      expect.objectContaining({
+        method: "GET",
+        path: "/agents/repos/file-diff/file-diff-frontend/tasks",
+        authorizationHeader: "GitHub-Bearer portal-token",
+      })
+    );
   });
 });
 

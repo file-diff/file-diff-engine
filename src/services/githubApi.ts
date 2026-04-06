@@ -737,12 +737,39 @@ function requestCopilot(
     authorizationHeader: string;
   }
 ): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
+  const method = options.method ?? "GET";
+  const requestMeta = {
+    method,
+    path,
+    ...summarizeAuthorizationHeader(options.authorizationHeader),
+    ...(options.body === undefined ? {} : { requestBody: options.body }),
+  };
+
+  logger.info("Sending GitHub Copilot API request", requestMeta);
+
   return requestJson(
     GITHUB_COPILOT_API_HOSTNAME,
     path,
     getCopilotRequestHeaders(options.authorizationHeader),
     options
-  );
+  )
+    .then((response) => {
+      logger.info("Received GitHub Copilot API response", {
+        method,
+        path,
+        statusCode: response.statusCode,
+        responseBody: getLoggableResponseBody(response.body),
+        ...summarizeHeaders(response.headers),
+      });
+      return response;
+    })
+    .catch((error) => {
+      logger.warn("GitHub Copilot API request failed before a response was received", {
+        ...requestMeta,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    });
 }
 
 function requestJson(
@@ -841,6 +868,31 @@ function getCopilotRequestHeaders(authorizationHeader: string): Record<string, s
   };
 }
 
+function summarizeAuthorizationHeader(authorizationHeader: string): Record<string, unknown> {
+  const trimmedHeader = authorizationHeader.trim();
+  if (shouldLogCopilotAuthorizationHeader()) {
+    return { authorizationHeader: trimmedHeader };
+  }
+
+  const [scheme = "", ...credentials] = trimmedHeader.split(/\s+/);
+  const token = credentials.join(" ");
+
+  return {
+    authorizationScheme: scheme,
+    authorizationTokenLength: token.length,
+    ...(token
+      ? {
+          authorizationTokenPreview:
+            token.length <= 8 ? token : `${token.slice(0, 4)}…${token.slice(-4)}`,
+        }
+      : {}),
+  };
+}
+
+function shouldLogCopilotAuthorizationHeader(): boolean {
+  return process.env.LOG_COPILOT_API_AUTH_HEADER?.trim().toLowerCase() === "true";
+}
+
 function getJsonRequestHeaders(
   headers: Record<string, string>,
   requestBody?: string
@@ -862,4 +914,8 @@ function safeParseJson<T>(body: string): T | null {
   } catch {
     return null;
   }
+}
+
+function getLoggableResponseBody(body: string): unknown {
+  return safeParseJson<unknown>(body) ?? body;
 }
