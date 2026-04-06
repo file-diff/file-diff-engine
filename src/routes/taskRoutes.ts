@@ -87,12 +87,6 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
         max: TASK_ROUTE_RATE_LIMIT_MAX,
         timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
       }),
-      config: {
-        rateLimit: {
-          max: TASK_ROUTE_RATE_LIMIT_MAX,
-          timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
-        },
-      },
     },
     async (request, reply) => {
       const { owner, repo } = request.params;
@@ -136,12 +130,6 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
         max: TASK_ROUTE_RATE_LIMIT_MAX,
         timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
       }),
-      config: {
-        rateLimit: {
-          max: TASK_ROUTE_RATE_LIMIT_MAX,
-          timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
-        },
-      },
     },
     async (request, reply) => {
       const { owner, repo, task_id: rawTaskId } = request.params;
