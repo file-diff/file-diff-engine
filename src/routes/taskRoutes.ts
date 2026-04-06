@@ -22,7 +22,7 @@ async function getAuthorizedTaskRepoRequest(
       ok: false,
       statusCode: 503,
       response: {
-        error: "Create-task bearer token is not configured.",
+        error: "Task bearer token is not configured.",
       },
     };
   }
