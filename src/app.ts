@@ -161,7 +161,7 @@ export async function createApp(
   }
 
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
-  await app.register(registerTaskRoutes);
+  await app.register(registerTaskRoutes, { prefix: "/api" });
 
   app.get<{
     Params: { id: string };
