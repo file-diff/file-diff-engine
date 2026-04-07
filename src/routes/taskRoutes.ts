@@ -9,6 +9,7 @@ import {
   isValidRepo,
   matchesBearerToken,
 } from "./jobs/shared";
+import {listAllTasks} from "../services/githubApi";
 
 const TASK_ROUTE_RATE_LIMIT_MAX = 60;
 const TASK_ROUTE_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -123,6 +124,49 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       }
     }
   );
+
+  app.get<{
+    Params: {
+      owner: string;
+      repo: string;
+    };
+  }>(
+    "/api/agents/tasks",
+    {
+      preHandler: app.rateLimit({
+        max: TASK_ROUTE_RATE_LIMIT_MAX,
+        timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
+      }),
+    },
+    async (request, reply) => {
+      const { owner, repo } = request.params;
+      logger.info("Received request to list tasks for repo", { owner, repo });
+      const authorizedRequest = await validateTaskRepoAuthorization(
+        owner,
+        repo
+      );
+      logger.info("Request authorized", { owner, repo, authorizedRequest });
+      if (!authorizedRequest.ok) {
+        return reply.code(authorizedRequest.statusCode).send(authorizedRequest.response);
+      }
+      logger.info("Request authorized2", { owner, repo });
+
+      try {
+        const result = await githubApi.listAllTasks(
+          authorizedRequest.copilotAuthorizationHeader
+        );
+        return reply.code(200).send(result);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to list tasks.";
+        const response: ErrorResponse = { error: message };
+        const statusCode =
+          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+        return reply.code(statusCode).send(response);
+      }
+    }
+  );
+
 
   app.get<{
     Params: {

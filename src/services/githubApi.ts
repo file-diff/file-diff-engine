@@ -527,6 +527,20 @@ export async function getTask(
   );
 }
 
+export async function listAllTasks(
+  authorizationHeader: string
+): Promise<ListTasksResponse> {
+  logger.info("Get copilot json");
+
+  return await getCopilotJson<ListTasksResponse>(
+    `/agents/repos/tasks`,
+    {
+      notFoundMessage: `Listing tasks error.`,
+      authorizationHeader,
+    }
+  );
+}
+
 export async function listTasks(
   owner: string,
   repo: string,
