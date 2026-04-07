@@ -143,7 +143,8 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       logger.info("Received request to list tasks for repo", { owner, repo });
       const authorizedRequest = await validateTaskRepoAuthorization(
         owner,
-        repo
+        repo,
+        request.headers.authorization
       );
       logger.info("Request authorized", { owner, repo, authorizedRequest });
       if (!authorizedRequest.ok) {
