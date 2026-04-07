@@ -873,9 +873,9 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
     let { repo } = request.body ?? {};
     const { event_content, agent_id, problem_statement, model, custom_agent, create_pull_request, base_ref } = request.body ?? {};
 
-    if (!repo || !event_content) {
+    if (!repo || !base_ref || !problem_statement) {
       const response: ErrorResponse = {
-        error: "Both 'repo' and 'event_content' are required.",
+        error: "'problem_statement', 'repo' and 'base_ref' are required.",
       };
       return reply.code(400).send(response);
     }
