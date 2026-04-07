@@ -592,7 +592,7 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
 
 ---
 
-### `GET /agents/repos/:owner/:repo/tasks/:task_id`
+### `GET /api/agents/repos/:owner/:repo/tasks/:task_id`
 
 Returns the full GitHub Copilot task payload for an existing task.
 
@@ -621,7 +621,7 @@ curl https://your-host.example.com/agents/repos/facebook/react/tasks/a1b2c3d4-e5
 
 ---
 
-### `GET /agents/repos/:owner/:repo/tasks`
+### `GET /api/agents/repos/:owner/:repo/tasks`
 
 Returns the GitHub Copilot task listing for a repository.
 
