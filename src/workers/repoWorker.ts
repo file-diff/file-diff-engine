@@ -7,6 +7,7 @@ import type { TaskInfoResponse } from "../types";
 import { processRepository } from "../services/repoProcessor";
 import * as githubApi from "../services/githubApi";
 import { QUEUE_NAME } from "../services/queue";
+import { sendAgentTaskFinishedSlackNotification } from "../services/slack";
 import { createLogger } from "../utils/logger";
 
 const REDIS_HOST = process.env.REDIS_HOST || "127.0.0.1";
@@ -100,6 +101,8 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
 
   try {
     const startedAt = Date.now();
+    const taskCreatedAt = typeof job.timestamp === "number" ? job.timestamp : startedAt;
+    let lastKnownBranchName: string | null = null;
     await repo.updateAgentTaskJobStatus(jobId, "active");
 
     const authorizationHeader =
@@ -113,7 +116,11 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
         authorizationHeader
       );
       const taskState = getTaskState(taskInfo);
-      await repo.updateAgentTaskStatus(jobId, taskState);
+      const branchName = getTaskBranchName(taskInfo);
+      if (branchName) {
+        lastKnownBranchName = branchName;
+      }
+      await repo.updateAgentTaskStatus(jobId, taskState, branchName);
 
       if (!isTerminalTaskState(taskState)) {
         if (Date.now() - startedAt >= getAgentTaskMaxPollDurationMs()) {
@@ -134,6 +141,14 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
 
       if (taskState.toLowerCase() === "completed") {
         await repo.updateAgentTaskJobStatus(jobId, "completed");
+        await sendTerminalTaskNotification(
+          owner,
+          repoName,
+          taskId,
+          taskState,
+          lastKnownBranchName,
+          Date.now() - taskCreatedAt
+        );
         logger.info("Agent task completed", {
           jobId,
           taskId,
@@ -148,6 +163,14 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
 
       const message = `Agent task finished with state '${taskState}'.`;
       await repo.updateAgentTaskJobStatus(jobId, "failed", message);
+      await sendTerminalTaskNotification(
+        owner,
+        repoName,
+        taskId,
+        taskState,
+        lastKnownBranchName,
+        Date.now() - taskCreatedAt
+      );
       logger.warn("Agent task completed with non-success terminal state", {
         jobId,
         taskId,
@@ -166,6 +189,46 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
 function getTaskState(taskInfo: TaskInfoResponse): string {
   const state = taskInfo.state;
   return typeof state === "string" && state.trim() ? state.trim() : "unknown";
+}
+
+function getTaskBranchName(taskInfo: TaskInfoResponse): string | undefined {
+  const topLevelHeadRef = normalizeTaskBranchName(taskInfo.head_ref);
+  if (topLevelHeadRef) {
+    return topLevelHeadRef;
+  }
+
+  if (!Array.isArray(taskInfo.sessions)) {
+    return undefined;
+  }
+
+  for (let i = taskInfo.sessions.length - 1; i >= 0; i -= 1) {
+    const session = taskInfo.sessions[i];
+    if (!session || typeof session !== "object") {
+      continue;
+    }
+
+    const branchName = normalizeTaskBranchName(session.head_ref);
+    if (branchName) {
+      return branchName;
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeTaskBranchName(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalizedValue = value.trim();
+  if (!normalizedValue) {
+    return undefined;
+  }
+
+  return normalizedValue.startsWith("refs/heads/")
+    ? normalizedValue.slice("refs/heads/".length)
+    : normalizedValue;
 }
 
 function isTerminalTaskState(state: string): boolean {
@@ -213,4 +276,32 @@ async function wait(ms: number): Promise<void> {
   }
 
   await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendTerminalTaskNotification(
+  owner: string,
+  repoName: string,
+  taskId: string,
+  status: string,
+  branch: string | null,
+  durationMs: number
+): Promise<void> {
+  try {
+    await sendAgentTaskFinishedSlackNotification({
+      owner,
+      repoName,
+      taskId,
+      status,
+      branch,
+      durationMs,
+    });
+  } catch (error) {
+    logger.warn("Failed to send Slack notification for agent task", {
+      owner,
+      repoName,
+      taskId,
+      status,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

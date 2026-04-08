@@ -792,6 +792,7 @@ describe("Job Routes", () => {
       id: "task-job-1",
       repo: "octocat/hello-world",
       status: "active",
+      branch: null,
       taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       taskStatus: "in_progress",
       createdAt: expect.any(String),

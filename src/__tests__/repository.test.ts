@@ -43,6 +43,7 @@ describe("JobRepository", () => {
     expect(job!.id).toBe("task-job-1");
     expect(job!.repo).toBe("owner/repo");
     expect(job!.status).toBe("waiting");
+    expect(job!.branch).toBeNull();
     expect(job!.taskId).toBeUndefined();
     expect(job!.taskStatus).toBeUndefined();
   });
@@ -55,7 +56,7 @@ describe("JobRepository", () => {
       "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "queued"
     );
-    await repo.updateAgentTaskStatus("task-job-2", "completed");
+    await repo.updateAgentTaskStatus("task-job-2", "completed", "copilot/fix-1");
     await repo.updateAgentTaskJobStatus("task-job-2", "completed");
 
     const job = await repo.getAgentTaskJob("task-job-2");
@@ -64,6 +65,7 @@ describe("JobRepository", () => {
     expect(job!.status).toBe("completed");
     expect(job!.taskId).toBe("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
     expect(job!.taskStatus).toBe("completed");
+    expect(job!.branch).toBe("copilot/fix-1");
     expect(job!.error).toBeUndefined();
   });
 

@@ -5,6 +5,7 @@ const processRepositoryMock = vi.fn();
 const workerConstructorMock = vi.fn();
 const fetchCopilotAuthorizationHeaderMock = vi.fn();
 const getTaskMock = vi.fn();
+const sendAgentTaskFinishedSlackNotificationMock = vi.fn();
 
 const repoMethods = {
   updateJobStatus: vi.fn(),
@@ -28,6 +29,10 @@ vi.mock("../db/repository", () => ({
 vi.mock("../services/githubApi", () => ({
   fetchCopilotAuthorizationHeader: fetchCopilotAuthorizationHeaderMock,
   getTask: getTaskMock,
+}));
+
+vi.mock("../services/slack", () => ({
+  sendAgentTaskFinishedSlackNotification: sendAgentTaskFinishedSlackNotificationMock,
 }));
 
 vi.mock("bullmq", () => ({
@@ -55,6 +60,7 @@ describe("repoWorker", () => {
     repoMethods.updateAgentTaskStatus.mockReset();
     fetchCopilotAuthorizationHeaderMock.mockReset();
     getTaskMock.mockReset();
+    sendAgentTaskFinishedSlackNotificationMock.mockReset();
   });
 
   it("should insert discovered files before updating processed metadata", async () => {
@@ -134,18 +140,33 @@ describe("repoWorker", () => {
   it("should create and monitor an agent task job until completion", async () => {
     process.env.AGENT_TASK_POLL_INTERVAL_MS = "0";
     const order: string[] = [];
+    vi.useFakeTimers();
+    vi.setSystemTime(2_000);
 
     repoMethods.updateAgentTaskJobStatus.mockImplementation(async (_jobId, status) => {
       order.push(`status:${status}`);
     });
-    repoMethods.updateAgentTaskStatus.mockImplementation(async (_jobId, taskStatus) => {
-      order.push(`task-status:${taskStatus}`);
+    repoMethods.updateAgentTaskStatus.mockImplementation(async (_jobId, taskStatus, branchName) => {
+      order.push(`task-status:${taskStatus}:${branchName ?? "null"}`);
     });
     fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
+    sendAgentTaskFinishedSlackNotificationMock.mockResolvedValue(undefined);
     getTaskMock
-      .mockResolvedValueOnce({ state: "queued" })
-      .mockResolvedValueOnce({ state: "in_progress" })
-      .mockResolvedValueOnce({ state: "completed" });
+      .mockImplementationOnce(async () => ({ state: "queued" }))
+      .mockImplementationOnce(async () => {
+        vi.setSystemTime(4_000);
+        return {
+          state: "in_progress",
+          sessions: [{ head_ref: "refs/heads/copilot/fix-1" }],
+        };
+      })
+      .mockImplementationOnce(async () => {
+        vi.setSystemTime(7_000);
+        return {
+          state: "completed",
+          sessions: [{ head_ref: "copilot/fix-1" }],
+        };
+      });
 
     const { createWorker } = await import("../workers/repoWorker");
     const worker = (await createWorker({} as never)) as unknown as {
@@ -155,6 +176,7 @@ describe("repoWorker", () => {
     await worker.handler({
       id: "queue-job-2",
       name: "create-agent-task",
+      timestamp: 1_000,
       data: {
         jobId: "task-job-1",
         owner: "owner",
@@ -165,9 +187,9 @@ describe("repoWorker", () => {
 
     expect(order).toEqual([
       "status:active",
-      "task-status:queued",
-      "task-status:in_progress",
-      "task-status:completed",
+      "task-status:queued:null",
+      "task-status:in_progress:copilot/fix-1",
+      "task-status:completed:copilot/fix-1",
       "status:completed",
     ]);
     expect(fetchCopilotAuthorizationHeaderMock).toHaveBeenCalledTimes(1);
@@ -179,23 +201,32 @@ describe("repoWorker", () => {
       "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "GitHub-Bearer copilot-token"
     );
+    expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
+      owner: "owner",
+      repoName: "repo",
+      taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      status: "completed",
+      branch: "copilot/fix-1",
+      durationMs: 6_000,
+    });
+    vi.useRealTimers();
   });
 
   it("should fail an agent task job when monitoring times out", async () => {
     process.env.AGENT_TASK_POLL_INTERVAL_MS = "0";
     process.env.AGENT_TASK_MAX_POLL_DURATION_MS = "1";
     const statusUpdates: Array<{ status: string; error?: string }> = [];
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
 
     repoMethods.updateAgentTaskJobStatus.mockImplementation(async (_jobId, status, error) => {
       statusUpdates.push({ status, error });
     });
     fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
-    getTaskMock.mockResolvedValue({ state: "in_progress" });
-
-    const nowSpy = vi
-      .spyOn(Date, "now")
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(2);
+    getTaskMock.mockImplementation(async () => {
+      vi.setSystemTime(2);
+      return { state: "in_progress" };
+    });
 
     const { createWorker } = await import("../workers/repoWorker");
     const worker = (await createWorker({} as never)) as unknown as {
@@ -213,7 +244,7 @@ describe("repoWorker", () => {
       },
     });
 
-    expect(repoMethods.updateAgentTaskStatus).toHaveBeenCalledWith(
+    expect(repoMethods.updateAgentTaskStatus).toHaveBeenLastCalledWith(
       "task-job-2",
       "timeout"
     );
@@ -225,6 +256,7 @@ describe("repoWorker", () => {
       },
     ]);
 
-    nowSpy.mockRestore();
+    expect(sendAgentTaskFinishedSlackNotificationMock).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });

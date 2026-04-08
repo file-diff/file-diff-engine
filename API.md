@@ -596,7 +596,7 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
 
 ### `GET /api/jobs/create-task/:id`
 
-Returns the locally tracked status for a background agent-task job.
+Returns the locally tracked status for a background agent-task job, including the created branch name once the remote task reports it.
 
 #### Success response
 
@@ -607,6 +607,7 @@ Status: `200 OK`
 | `id` | `string` | GitHub Copilot task id and local monitoring job id |
 | `repo` | `string` | Repository in `owner/repo` format |
 | `status` | `string` | Local job status (`waiting`, `active`, `completed`, `failed`) |
+| `branch` | `string \| null` | Created branch name once known, otherwise `null` |
 | `taskId` | `string` | Created GitHub Copilot task id when available |
 | `taskStatus` | `string` | Last observed GitHub task state when available |
 | `error` | `string` | Error message when the job fails |

@@ -379,6 +379,7 @@ export interface AgentTaskJobSummary {
   id: string;
   repo: string;
   status: JobStatus;
+  branch: string | null;
   taskId?: string;
   taskStatus?: string;
 }
@@ -390,8 +391,19 @@ export interface AgentTaskJobInfo extends AgentTaskJobSummary {
   updatedAt: string;
 }
 
+export interface TaskSessionInfo {
+  id?: string;
+  task_id?: string;
+  state?: string;
+  base_ref?: string;
+  head_ref?: string;
+  [key: string]: unknown;
+}
+
 /** Response payload for a GitHub Copilot coding agent task lookup. */
 export interface TaskInfoResponse {
+  state?: string;
+  sessions?: TaskSessionInfo[];
   [key: string]: unknown;
 }
 
