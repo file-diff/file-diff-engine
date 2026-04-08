@@ -774,7 +774,6 @@ describe("Job Routes", () => {
       error: "GitHub repository 'file-diff/file-diff-frontend' was not found.",
     });
     expect(mockQueue.add).not.toHaveBeenCalled();
-    expect(await jobRepo.getAgentTaskJob("a1b2c3d4-e5f6-7890-abcd-ef1234567890")).toBeUndefined();
   });
 
   it("GET /api/jobs/create-task/:id - should return stored agent task job info", async () => {

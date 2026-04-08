@@ -46,11 +46,24 @@ export interface FileLookupRecord {
 export class JobRepository {
   constructor(private db: DatabaseClient) {}
 
-  async createAgentTaskJob(id: string, repo: string): Promise<void> {
+  async createAgentTaskJob(
+    id: string,
+    repo: string,
+    taskId?: string,
+    taskStatus?: string
+  ): Promise<void> {
     await this.db.query(
-      `INSERT INTO agent_task_jobs (id, repo, status, created_at, updated_at)
-       VALUES ($1, $2, 'waiting', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      [id, repo]
+      `INSERT INTO agent_task_jobs (
+         id,
+         repo,
+         status,
+         github_task_id,
+         task_status,
+         created_at,
+         updated_at
+       )
+       VALUES ($1, $2, 'waiting', $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [id, repo, taskId ?? null, taskStatus ?? null]
     );
   }
 
