@@ -168,6 +168,48 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
+  app.post<{
+    Params: {
+      owner: string;
+      repo: string;
+    };
+  }>(
+    "/agents/repos/:owner/:repo/archive",
+    {
+      preHandler: app.rateLimit({
+        max: TASK_ROUTE_RATE_LIMIT_MAX,
+        timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
+      }),
+    },
+    async (request, reply) => {
+      const { owner, repo } = request.params;
+      const authorizedRequest = await validateTaskRepoAuthorization(
+        owner,
+        repo,
+        request.headers.authorization
+      );
+      if (!authorizedRequest.ok) {
+        return reply.code(authorizedRequest.statusCode).send(authorizedRequest.response);
+      }
+
+      try {
+        const result = await githubApi.archiveTasks(
+          owner,
+          repo,
+          authorizedRequest.copilotAuthorizationHeader
+        );
+        return reply.code(200).send(result);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to archive tasks.";
+        const response: ErrorResponse = { error: message };
+        const statusCode =
+          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+        return reply.code(statusCode).send(response);
+      }
+    }
+  );
+
 
   app.get<{
     Params: {
