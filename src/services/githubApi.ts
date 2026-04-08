@@ -549,7 +549,7 @@ export async function listTasks(
   logger.info("Get copilot json");
 
   return await getCopilotJson<ListTasksResponse>(
-    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks?archived=0`,
+    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks?archived=false`,
     {
       notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when listing tasks.`,
       authorizationHeader,
