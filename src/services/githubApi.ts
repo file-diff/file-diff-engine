@@ -557,6 +557,21 @@ export async function listTasks(
   );
 }
 
+export async function archiveTasks(
+  owner: string,
+  repo: string,
+  authorizationHeader: string
+): Promise<Record<string, never>> {
+  return await getCopilotJson<Record<string, never>>(
+    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/archive`,
+    {
+      notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when archiving tasks.`,
+      method: "POST",
+      authorizationHeader,
+    }
+  );
+}
+
 export function parsePullRequestUrl(
   pullRequestUrl: string
 ): { owner: string; repo: string; pullNumber: number } {

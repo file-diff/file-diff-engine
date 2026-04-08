@@ -873,6 +873,30 @@ describe("Job Routes", () => {
     );
   });
 
+  it("POST /agents/repos/:owner/:repo/archive - should archive repository tasks", async () => {
+    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
+    const archiveTasksSpy = vi.spyOn(githubApi, "archiveTasks").mockResolvedValue({});
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/agents/repos/octocat/hello-world/archive",
+      undefined,
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({});
+    expect(archiveTasksSpy).toHaveBeenCalledWith(
+      "octocat",
+      "hello-world",
+      "GitHub-Bearer copilot-token"
+    );
+  });
+
   it("GET /agents/repos/:owner/:repo/tasks/:task_id - should require a valid bearer token", async () => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
 
