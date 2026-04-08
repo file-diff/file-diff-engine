@@ -93,6 +93,7 @@ async function initSchema(db: DatabaseClient): Promise<void> {
       ALTER TABLE files
       ADD COLUMN IF NOT EXISTS file_disk_path TEXT NOT NULL DEFAULT '';
 
+      -- Migration safety for existing databases created before task-tracking columns existed.
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS github_task_id TEXT;
 
