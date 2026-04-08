@@ -701,7 +701,7 @@ Returns an empty JSON object when the archive request succeeds.
 #### Example
 
 ```bash
-curl -X POST https://your-host.example.com/agents/repos/facebook/react/archive \
+curl -X POST https://your-host.example.com/api/agents/repos/facebook/react/archive \
   -H "Authorization: Bearer <token>"
 ```
 
