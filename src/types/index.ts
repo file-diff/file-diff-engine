@@ -374,6 +374,22 @@ export interface CreateTaskResponse {
   id: string;
 }
 
+/** Minimal response payload returned after creating an agent task job. */
+export interface AgentTaskJobSummary {
+  id: string;
+  repo: string;
+  status: JobStatus;
+  taskId?: string;
+  taskStatus?: string;
+}
+
+/** Response payload when querying a queued or monitored agent task job. */
+export interface AgentTaskJobInfo extends AgentTaskJobSummary {
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Response payload for a GitHub Copilot coding agent task lookup. */
 export interface TaskInfoResponse {
   [key: string]: unknown;

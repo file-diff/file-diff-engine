@@ -34,6 +34,39 @@ describe("JobRepository", () => {
     expect(job).toBeUndefined();
   });
 
+  it("should create and retrieve an agent task job", async () => {
+    await repo.createAgentTaskJob("task-job-1", "owner/repo");
+
+    const job = await repo.getAgentTaskJob("task-job-1");
+
+    expect(job).toBeDefined();
+    expect(job!.id).toBe("task-job-1");
+    expect(job!.repo).toBe("owner/repo");
+    expect(job!.status).toBe("waiting");
+    expect(job!.taskId).toBeUndefined();
+    expect(job!.taskStatus).toBeUndefined();
+  });
+
+  it("should update stored agent task job metadata", async () => {
+    await repo.createAgentTaskJob("task-job-2", "owner/repo");
+    await repo.updateAgentTaskJobStatus("task-job-2", "active");
+    await repo.attachAgentTaskToJob(
+      "task-job-2",
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "queued"
+    );
+    await repo.updateAgentTaskStatus("task-job-2", "completed");
+    await repo.updateAgentTaskJobStatus("task-job-2", "completed");
+
+    const job = await repo.getAgentTaskJob("task-job-2");
+
+    expect(job).toBeDefined();
+    expect(job!.status).toBe("completed");
+    expect(job!.taskId).toBe("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+    expect(job!.taskStatus).toBe("completed");
+    expect(job!.error).toBeUndefined();
+  });
+
   it("should update job status", async () => {
     await repo.createJob("job-2", "owner/repo", "main");
     await repo.updateJobStatus("job-2", "active");

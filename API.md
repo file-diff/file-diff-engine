@@ -543,7 +543,7 @@ curl -X POST https://your-host.example.com/api/jobs/pull-request/open \
 
 ### `POST /api/jobs/create-task`
 
-Creates a new GitHub Copilot coding agent task for a repository. This endpoint proxies the request to `https://api.individual.githubcopilot.com/` using the server's `COPILOT_GITHUB_TOKEN` as `Authorization: GitHub-Bearer <token>`.
+Creates a local background job that will create and then monitor a GitHub Copilot coding agent task for a repository. The worker later calls `https://api.individual.githubcopilot.com/` using the server's `COPILOT_GITHUB_TOKEN` as `Authorization: GitHub-Bearer <token>`.
 
 This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -554,11 +554,11 @@ This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKE
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
 | `event_content` | `string` | Yes | User's written prompt. |
 | `agent_id` | `integer` | No | Agent ID (optional, defaults to coding agent). |
-| `problem_statement` | `string` | No | Additional prompting for the agent. |
+| `problem_statement` | `string` | Yes | Additional prompting for the agent. |
 | `model` | `string` | No | The model to use for this task (e.g. `claude-sonnet-4.6`, `gpt-5.2-codex`). |
 | `custom_agent` | `string` | No | Custom agent identifier. |
 | `create_pull_request` | `boolean` | No | Whether to create a PR. |
-| `base_ref` | `string` | No | Base ref for new branch/PR. |
+| `base_ref` | `string` | Yes | Base ref for new branch/PR. |
 
 #### Success response
 
@@ -566,15 +566,15 @@ Status: `201 Created`
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `id` | `string` | Created GitHub Copilot task id |
+| `id` | `string` | Local background job id |
+| `repo` | `string` | Normalized repository name |
+| `status` | `string` | Initial job status (`waiting`) |
 
 #### Common statuses
 
-- `400 Bad Request` when `repo` or `event_content` is missing or invalid
+- `400 Bad Request` when any required field is missing or invalid
 - `401 Unauthorized` when the bearer token is missing or invalid
-- `503 Service Unavailable` when the create-task bearer token or Copilot GitHub token is not configured
-- `404 Not Found` when the repository is not found
-- `500 Internal Server Error` for GitHub API failures
+- `500 Internal Server Error` when the background job cannot be recorded or queued
 
 #### Example
 
@@ -585,10 +585,37 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
   -d '{
     "repo": "facebook/react",
     "event_content": "Fix the bug in the login form",
+    "problem_statement": "Investigate and fix the login flow bug",
+    "base_ref": "main",
     "model": "claude-sonnet-4.6",
     "create_pull_request": true
   }'
 ```
+
+---
+
+### `GET /api/jobs/create-task/:id`
+
+Returns the locally tracked status for a background agent-task job.
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Local background job id |
+| `repo` | `string` | Repository in `owner/repo` format |
+| `status` | `string` | Local job status (`waiting`, `active`, `completed`, `failed`) |
+| `taskId` | `string` | Created GitHub Copilot task id when available |
+| `taskStatus` | `string` | Last observed GitHub task state when available |
+| `error` | `string` | Error message when the job fails |
+| `createdAt` | `string` | Job creation timestamp |
+| `updatedAt` | `string` | Last update timestamp |
+
+#### Common statuses
+
+- `404 Not Found` when the task job id is unknown
 
 ---
 
