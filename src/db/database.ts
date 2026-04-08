@@ -79,8 +79,30 @@ async function initSchema(db: DatabaseClient): Promise<void> {
         FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS agent_task_jobs (
+        id TEXT PRIMARY KEY,
+        repo TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'waiting',
+        github_task_id TEXT,
+        task_status TEXT,
+        branch_name TEXT,
+        error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
       ALTER TABLE files
       ADD COLUMN IF NOT EXISTS file_disk_path TEXT NOT NULL DEFAULT '';
+
+      -- Migration safety for existing databases created before task-tracking columns existed.
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS github_task_id TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS task_status TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS branch_name TEXT;
 
       UPDATE files
       SET file_disk_path = file_name
@@ -88,6 +110,7 @@ async function initSchema(db: DatabaseClient): Promise<void> {
 
       CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id);
       CREATE INDEX IF NOT EXISTS idx_files_job_id_hash ON files(job_id, file_git_hash);
+      CREATE INDEX IF NOT EXISTS idx_agent_task_jobs_status ON agent_task_jobs(status);
     `);
     await db.query("COMMIT");
   } catch (error) {

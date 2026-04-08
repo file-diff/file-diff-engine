@@ -1,5 +1,11 @@
 import type { DatabaseClient } from "./database";
-import { FileRecord, JobInfo, JobStatus, StatsResponse } from "../types";
+import {
+  AgentTaskJobInfo,
+  FileRecord,
+  JobInfo,
+  JobStatus,
+  StatsResponse,
+} from "../types";
 import {createLogger} from "../utils/logger";
 import { getCommitShort } from "../utils/commit";
 
@@ -39,6 +45,97 @@ export interface FileLookupRecord {
 
 export class JobRepository {
   constructor(private db: DatabaseClient) {}
+
+  async createAgentTaskJob(
+    id: string,
+    repo: string,
+    taskId?: string,
+    taskStatus?: string,
+    branchName?: string | null
+  ): Promise<void> {
+    await this.db.query(
+      `INSERT INTO agent_task_jobs (
+         id,
+         repo,
+         status,
+         github_task_id,
+         task_status,
+         branch_name,
+         created_at,
+         updated_at
+       )
+       VALUES ($1, $2, 'waiting', $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [id, repo, taskId ?? null, taskStatus ?? null, branchName ?? null]
+    );
+  }
+
+  async getAgentTaskJob(id: string): Promise<AgentTaskJobInfo | undefined> {
+    const result = await this.db.query(
+      "SELECT * FROM agent_task_jobs WHERE id = $1",
+      [id]
+    );
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      id: row.id as string,
+      repo: row.repo as string,
+      status: row.status as JobStatus,
+      branch: (row.branch_name as string | null) ?? null,
+      taskId: (row.github_task_id as string | null) ?? undefined,
+      taskStatus: (row.task_status as string | null) ?? undefined,
+      error: (row.error as string | null) ?? undefined,
+      createdAt: toIsoString(row.created_at),
+      updatedAt: toIsoString(row.updated_at),
+    };
+  }
+
+  async updateAgentTaskJobStatus(
+    id: string,
+    status: JobStatus,
+    error?: string
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE agent_task_jobs
+       SET status = $1, error = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3`,
+      [status, error ?? null, id]
+    );
+  }
+
+  async attachAgentTaskToJob(
+    id: string,
+    taskId: string,
+    taskStatus?: string,
+    branchName?: string
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE agent_task_jobs
+        SET github_task_id = $1,
+            task_status = COALESCE($2, task_status),
+            branch_name = COALESCE($3, branch_name),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4`,
+      [taskId, taskStatus ?? null, branchName ?? null, id]
+    );
+  }
+
+  async updateAgentTaskStatus(
+    id: string,
+    taskStatus: string,
+    branchName?: string
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE agent_task_jobs
+        SET task_status = $1,
+            branch_name = COALESCE($2, branch_name),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3`,
+      [taskStatus, branchName ?? null, id]
+    );
+  }
 
   async createJob(id: string, repo: string, commit: string): Promise<void> {
     await this.db.query(

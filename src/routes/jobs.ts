@@ -13,7 +13,7 @@ export function createJobRoutes(
   return async function registerJobRoutes(app) {
     await app.register(rateLimit, { global: false });
 
-    registerDiscoveryRoutes(app);
+    registerDiscoveryRoutes(app, queue, jobRepo);
     registerJobManagementRoutes(app, queue, jobRepo);
     registerDownloadRoutes(app, jobRepo);
   };

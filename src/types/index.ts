@@ -374,8 +374,40 @@ export interface CreateTaskResponse {
   id: string;
 }
 
+/** Minimal response payload returned after creating an agent task job. */
+export interface AgentTaskJobSummary {
+  id: string;
+  repo: string;
+  status: JobStatus;
+  branch: string | null;
+  taskId?: string;
+  taskStatus?: string;
+}
+
+/** Response payload when querying a queued or monitored agent task job. */
+export interface AgentTaskJobInfo extends AgentTaskJobSummary {
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Session information for a GitHub Copilot coding agent task. */
+export interface TaskSessionInfo {
+  id?: string;
+  task_id?: string;
+  state?: string;
+  base_ref?: string;
+  /** Head branch created for this session when available. */
+  head_ref?: string;
+  [key: string]: unknown;
+}
+
 /** Response payload for a GitHub Copilot coding agent task lookup. */
 export interface TaskInfoResponse {
+  /** Remote GitHub Copilot task state such as queued, in_progress, completed, or failed. */
+  state?: string;
+  /** Session details populated by GitHub once task execution has started. */
+  sessions?: TaskSessionInfo[];
   [key: string]: unknown;
 }
 
