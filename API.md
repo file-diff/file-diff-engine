@@ -543,7 +543,7 @@ curl -X POST https://your-host.example.com/api/jobs/pull-request/open \
 
 ### `POST /api/jobs/create-task`
 
-Creates a local background job that will create and then monitor a GitHub Copilot coding agent task for a repository. The worker later calls `https://api.individual.githubcopilot.com/` using the server's `COPILOT_GITHUB_TOKEN` as `Authorization: GitHub-Bearer <token>`.
+Creates a GitHub Copilot coding agent task for a repository immediately. If task creation succeeds, the service then records a local monitoring job and enqueues background polling for that task.
 
 This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -566,15 +566,15 @@ Status: `201 Created`
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `id` | `string` | Local background job id |
-| `repo` | `string` | Normalized repository name |
-| `status` | `string` | Initial job status (`waiting`) |
+| `id` | `string` | Created GitHub Copilot task id. The same id is also used for the local monitoring job. |
 
 #### Common statuses
 
 - `400 Bad Request` when any required field is missing or invalid
 - `401 Unauthorized` when the bearer token is missing or invalid
-- `500 Internal Server Error` when the background job cannot be recorded or queued
+- `404 Not Found` when the repository is not found
+- `503 Service Unavailable` when the create-task bearer token or Copilot GitHub token is not configured
+- `500 Internal Server Error` when the task cannot be created or the monitoring job cannot be recorded or queued
 
 #### Example
 
@@ -604,7 +604,7 @@ Status: `200 OK`
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `id` | `string` | Local background job id |
+| `id` | `string` | GitHub Copilot task id and local monitoring job id |
 | `repo` | `string` | Repository in `owner/repo` format |
 | `status` | `string` | Local job status (`waiting`, `active`, `completed`, `failed`) |
 | `taskId` | `string` | Created GitHub Copilot task id when available |

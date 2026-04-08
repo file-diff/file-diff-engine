@@ -13,8 +13,8 @@ import {
 import { Queue } from "bullmq";
 import type {
   AgentTaskJobInfo,
-  AgentTaskJobSummary,
   ListBranchesResponse,
+  CreateTaskResponse,
   ListTasksResponse,
   ListCommitsGraphResponse,
   GitCacheStatsResponse,
@@ -690,6 +690,10 @@ describe("Job Routes", () => {
 
   it("POST /api/jobs/create-task - should return only the task id", async () => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
+    const createTaskSpy = vi.spyOn(githubApi, "createTask").mockResolvedValue({
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    });
 
     const res = await makeRequest(
       app,
@@ -709,29 +713,68 @@ describe("Job Routes", () => {
     );
 
     expect(res.status).toBe(201);
-    expect(res.body).toEqual<AgentTaskJobSummary>({
-      id: expect.any(String),
-      repo: "octocat/hello-world",
-      status: "waiting",
+    expect(res.body).toEqual<CreateTaskResponse>({
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     });
+    expect(createTaskSpy).toHaveBeenCalledWith(
+      "octocat",
+      "hello-world",
+      {
+        event_content: "Fix the login button on the homepage",
+        problem_statement: "Investigate and fix the login button issue",
+        model: "claude-sonnet-4.6",
+        create_pull_request: true,
+        base_ref: "main",
+      },
+      "GitHub-Bearer copilot-token"
+    );
     expect(mockQueue.add).toHaveBeenCalledWith(
       "create-agent-task",
       {
-        jobId: (res.body as AgentTaskJobSummary).id,
+        jobId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
         owner: "octocat",
         repoName: "hello-world",
-        body: {
-          event_content: "Fix the login button on the homepage",
-          problem_statement: "Investigate and fix the login button issue",
-          model: "claude-sonnet-4.6",
-          create_pull_request: true,
-          base_ref: "main",
-        },
+        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       },
       {
-        jobId: (res.body as AgentTaskJobSummary).id,
+        jobId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       }
     );
+  });
+
+  it("POST /api/jobs/create-task - should surface GitHub task creation failures before queueing", async () => {
+    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
+    vi.spyOn(githubApi, "createTask").mockRejectedValue(
+      new githubApi.GitHubApiError(
+        "GitHub repository 'file-diff/file-diff-frontend' was not found.",
+        404
+      )
+    );
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-task",
+      {
+        repo: "file-diff/file-diff-frontend",
+        event_content: "Fix the login button on the homepage",
+        problem_statement: "Investigate repository lookup",
+        base_ref: "main",
+        model: "claude-sonnet-4.6",
+        create_pull_request: true,
+      },
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({
+      error: "GitHub repository 'file-diff/file-diff-frontend' was not found.",
+    });
+    expect(mockQueue.add).not.toHaveBeenCalled();
+    expect(await jobRepo.getAgentTaskJob("a1b2c3d4-e5f6-7890-abcd-ef1234567890")).toBeUndefined();
   });
 
   it("GET /api/jobs/create-task/:id - should return stored agent task job info", async () => {

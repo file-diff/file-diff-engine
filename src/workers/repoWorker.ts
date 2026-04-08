@@ -89,14 +89,14 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
 }
 
 async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> {
-  const { jobId, owner, repoName, body } = job.data as {
+  const { jobId, owner, repoName, taskId } = job.data as {
     jobId: string;
     owner: string;
     repoName: string;
-    body: Record<string, unknown>;
+    taskId: string;
   };
 
-  logger.debug("Agent task job started", { jobId, owner, repoName });
+  logger.debug("Agent task job started", { jobId, owner, repoName, taskId });
 
   try {
     const startedAt = Date.now();
@@ -104,20 +104,12 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
 
     const authorizationHeader =
       await githubApi.fetchCopilotAuthorizationHeader();
-    const createdTask = await githubApi.createTask(
-      owner,
-      repoName,
-      body,
-      authorizationHeader
-    );
-
-    await repo.attachAgentTaskToJob(jobId, createdTask.id, "queued");
 
     while (true) {
       const taskInfo = await githubApi.getTask(
         owner,
         repoName,
-        createdTask.id,
+        taskId,
         authorizationHeader
       );
       const taskState = getTaskState(taskInfo);
@@ -130,7 +122,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
           await repo.updateAgentTaskJobStatus(jobId, "failed", message);
           logger.warn("Agent task monitoring timed out", {
             jobId,
-            taskId: createdTask.id,
+            taskId,
             taskState,
           });
           return;
@@ -144,12 +136,12 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
         await repo.updateAgentTaskJobStatus(jobId, "completed");
         logger.info("Agent task completed", {
           jobId,
-          taskId: createdTask.id,
+          taskId,
           taskState,
         });
         logger.info("TODO: trigger follow-up action for completed agent task", {
           jobId,
-          taskId: createdTask.id,
+          taskId,
         });
         return;
       }
@@ -158,7 +150,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       await repo.updateAgentTaskJobStatus(jobId, "failed", message);
       logger.warn("Agent task completed with non-success terminal state", {
         jobId,
-        taskId: createdTask.id,
+        taskId,
         taskState,
       });
       return;

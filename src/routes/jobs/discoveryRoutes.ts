@@ -1,12 +1,10 @@
 import fs from "fs";
 import path from "path";
-import { randomUUID } from "crypto";
 import type { FastifyInstance } from "fastify";
 import { Queue } from "bullmq";
 import { JobRepository } from "../../db/repository";
 import type {
   AgentTaskJobInfo,
-  AgentTaskJobSummary,
   CommitGraphItem,
   ErrorResponse,
   ListBranchesRequest,
@@ -918,20 +916,28 @@ export function registerDiscoveryRoutes(
     if (base_ref !== undefined) body.base_ref = base_ref;
 
     try {
-      const jobId = randomUUID();
       logger.info("Creating GitHub Copilot task", {
         repo,
-        jobId,
         payload: summarizeCreateTaskPayload(request.body),
       });
+      const copilotAuthorizationHeader =
+        await githubApi.fetchCopilotAuthorizationHeader();
+      const result: CreateTaskResponse = await githubApi.createTask(
+        owner,
+        repoName,
+        body,
+        copilotAuthorizationHeader
+      );
+      const jobId = result.id;
       await jobRepo.createAgentTaskJob(jobId, repo);
-      await enqueueAgentTaskJob(queue, jobId, owner, repoName, body);
-      const response: AgentTaskJobSummary = {
-        id: jobId,
+      await jobRepo.attachAgentTaskToJob(jobId, result.id, "queued");
+      await enqueueAgentTaskJob(queue, jobId, owner, repoName, result.id);
+      logger.info("Created GitHub Copilot task", {
         repo,
-        status: "waiting",
-      };
-      return reply.code(201).send(response);
+        jobId,
+        taskId: result.id,
+      });
+      return reply.code(201).send(result);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to create task.";
@@ -965,7 +971,7 @@ async function enqueueAgentTaskJob(
   jobId: string,
   owner: string,
   repoName: string,
-  body: Record<string, unknown>
+  taskId: string
 ): Promise<void> {
   await queue.add(
     "create-agent-task",
@@ -973,7 +979,7 @@ async function enqueueAgentTaskJob(
       jobId,
       owner,
       repoName,
-      body,
+      taskId,
     },
     {
       jobId,

@@ -4,7 +4,6 @@ import type { FileRecord } from "../types";
 const processRepositoryMock = vi.fn();
 const workerConstructorMock = vi.fn();
 const fetchCopilotAuthorizationHeaderMock = vi.fn();
-const createTaskMock = vi.fn();
 const getTaskMock = vi.fn();
 
 const repoMethods = {
@@ -13,7 +12,6 @@ const repoMethods = {
   updateJobProgress: vi.fn(),
   updateFile: vi.fn(),
   updateAgentTaskJobStatus: vi.fn(),
-  attachAgentTaskToJob: vi.fn(),
   updateAgentTaskStatus: vi.fn(),
 };
 
@@ -29,7 +27,6 @@ vi.mock("../db/repository", () => ({
 
 vi.mock("../services/githubApi", () => ({
   fetchCopilotAuthorizationHeader: fetchCopilotAuthorizationHeaderMock,
-  createTask: createTaskMock,
   getTask: getTaskMock,
 }));
 
@@ -55,10 +52,8 @@ describe("repoWorker", () => {
     repoMethods.updateJobProgress.mockReset();
     repoMethods.updateFile.mockReset();
     repoMethods.updateAgentTaskJobStatus.mockReset();
-    repoMethods.attachAgentTaskToJob.mockReset();
     repoMethods.updateAgentTaskStatus.mockReset();
     fetchCopilotAuthorizationHeaderMock.mockReset();
-    createTaskMock.mockReset();
     getTaskMock.mockReset();
   });
 
@@ -143,16 +138,10 @@ describe("repoWorker", () => {
     repoMethods.updateAgentTaskJobStatus.mockImplementation(async (_jobId, status) => {
       order.push(`status:${status}`);
     });
-    repoMethods.attachAgentTaskToJob.mockImplementation(async (_jobId, taskId, taskStatus) => {
-      order.push(`task:${taskId}:${taskStatus}`);
-    });
     repoMethods.updateAgentTaskStatus.mockImplementation(async (_jobId, taskStatus) => {
       order.push(`task-status:${taskStatus}`);
     });
     fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
-    createTaskMock.mockResolvedValue({
-      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    });
     getTaskMock
       .mockResolvedValueOnce({ state: "queued" })
       .mockResolvedValueOnce({ state: "in_progress" })
@@ -170,34 +159,26 @@ describe("repoWorker", () => {
         jobId: "task-job-1",
         owner: "owner",
         repoName: "repo",
-        body: {
-          event_content: "Fix the failing workflow",
-          problem_statement: "Investigate and fix the job",
-          base_ref: "main",
-        },
+        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       },
     });
 
     expect(order).toEqual([
       "status:active",
-      "task:a1b2c3d4-e5f6-7890-abcd-ef1234567890:queued",
       "task-status:queued",
       "task-status:in_progress",
       "task-status:completed",
       "status:completed",
     ]);
     expect(fetchCopilotAuthorizationHeaderMock).toHaveBeenCalledTimes(1);
-    expect(createTaskMock).toHaveBeenCalledWith(
+    expect(getTaskMock).toHaveBeenCalledTimes(3);
+    expect(getTaskMock).toHaveBeenNthCalledWith(
+      1,
       "owner",
       "repo",
-      {
-        event_content: "Fix the failing workflow",
-        problem_statement: "Investigate and fix the job",
-        base_ref: "main",
-      },
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "GitHub-Bearer copilot-token"
     );
-    expect(getTaskMock).toHaveBeenCalledTimes(3);
   });
 
   it("should fail an agent task job when monitoring times out", async () => {
@@ -209,9 +190,6 @@ describe("repoWorker", () => {
       statusUpdates.push({ status, error });
     });
     fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
-    createTaskMock.mockResolvedValue({
-      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    });
     getTaskMock.mockResolvedValue({ state: "in_progress" });
 
     const nowSpy = vi
@@ -231,11 +209,7 @@ describe("repoWorker", () => {
         jobId: "task-job-2",
         owner: "owner",
         repoName: "repo",
-        body: {
-          event_content: "Fix the failing workflow",
-          problem_statement: "Investigate and fix the job",
-          base_ref: "main",
-        },
+        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       },
     });
 
