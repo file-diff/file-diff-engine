@@ -873,15 +873,15 @@ describe("Job Routes", () => {
     );
   });
 
-  it("POST /agents/repos/:owner/:repo/archive - should archive repository tasks", async () => {
+  it("POST /agents/repos/:owner/:repo/tasks/:task_id/archive - should archive a task", async () => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
     vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
-    const archiveTasksSpy = vi.spyOn(githubApi, "archiveTasks").mockResolvedValue({});
+    const archiveTaskSpy = vi.spyOn(githubApi, "archiveTask").mockResolvedValue({});
 
     const res = await makeRequest(
       app,
       "POST",
-      "/agents/repos/octocat/hello-world/archive",
+      "/agents/repos/octocat/hello-world/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890/archive",
       undefined,
       {
         authorization: "Bearer route-secret",
@@ -890,11 +890,22 @@ describe("Job Routes", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({});
-    expect(archiveTasksSpy).toHaveBeenCalledWith(
+    expect(archiveTaskSpy).toHaveBeenCalledWith(
       "octocat",
       "hello-world",
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "GitHub-Bearer copilot-token"
     );
+  });
+
+  it("POST /agents/repos/:owner/:repo/archive - should return not found", async () => {
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/agents/repos/octocat/hello-world/archive"
+    );
+
+    expect(res.status).toBe(404);
   });
 
   it("GET /agents/repos/:owner/:repo/tasks/:task_id - should require a valid bearer token", async () => {

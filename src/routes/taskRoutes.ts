@@ -172,9 +172,10 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
     Params: {
       owner: string;
       repo: string;
+      task_id: string;
     };
   }>(
-    "/agents/repos/:owner/:repo/archive",
+    "/agents/repos/:owner/:repo/tasks/:task_id/archive",
     {
       config: {
         rateLimit: {
@@ -184,7 +185,15 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       },
     },
     async (request, reply) => {
-      const { owner, repo } = request.params;
+      const { owner, repo, task_id: rawTaskId } = request.params;
+      const taskId = rawTaskId.trim();
+      if (!taskId) {
+        const response: ErrorResponse = {
+          error: "Task id is required.",
+        };
+        return reply.code(400).send(response);
+      }
+
       const authorizedRequest = await validateTaskRepoAuthorization(
         owner,
         repo,
@@ -195,15 +204,16 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
       }
 
       try {
-        const result = await githubApi.archiveTasks(
+        const result = await githubApi.archiveTask(
           owner,
           repo,
+          taskId,
           authorizedRequest.copilotAuthorizationHeader
         );
         return reply.code(200).send(result);
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "Unable to archive tasks.";
+          error instanceof Error ? error.message : "Unable to archive task.";
         const response: ErrorResponse = { error: message };
         const statusCode =
           error instanceof githubApi.GitHubApiError ? error.statusCode : 500;

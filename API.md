@@ -678,9 +678,9 @@ curl https://your-host.example.com/agents/repos/facebook/react/tasks \
 
 ---
 
-### `POST /api/agents/repos/:owner/:repo/archive`
+### `POST /api/agents/repos/:owner/:repo/tasks/:task_id/archive`
 
-Archives GitHub Copilot agent tasks for a repository.
+Archives a specific GitHub Copilot agent task for a repository.
 
 This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -692,16 +692,16 @@ Returns an empty JSON object when the archive request succeeds.
 
 #### Common statuses
 
-- `400 Bad Request` when the repository path is invalid
+- `400 Bad Request` when the repository path or task id is invalid
 - `401 Unauthorized` when the bearer token is missing or invalid
 - `503 Service Unavailable` when the create-task bearer token or Copilot GitHub token is not configured
-- `404 Not Found` when the repository is not found
+- `404 Not Found` when the task is not found
 - `500 Internal Server Error` for GitHub API failures
 
 #### Example
 
 ```bash
-curl -X POST https://your-host.example.com/api/agents/repos/facebook/react/archive \
+curl -X POST https://your-host.example.com/api/agents/repos/facebook/react/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890/archive \
   -H "Authorization: Bearer <token>"
 ```
 

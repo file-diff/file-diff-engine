@@ -557,15 +557,16 @@ export async function listTasks(
   );
 }
 
-export async function archiveTasks(
+export async function archiveTask(
   owner: string,
   repo: string,
+  taskId: string,
   authorizationHeader: string
 ): Promise<Record<string, never>> {
   return await getCopilotJson<Record<string, never>>(
-    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/archive`,
+    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks/${encodeURIComponent(taskId)}/archive`,
     {
-      notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when archiving tasks.`,
+      notFoundMessage: `GitHub task '${taskId}' was not found in repository '${owner}/${repo}' when archiving the task.`,
       method: "POST",
       authorizationHeader,
     }
