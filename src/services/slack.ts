@@ -65,7 +65,7 @@ function buildAgentTaskFinishedSlackMessage(
 }
 
 function buildAgentTaskUrl(owner: string, repoName: string, taskId: string): string {
-  return `https://github.com/${owner}/${repoName}/copilot/tasks/${encodeURIComponent(taskId)}`;
+  return `https://github.com/${owner}/${repoName}/tasks/${encodeURIComponent(taskId)}`;
 }
 
 function formatDuration(durationMs: number): string {
