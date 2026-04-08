@@ -12,6 +12,7 @@ import { createLogger } from "../utils/logger";
 const REDIS_HOST = process.env.REDIS_HOST || "127.0.0.1";
 const REDIS_PORT = parseInt(process.env.REDIS_PORT || "6379", 10);
 const DEFAULT_AGENT_TASK_POLL_INTERVAL_MS = 5_000;
+const DEFAULT_AGENT_TASK_MAX_POLL_DURATION_MS = 30 * 60 * 1_000;
 
 const TMP_DIR = process.env.TMP_DIR || "tmp";
 const logger = createLogger("repo-worker");
@@ -98,6 +99,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
   logger.debug("Agent task job started", { jobId, owner, repoName });
 
   try {
+    const startedAt = Date.now();
     await repo.updateAgentTaskJobStatus(jobId, "active");
 
     const authorizationHeader =
@@ -122,6 +124,18 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       await repo.updateAgentTaskStatus(jobId, taskState);
 
       if (!isTerminalTaskState(taskState)) {
+        if (Date.now() - startedAt >= getAgentTaskMaxPollDurationMs()) {
+          const message = "Agent task monitoring timed out before reaching a terminal state.";
+          await repo.updateAgentTaskStatus(jobId, "timeout");
+          await repo.updateAgentTaskJobStatus(jobId, "failed", message);
+          logger.warn("Agent task monitoring timed out", {
+            jobId,
+            taskId: createdTask.id,
+            taskState,
+          });
+          return;
+        }
+
         await wait(getAgentTaskPollIntervalMs());
         continue;
       }
@@ -182,6 +196,20 @@ function getAgentTaskPollIntervalMs(): number {
   const parsed = Number.parseInt(rawValue, 10);
   if (!Number.isFinite(parsed) || parsed < 0) {
     return DEFAULT_AGENT_TASK_POLL_INTERVAL_MS;
+  }
+
+  return parsed;
+}
+
+function getAgentTaskMaxPollDurationMs(): number {
+  const rawValue = process.env.AGENT_TASK_MAX_POLL_DURATION_MS;
+  if (!rawValue) {
+    return DEFAULT_AGENT_TASK_MAX_POLL_DURATION_MS;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_AGENT_TASK_MAX_POLL_DURATION_MS;
   }
 
   return parsed;
