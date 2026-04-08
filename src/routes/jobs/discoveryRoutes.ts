@@ -941,13 +941,12 @@ export function registerDiscoveryRoutes(
           body,
           copilotAuthorizationHeader
         );
-        const jobId = result.id;
-        await jobRepo.createAgentTaskJob(jobId, repo, jobId, "queued");
-        await enqueueAgentTaskJob(queue, jobId, owner, repoName, jobId);
+        const taskId = result.id;
+        await jobRepo.createAgentTaskJob(taskId, repo, taskId, "queued");
+        await enqueueAgentTaskJob(queue, taskId, owner, repoName, taskId);
         logger.info("Created GitHub Copilot task", {
           repo,
-          jobId,
-          taskId: result.id,
+          taskId,
         });
         return reply.code(201).send(result);
       } catch (error) {
