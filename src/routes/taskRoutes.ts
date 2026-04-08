@@ -213,7 +213,7 @@ export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(200).send(result);
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "Unable to archive tasks.";
+          error instanceof Error ? error.message : "Unable to archive task.";
         const response: ErrorResponse = { error: message };
         const statusCode =
           error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
