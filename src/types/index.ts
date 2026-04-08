@@ -391,6 +391,7 @@ export interface AgentTaskJobInfo extends AgentTaskJobSummary {
   updatedAt: string;
 }
 
+/** Session information for a GitHub Copilot coding agent task. */
 export interface TaskSessionInfo {
   id?: string;
   task_id?: string;
