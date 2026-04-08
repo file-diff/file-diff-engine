@@ -867,10 +867,12 @@ export function registerDiscoveryRoutes(
   app.post<{ Body: CreateTaskRequest }>(
     "/create-task",
     {
-      preHandler: app.rateLimit({
-        max: CREATE_TASK_ROUTE_RATE_LIMIT_MAX,
-        timeWindow: CREATE_TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
-      }),
+      config: {
+        rateLimit: {
+          max: CREATE_TASK_ROUTE_RATE_LIMIT_MAX,
+          timeWindow: CREATE_TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
+        },
+      },
     },
     async (request, reply) => {
       const endpointBearerToken = getConfiguredBearerToken(CREATE_TASK_BEARER_TOKEN_ENV);
@@ -940,8 +942,8 @@ export function registerDiscoveryRoutes(
           copilotAuthorizationHeader
         );
         const jobId = result.id;
-        await jobRepo.createAgentTaskJob(jobId, repo, result.id, "queued");
-        await enqueueAgentTaskJob(queue, jobId, owner, repoName, result.id);
+        await jobRepo.createAgentTaskJob(jobId, repo, jobId, "queued");
+        await enqueueAgentTaskJob(queue, jobId, owner, repoName, jobId);
         logger.info("Created GitHub Copilot task", {
           repo,
           jobId,

@@ -566,7 +566,7 @@ Status: `201 Created`
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `id` | `string` | Created GitHub Copilot task id. The same id is also used for the local monitoring job. |
+| `id` | `string` | Created GitHub Copilot task ID. The same ID is also used for the local monitoring job. |
 
 #### Common statuses
 
