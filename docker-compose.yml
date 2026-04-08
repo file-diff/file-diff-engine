@@ -30,6 +30,7 @@ services:
       CREATE_TASK_BEARER_TOKEN: ${CREATE_TASK_BEARER_TOKEN:-}
       GITHUB_OPERATIONS_BEARER_TOKEN: ${GITHUB_OPERATIONS_BEARER_TOKEN:-}
       LOG_COPILOT_API_AUTH_HEADER: ${LOG_COPILOT_API_AUTH_HEADER:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
