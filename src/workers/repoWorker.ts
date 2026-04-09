@@ -271,7 +271,10 @@ function formatAgentTaskLogValue(value: string | number | boolean | null): strin
     return "null";
   }
 
-  return String(value).replace(/\s+/g, " ").trim();
+  return String(value)
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/ {2,}/g, " ")
+    .trim();
 }
 
 function summarizePullRequestActions(actions: string[]): string {
@@ -279,7 +282,7 @@ function summarizePullRequestActions(actions: string[]): string {
     return "none";
   }
 
-  return actions.join(" | ");
+  return actions.join(", ");
 }
 
 function getTaskState(taskInfo: TaskInfoResponse): string {
