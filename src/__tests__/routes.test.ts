@@ -720,14 +720,17 @@ describe("Job Routes", () => {
     expect(createTaskSpy).toHaveBeenCalledWith(
       "octocat",
       "hello-world",
-        {
+      {
           event_content: "Fix the login button on the homepage",
           problem_statement: "Investigate and fix the login button issue",
           model: "claude-sonnet-4.6",
           create_pull_request: true,
           base_ref: "main",
-        },
+      },
       "GitHub-Bearer copilot-token"
+    );
+    expect(createTaskSpy.mock.calls[0]?.[2]).not.toHaveProperty(
+      "pull_request_completion_mode"
     );
     expect(mockQueue.add).toHaveBeenCalledWith(
       "create-agent-task",
