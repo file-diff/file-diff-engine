@@ -160,6 +160,10 @@ describe("repoWorker", () => {
   it("should create and monitor an agent task job until completion", async () => {
     process.env.AGENT_TASK_POLL_INTERVAL_MS = "0";
     const order: string[] = [];
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.useFakeTimers();
     vi.setSystemTime(2_000);
 
@@ -234,6 +238,35 @@ describe("repoWorker", () => {
     expect(markPullRequestReadyMock).not.toHaveBeenCalled();
     expect(mergePullRequestMock).not.toHaveBeenCalled();
     expect(deleteRemoteBranchMock).not.toHaveBeenCalled();
+    const agentTaskLogCalls = [debugSpy, infoSpy, warnSpy, errorSpy]
+      .flatMap((spy) => spy.mock.calls)
+      .filter(
+        (call): call is [string] =>
+          typeof call[0] === "string" && call[0].includes("AgentTask job=task-job-1")
+      );
+    const agentTaskLogs = agentTaskLogCalls.map(([message]) => message);
+    expect(agentTaskLogCalls.every((call) => call.length === 1)).toBe(true);
+    expect(agentTaskLogs).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "AgentTask job=task-job-1 task=a1b2c3d4-e5f6-7890-abcd-ef1234567890 repo=owner/repo: started monitoring"
+        ),
+        expect.stringContaining(
+          "AgentTask job=task-job-1 task=a1b2c3d4-e5f6-7890-abcd-ef1234567890 repo=owner/repo: observed state poll=1 state=queued branch=null elapsedMs=1000"
+        ),
+        expect.stringContaining(
+          "AgentTask job=task-job-1 task=a1b2c3d4-e5f6-7890-abcd-ef1234567890 repo=owner/repo: observed state poll=2 state=in_progress branch=copilot/fix-1 elapsedMs=3000"
+        ),
+        expect.stringContaining(
+          "AgentTask job=task-job-1 task=a1b2c3d4-e5f6-7890-abcd-ef1234567890 repo=owner/repo: completed successfully state=completed branch=copilot/fix-1 elapsedMs=6000 pullRequestActions=none"
+        ),
+      ])
+    );
+    expect(agentTaskLogs.every((message) => !message.includes("\n"))).toBe(true);
+    debugSpy.mockRestore();
+    infoSpy.mockRestore();
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
     vi.useRealTimers();
   });
 

@@ -17,6 +17,14 @@ const DEFAULT_AGENT_TASK_MAX_POLL_DURATION_MS = 30 * 60 * 1_000;
 
 const TMP_DIR = process.env.TMP_DIR || "tmp";
 const logger = createLogger("repo-worker");
+type AgentTaskLogLevel = "debug" | "info" | "warn" | "error";
+
+type AgentTaskLogContext = {
+  jobId: string;
+  owner: string;
+  repoName: string;
+  taskId: string;
+};
 
 export async function createWorker(db?: DatabaseClient): Promise<Worker> {
   const database = db ?? (await getDatabase());
@@ -98,18 +106,26 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     pullRequestCompletionMode?: PullRequestCompletionMode;
   };
 
-  logger.debug("Agent task job started", { jobId, owner, repoName, taskId });
+  const logContext: AgentTaskLogContext = { jobId, owner, repoName, taskId };
+  logAgentTask("info", logContext, "started monitoring", {
+    queueJobId: job.id ?? null,
+    pullRequestCompletionMode: pullRequestCompletionMode ?? "None",
+  });
   const startedAt = Date.now();
   const taskCreatedAt = typeof job.timestamp === "number" ? job.timestamp : startedAt;
   let lastKnownBranchName: string | null = null;
+  let pollCount = 0;
 
   try {
     await repo.updateAgentTaskJobStatus(jobId, "active");
+    logAgentTask("debug", logContext, "marked job active");
 
     const authorizationHeader =
       await githubApi.fetchCopilotAuthorizationHeader();
+    logAgentTask("debug", logContext, "acquired copilot authorization");
 
     while (true) {
+      pollCount += 1;
       const taskInfo = await githubApi.getTask(
         owner,
         repoName,
@@ -122,6 +138,12 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
         lastKnownBranchName = branchName;
       }
       await repo.updateAgentTaskStatus(jobId, taskState, branchName);
+      logAgentTask("info", logContext, "observed state", {
+        poll: pollCount,
+        state: taskState,
+        branch: branchName ?? lastKnownBranchName,
+        elapsedMs: Date.now() - taskCreatedAt,
+      });
 
       if (!isTerminalTaskState(taskState)) {
         if (Date.now() - startedAt >= getAgentTaskMaxPollDurationMs()) {
@@ -138,10 +160,11 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
             [],
             message
           );
-          logger.warn("Agent task monitoring timed out", {
-            jobId,
-            taskId,
-            taskState,
+          logAgentTask("warn", logContext, "timed out before terminal state", {
+            poll: pollCount,
+            state: taskState,
+            branch: lastKnownBranchName,
+            elapsedMs: Date.now() - taskCreatedAt,
           });
           return;
         }
@@ -151,6 +174,12 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       }
 
       if (taskState.toLowerCase() === "completed") {
+        if (pullRequestCompletionMode && pullRequestCompletionMode !== "None") {
+          logAgentTask("info", logContext, "running pull request completion mode", {
+            mode: pullRequestCompletionMode,
+            branch: lastKnownBranchName,
+          });
+        }
         const pullRequestActions = await runPullRequestCompletionMode(
           `${owner}/${repoName}`,
           lastKnownBranchName,
@@ -166,10 +195,11 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
           Date.now() - taskCreatedAt,
           pullRequestActions
         );
-        logger.info("Agent task completed", {
-          jobId,
-          taskId,
-          taskState,
+        logAgentTask("info", logContext, "completed successfully", {
+          state: taskState,
+          branch: lastKnownBranchName,
+          elapsedMs: Date.now() - taskCreatedAt,
+          pullRequestActions: summarizePullRequestActions(pullRequestActions),
         });
         return;
       }
@@ -186,16 +216,21 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
         [],
         message
       );
-      logger.warn("Agent task completed with non-success terminal state", {
-        jobId,
-        taskId,
-        taskState,
+      logAgentTask("warn", logContext, "finished with non-success terminal state", {
+        poll: pollCount,
+        state: taskState,
+        branch: lastKnownBranchName,
+        elapsedMs: Date.now() - taskCreatedAt,
       });
       return;
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    logger.error("Agent task job failed", { jobId, owner, repoName, error: message });
+    logAgentTask("error", logContext, "failed unexpectedly", {
+      branch: lastKnownBranchName,
+      elapsedMs: Date.now() - taskCreatedAt,
+      error: message,
+    });
     await repo.updateAgentTaskJobStatus(jobId, "failed", message);
     await sendTerminalTaskNotification(
       owner,
@@ -209,6 +244,42 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     );
     throw err;
   }
+}
+
+function logAgentTask(
+  level: AgentTaskLogLevel,
+  context: AgentTaskLogContext,
+  message: string,
+  details: Record<string, string | number | boolean | null | undefined> = {}
+): void {
+  const serializedDetails = Object.entries(details)
+    .filter(
+      (
+        entry
+      ): entry is [string, string | number | boolean | null] => entry[1] !== undefined
+    )
+    .map(([key, value]) => `${key}=${formatAgentTaskLogValue(value)}`)
+    .join(" ");
+  const formattedMessage =
+    `AgentTask job=${context.jobId} task=${context.taskId} repo=${context.owner}/${context.repoName}: ${message}` +
+    (serializedDetails ? ` ${serializedDetails}` : "");
+  logger[level](formattedMessage);
+}
+
+function formatAgentTaskLogValue(value: string | number | boolean | null): string {
+  if (value === null) {
+    return "null";
+  }
+
+  return String(value).replace(/\s+/g, " ").trim();
+}
+
+function summarizePullRequestActions(actions: string[]): string {
+  if (actions.length === 0) {
+    return "none";
+  }
+
+  return actions.join(" | ");
 }
 
 function getTaskState(taskInfo: TaskInfoResponse): string {
