@@ -278,6 +278,18 @@ async function runPullRequestCompletionMode(
     );
   }
 
+  const token =
+    process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+    process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+    undefined;
+
+  if (!token) {
+    throw new Error(
+      "GitHub token is required to complete pull request. Please set PRIVATE_GITHUB_TOKEN or PUBLIC_GITHUB_TOKEN environment variable.");
+
+  }
+
+
   logger.info(`${prefix} Found PR #${pullRequest.number} draft=${pullRequest.draft}`);
 
   if (pullRequest.draft) {
@@ -295,8 +307,9 @@ async function runPullRequestCompletionMode(
   }
 
   try {
-    logger.info(`${prefix} Attempting to merge PR #${pullRequest.number}`);
-    const mergeResult = await githubApi.mergePullRequest(repo, pullRequest.number);
+    const mergeResult = await githubApi.mergePullRequest(repo, pullRequest.number, {
+      token
+    });
     if (!mergeResult.merged) {
       logger.warn(`${prefix} PR #${pullRequest.number} was not merged: ${mergeResult.message}`);
       return actions;
@@ -304,7 +317,7 @@ async function runPullRequestCompletionMode(
 
     logger.info(`${prefix} PR #${pullRequest.number} merged successfully`);
     actions.push(`Merged pull request #${pullRequest.number}`);
-    await deleteMergedBranch(repo, branchName, pullRequest.number, tag);
+    await deleteMergedBranch(repo, branchName, pullRequest.number, token);
     return actions;
   } catch (error) {
     if (
@@ -323,10 +336,13 @@ async function deleteMergedBranch(
   repo: string,
   branchName: string,
   pullNumber: number,
+  token: string
+  pullNumber: number,
   tag: string
 ): Promise<void> {
   const prefix = tag;
   try {
+    await githubApi.deleteRemoteBranch(repo, branchName, token);
     logger.info(`${prefix} Deleting merged branch=${branchName} for PR #${pullNumber}`);
     await githubApi.deleteRemoteBranch(repo, branchName);
     logger.info(`${prefix} Deleted merged branch=${branchName}`);
