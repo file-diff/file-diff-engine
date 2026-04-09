@@ -297,7 +297,6 @@ describe("repoWorker", () => {
       state: "open",
       draft: false,
     });
-    mergePullRequestMock.mockRejectedValue(new Error("Merge conflict"));
     sendAgentTaskFinishedSlackNotificationMock.mockResolvedValue(undefined);
 
     const { GitHubApiError } = await import("../services/githubApi");
