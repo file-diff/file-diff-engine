@@ -295,7 +295,7 @@ async function runPullRequestCompletionMode(
 
   if (pullRequest.draft) {
     logger.info(`${prefix} Marking PR #${pullRequest.number} ready for review`);
-    await githubApi.markPullRequestReady(repo, pullRequest.number);
+    await githubApi.markPullRequestReady(repo, pullRequest.number, token);
   }
 
   const actions = pullRequest.draft
