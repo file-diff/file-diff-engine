@@ -1096,7 +1096,10 @@ function summarizeCreateTaskPayload(body: CreateTaskRequest | undefined): Record
     summary.createPullRequest = body.create_pull_request;
   }
 
-  if (typeof body?.pull_request_completion_mode === "string") {
+  if (
+    typeof body?.pull_request_completion_mode === "string" &&
+    PULL_REQUEST_COMPLETION_MODES.includes(body.pull_request_completion_mode)
+  ) {
     summary.pullRequestCompletionMode = body.pull_request_completion_mode;
   }
 
