@@ -276,6 +276,8 @@ async function runPullRequestCompletionMode(
   } catch (error) {
     if (
       error instanceof githubApi.GitHubApiError &&
+      // GitHub returns 405 when the PR is closed or otherwise not mergeable via the API,
+      // 409 for merge conflicts, and 422 when required checks/review conditions are unmet.
       [405, 409, 422].includes(error.statusCode)
     ) {
       logger.warn("Pull request was marked ready but merge was not possible", {
