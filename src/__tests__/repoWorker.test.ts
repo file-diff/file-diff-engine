@@ -5,6 +5,10 @@ const processRepositoryMock = vi.fn();
 const workerConstructorMock = vi.fn();
 const fetchCopilotAuthorizationHeaderMock = vi.fn();
 const getTaskMock = vi.fn();
+const findOpenPullRequestByHeadBranchMock = vi.fn();
+const markPullRequestReadyMock = vi.fn();
+const mergePullRequestMock = vi.fn();
+const deleteRemoteBranchMock = vi.fn();
 const sendAgentTaskFinishedSlackNotificationMock = vi.fn();
 
 const repoMethods = {
@@ -29,6 +33,18 @@ vi.mock("../db/repository", () => ({
 vi.mock("../services/githubApi", () => ({
   fetchCopilotAuthorizationHeader: fetchCopilotAuthorizationHeaderMock,
   getTask: getTaskMock,
+  findOpenPullRequestByHeadBranch: findOpenPullRequestByHeadBranchMock,
+  markPullRequestReady: markPullRequestReadyMock,
+  mergePullRequest: mergePullRequestMock,
+  deleteRemoteBranch: deleteRemoteBranchMock,
+  GitHubApiError: class GitHubApiError extends Error {
+    constructor(
+      message: string,
+      public readonly statusCode: number
+    ) {
+      super(message);
+    }
+  },
 }));
 
 vi.mock("../services/slack", () => ({
@@ -60,6 +76,10 @@ describe("repoWorker", () => {
     repoMethods.updateAgentTaskStatus.mockReset();
     fetchCopilotAuthorizationHeaderMock.mockReset();
     getTaskMock.mockReset();
+    findOpenPullRequestByHeadBranchMock.mockReset();
+    markPullRequestReadyMock.mockReset();
+    mergePullRequestMock.mockReset();
+    deleteRemoteBranchMock.mockReset();
     sendAgentTaskFinishedSlackNotificationMock.mockReset();
   });
 
@@ -209,6 +229,164 @@ describe("repoWorker", () => {
       branch: "copilot/fix-1",
       durationMs: 6_000,
     });
+    expect(findOpenPullRequestByHeadBranchMock).not.toHaveBeenCalled();
+    expect(markPullRequestReadyMock).not.toHaveBeenCalled();
+    expect(mergePullRequestMock).not.toHaveBeenCalled();
+    expect(deleteRemoteBranchMock).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("should mark the created pull request ready when AutoReady is requested", async () => {
+    process.env.AGENT_TASK_POLL_INTERVAL_MS = "0";
+    vi.useFakeTimers();
+
+    repoMethods.updateAgentTaskJobStatus.mockResolvedValue(undefined);
+    repoMethods.updateAgentTaskStatus.mockResolvedValue(undefined);
+    fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
+    getTaskMock.mockResolvedValue({
+      state: "completed",
+      sessions: [{ head_ref: "copilot/fix-1" }],
+    });
+    findOpenPullRequestByHeadBranchMock.mockResolvedValue({
+      number: 123,
+      title: "Fix login button",
+      url: "https://github.com/owner/repo/pull/123",
+      state: "open",
+      draft: true,
+    });
+    markPullRequestReadyMock.mockResolvedValue(undefined);
+    sendAgentTaskFinishedSlackNotificationMock.mockResolvedValue(undefined);
+
+    const { createWorker } = await import("../workers/repoWorker");
+    const worker = (await createWorker({} as never)) as unknown as {
+      handler: (job: unknown) => Promise<void>;
+    };
+
+    await worker.handler({
+      id: "queue-job-4",
+      name: "create-agent-task",
+      data: {
+        jobId: "task-job-3",
+        owner: "owner",
+        repoName: "repo",
+        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        pullRequestCompletionMode: "AutoReady",
+      },
+    });
+
+    expect(findOpenPullRequestByHeadBranchMock).toHaveBeenCalledWith(
+      "owner/repo",
+      "copilot/fix-1"
+    );
+    expect(markPullRequestReadyMock).toHaveBeenCalledWith("owner/repo", 123);
+    expect(mergePullRequestMock).not.toHaveBeenCalled();
+    expect(deleteRemoteBranchMock).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("should delete the branch after a successful AutoMerge", async () => {
+    process.env.AGENT_TASK_POLL_INTERVAL_MS = "0";
+    vi.useFakeTimers();
+
+    repoMethods.updateAgentTaskJobStatus.mockResolvedValue(undefined);
+    repoMethods.updateAgentTaskStatus.mockResolvedValue(undefined);
+    fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
+    getTaskMock.mockResolvedValue({
+      state: "completed",
+      sessions: [{ head_ref: "copilot/fix-1" }],
+    });
+    findOpenPullRequestByHeadBranchMock.mockResolvedValue({
+      number: 123,
+      title: "Fix login button",
+      url: "https://github.com/owner/repo/pull/123",
+      state: "open",
+      draft: false,
+    });
+    mergePullRequestMock.mockResolvedValue({
+      merged: true,
+      message: "Pull Request successfully merged",
+      sha: "deadbeef",
+    });
+    deleteRemoteBranchMock.mockResolvedValue(undefined);
+    sendAgentTaskFinishedSlackNotificationMock.mockResolvedValue(undefined);
+
+    const { createWorker } = await import("../workers/repoWorker");
+    const worker = (await createWorker({} as never)) as unknown as {
+      handler: (job: unknown) => Promise<void>;
+    };
+
+    await worker.handler({
+      id: "queue-job-5",
+      name: "create-agent-task",
+      data: {
+        jobId: "task-job-4",
+        owner: "owner",
+        repoName: "repo",
+        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        pullRequestCompletionMode: "AutoMerge",
+      },
+    });
+
+    expect(markPullRequestReadyMock).not.toHaveBeenCalled();
+    expect(mergePullRequestMock).toHaveBeenCalledWith("owner/repo", 123);
+    expect(deleteRemoteBranchMock).toHaveBeenCalledWith(
+      "owner/repo",
+      "copilot/fix-1"
+    );
+    expect(repoMethods.updateAgentTaskJobStatus).toHaveBeenLastCalledWith(
+      "task-job-4",
+      "completed"
+    );
+    vi.useRealTimers();
+  });
+
+  it("should ignore unmergeable AutoMerge results", async () => {
+    process.env.AGENT_TASK_POLL_INTERVAL_MS = "0";
+    vi.useFakeTimers();
+
+    repoMethods.updateAgentTaskJobStatus.mockResolvedValue(undefined);
+    repoMethods.updateAgentTaskStatus.mockResolvedValue(undefined);
+    fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
+    getTaskMock.mockResolvedValue({
+      state: "completed",
+      sessions: [{ head_ref: "copilot/fix-1" }],
+    });
+    findOpenPullRequestByHeadBranchMock.mockResolvedValue({
+      number: 123,
+      title: "Fix login button",
+      url: "https://github.com/owner/repo/pull/123",
+      state: "open",
+      draft: false,
+    });
+    sendAgentTaskFinishedSlackNotificationMock.mockResolvedValue(undefined);
+
+    const { GitHubApiError } = await import("../services/githubApi");
+    mergePullRequestMock.mockRejectedValue(new GitHubApiError("Merge conflict", 409));
+
+    const { createWorker } = await import("../workers/repoWorker");
+    const worker = (await createWorker({} as never)) as unknown as {
+      handler: (job: unknown) => Promise<void>;
+    };
+
+    await worker.handler({
+      id: "queue-job-6",
+      name: "create-agent-task",
+      data: {
+        jobId: "task-job-5",
+        owner: "owner",
+        repoName: "repo",
+        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        pullRequestCompletionMode: "AutoMerge",
+      },
+    });
+
+    expect(markPullRequestReadyMock).not.toHaveBeenCalled();
+    expect(mergePullRequestMock).toHaveBeenCalledWith("owner/repo", 123);
+    expect(deleteRemoteBranchMock).not.toHaveBeenCalled();
+    expect(repoMethods.updateAgentTaskJobStatus).toHaveBeenLastCalledWith(
+      "task-job-5",
+      "completed"
+    );
     vi.useRealTimers();
   });
 

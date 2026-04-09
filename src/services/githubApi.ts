@@ -464,6 +464,36 @@ export interface MergePullRequestResult {
   sha: string;
 }
 
+export interface BranchPullRequestSummary extends CommitPullRequestSummary {
+  draft: boolean;
+}
+
+export async function findOpenPullRequestByHeadBranch(
+  repo: string,
+  branch: string
+): Promise<BranchPullRequestSummary | null> {
+  const [owner, repoName] = repo.split("/", 2);
+  const response = await getJson<GitHubCommitPullRequestApiResponse[]>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/pulls?state=open&head=${encodeURIComponent(`${owner}:${branch}`)}`,
+    {
+      notFoundMessage: `GitHub repository '${repo}' was not found.`,
+    }
+  );
+  const pullRequest = response[0];
+
+  if (!pullRequest?.number || !pullRequest.html_url) {
+    return null;
+  }
+
+  return {
+    number: pullRequest.number,
+    title: pullRequest.title?.trim() || "",
+    url: pullRequest.html_url.trim(),
+    state: "open",
+    draft: pullRequest.draft === true,
+  };
+}
+
 export async function getGitHubRateLimit(): Promise<GitHubRateLimitSummary> {
   const response = await getJson<GitHubRateLimitApiResponse>("/rate_limit", {
     notFoundMessage: "GitHub rate limit endpoint was not found.",

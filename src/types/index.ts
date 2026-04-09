@@ -348,6 +348,9 @@ export interface VersionResponse {
   version: string;
 }
 
+/** Follow-up pull request action after a successful agent task run. */
+export type PullRequestCompletionMode = "None" | "AutoReady" | "AutoMerge";
+
 /** Payload sent when creating a new GitHub Copilot coding agent task. */
 export interface CreateTaskRequest {
   /** GitHub repository in owner/repo format */
@@ -364,6 +367,8 @@ export interface CreateTaskRequest {
   custom_agent?: string;
   /** Whether to create a PR */
   create_pull_request?: boolean;
+  /** Follow-up pull request action after a successful agent run */
+  pull_request_completion_mode?: PullRequestCompletionMode;
   /** Base ref for new branch/PR */
   base_ref?: string;
 }
