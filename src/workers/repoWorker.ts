@@ -159,7 +159,6 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
           jobId,
           taskId,
           taskState,
-          requestedPullRequestCompletionMode: pullRequestCompletionMode ?? "None",
         });
         return;
       }

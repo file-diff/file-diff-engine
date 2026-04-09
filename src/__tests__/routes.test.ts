@@ -744,7 +744,9 @@ describe("Job Routes", () => {
     );
   });
 
-  it("POST /api/jobs/create-task - should reject invalid pull request completion mode", async () => {
+  it.each(["Later", "automErge", ""])(
+    "POST /api/jobs/create-task - should reject invalid pull request completion mode %p",
+    async (pullRequestCompletionMode) => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
 
     const res = await makeRequest(
@@ -757,7 +759,7 @@ describe("Job Routes", () => {
         problem_statement: "Investigate and fix the login button issue",
         base_ref: "main",
         create_pull_request: true,
-        pull_request_completion_mode: "Later",
+        pull_request_completion_mode: pullRequestCompletionMode,
       },
       {
         authorization: "Bearer route-secret",
@@ -769,7 +771,8 @@ describe("Job Routes", () => {
       error:
         "Field 'pull_request_completion_mode' must be one of: None, AutoReady, AutoMerge.",
     });
-  });
+    }
+  );
 
   it("POST /api/jobs/create-task - should require create_pull_request for automatic PR actions", async () => {
     process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
