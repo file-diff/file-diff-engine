@@ -49,12 +49,44 @@ describe("slack", () => {
           text: [
             "GitHub agent task finished for owner/repo",
             "Status: completed",
-            "Duration: 1m 1s",
             "Branch: copilot/fix-1",
+            "Duration: 1m 1s",
             "Task: https://github.com/owner/repo/tasks/task-123",
             "Pull request actions:",
             "- Marked pull request #123 ready for review",
             "- Merged pull request #123",
+          ].join("\n"),
+        }),
+      })
+    );
+  });
+
+  it("includes failure details in the Slack message when provided", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+    });
+
+    await sendAgentTaskFinishedSlackNotification({
+      owner: "owner",
+      repoName: "repo",
+      taskId: "task-123",
+      status: "failed",
+      branch: "copilot/fix-1",
+      durationMs: 61_000,
+      details: "Agent task monitoring timed out before reaching a terminal state.",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://hooks.slack.test/services/test",
+      expect.objectContaining({
+        body: JSON.stringify({
+          text: [
+            "GitHub agent task failed for owner/repo",
+            "Status: failed",
+            "Details: Agent task monitoring timed out before reaching a terminal state.",
+            "Branch: copilot/fix-1",
+            "Duration: 1m 1s",
+            "Task: https://github.com/owner/repo/tasks/task-123",
           ].join("\n"),
         }),
       })

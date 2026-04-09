@@ -10,6 +10,7 @@ export interface AgentTaskSlackNotification {
   branch: string | null;
   durationMs: number;
   pullRequestActions?: string[];
+  details?: string;
 }
 
 export async function sendAgentTaskFinishedSlackNotification(
@@ -52,15 +53,20 @@ function buildAgentTaskFinishedSlackMessage(
     notification.taskId
   );
   const lines = [
-    `GitHub agent task finished for ${repo}`,
+    buildAgentTaskHeadline(repo, notification.status),
     `Status: ${notification.status}`,
-    `Duration: ${formatDuration(notification.durationMs)}`,
-    `Task: ${taskUrl}`,
   ];
 
-  if (notification.branch) {
-    lines.splice(3, 0, `Branch: ${notification.branch}`);
+  if (notification.details) {
+    lines.push(`Details: ${notification.details}`);
   }
+
+  if (notification.branch) {
+    lines.push(`Branch: ${notification.branch}`);
+  }
+
+  lines.push(`Duration: ${formatDuration(notification.durationMs)}`);
+  lines.push(`Task: ${taskUrl}`);
 
   if (notification.pullRequestActions?.length) {
     lines.push("Pull request actions:");
@@ -70,6 +76,20 @@ function buildAgentTaskFinishedSlackMessage(
   }
 
   return lines.join("\n");
+}
+
+function buildAgentTaskHeadline(repo: string, status: string): string {
+  const normalizedStatus = status.trim().toLowerCase();
+
+  if (normalizedStatus === "completed") {
+    return `GitHub agent task finished for ${repo}`;
+  }
+
+  if (normalizedStatus === "failed" || normalizedStatus === "timeout") {
+    return `GitHub agent task failed for ${repo}`;
+  }
+
+  return `GitHub agent task ended for ${repo}`;
 }
 
 function buildAgentTaskUrl(owner: string, repoName: string, taskId: string): string {
