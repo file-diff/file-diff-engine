@@ -706,6 +706,7 @@ describe("Job Routes", () => {
         base_ref: "main",
         model: "claude-sonnet-4.6",
         create_pull_request: true,
+        pull_request_completion_mode: "AutoMerge",
       },
       {
         authorization: "Bearer route-secret",
@@ -719,13 +720,13 @@ describe("Job Routes", () => {
     expect(createTaskSpy).toHaveBeenCalledWith(
       "octocat",
       "hello-world",
-      {
-        event_content: "Fix the login button on the homepage",
-        problem_statement: "Investigate and fix the login button issue",
-        model: "claude-sonnet-4.6",
-        create_pull_request: true,
-        base_ref: "main",
-      },
+        {
+          event_content: "Fix the login button on the homepage",
+          problem_statement: "Investigate and fix the login button issue",
+          model: "claude-sonnet-4.6",
+          create_pull_request: true,
+          base_ref: "main",
+        },
       "GitHub-Bearer copilot-token"
     );
     expect(mockQueue.add).toHaveBeenCalledWith(
@@ -735,11 +736,65 @@ describe("Job Routes", () => {
         owner: "octocat",
         repoName: "hello-world",
         taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        pullRequestCompletionMode: "AutoMerge",
       },
       {
         jobId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       }
     );
+  });
+
+  it("POST /api/jobs/create-task - should reject invalid pull request completion mode", async () => {
+    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-task",
+      {
+        repo: "octocat/hello-world",
+        event_content: "Fix the login button on the homepage",
+        problem_statement: "Investigate and fix the login button issue",
+        base_ref: "main",
+        create_pull_request: true,
+        pull_request_completion_mode: "Later",
+      },
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error:
+        "Field 'pull_request_completion_mode' must be one of: None, AutoReady, AutoMerge.",
+    });
+  });
+
+  it("POST /api/jobs/create-task - should require create_pull_request for automatic PR actions", async () => {
+    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-task",
+      {
+        repo: "octocat/hello-world",
+        event_content: "Fix the login button on the homepage",
+        problem_statement: "Investigate and fix the login button issue",
+        base_ref: "main",
+        pull_request_completion_mode: "AutoReady",
+      },
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error:
+        "Field 'create_pull_request' must be true when 'pull_request_completion_mode' is AutoReady or AutoMerge.",
+    });
   });
 
   it("POST /api/jobs/create-task - should surface GitHub task creation failures before queueing", async () => {

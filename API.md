@@ -558,6 +558,7 @@ This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKE
 | `model` | `string` | No | The model to use for this task (e.g. `claude-sonnet-4.6`, `gpt-5.2-codex`). |
 | `custom_agent` | `string` | No | Custom agent identifier. |
 | `create_pull_request` | `boolean` | No | Whether to create a PR. |
+| `pull_request_completion_mode` | `string` | No | Follow-up PR action after a successful run: `None`, `AutoReady`, or `AutoMerge`. `AutoReady` and `AutoMerge` require `create_pull_request: true`. |
 | `base_ref` | `string` | Yes | Base ref for new branch/PR. |
 
 #### Success response
@@ -588,7 +589,8 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
     "problem_statement": "Investigate and fix the login flow bug",
     "base_ref": "main",
     "model": "claude-sonnet-4.6",
-    "create_pull_request": true
+    "create_pull_request": true,
+    "pull_request_completion_mode": "AutoMerge"
   }'
 ```
 

@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { getDatabase, type DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
-import type { TaskInfoResponse } from "../types";
+import type { PullRequestCompletionMode, TaskInfoResponse } from "../types";
 import { processRepository } from "../services/repoProcessor";
 import * as githubApi from "../services/githubApi";
 import { QUEUE_NAME } from "../services/queue";
@@ -90,11 +90,12 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
 }
 
 async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> {
-  const { jobId, owner, repoName, taskId } = job.data as {
+  const { jobId, owner, repoName, taskId, pullRequestCompletionMode } = job.data as {
     jobId: string;
     owner: string;
     repoName: string;
     taskId: string;
+    pullRequestCompletionMode?: PullRequestCompletionMode;
   };
 
   logger.debug("Agent task job started", { jobId, owner, repoName, taskId });
@@ -140,6 +141,11 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       }
 
       if (taskState.toLowerCase() === "completed") {
+        await runPullRequestCompletionMode(
+          `${owner}/${repoName}`,
+          lastKnownBranchName,
+          pullRequestCompletionMode
+        );
         await repo.updateAgentTaskJobStatus(jobId, "completed");
         await sendTerminalTaskNotification(
           owner,
@@ -153,10 +159,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
           jobId,
           taskId,
           taskState,
-        });
-        logger.info("TODO: trigger follow-up action for completed agent task", {
-          jobId,
-          taskId,
+          pullRequestCompletionMode: pullRequestCompletionMode ?? "None",
         });
         return;
       }
@@ -229,6 +232,65 @@ function normalizeTaskBranchName(value: unknown): string | undefined {
   return normalizedValue.startsWith("refs/heads/")
     ? normalizedValue.slice("refs/heads/".length)
     : normalizedValue;
+}
+
+async function runPullRequestCompletionMode(
+  repo: string,
+  branchName: string | null,
+  mode?: PullRequestCompletionMode
+): Promise<void> {
+  if (!mode || mode === "None") {
+    return;
+  }
+
+  if (!branchName) {
+    throw new Error(
+      `Unable to locate a pull request for completion mode '${mode}' because the task did not report a branch name.`
+    );
+  }
+
+  const pullRequest = await githubApi.findOpenPullRequestByHeadBranch(repo, branchName);
+  if (!pullRequest) {
+    throw new Error(
+      `Unable to locate an open pull request for branch '${branchName}' in repository '${repo}'.`
+    );
+  }
+
+  if (pullRequest.draft) {
+    await githubApi.markPullRequestReady(repo, pullRequest.number);
+  }
+
+  if (mode !== "AutoMerge") {
+    return;
+  }
+
+  try {
+    const mergeResult = await githubApi.mergePullRequest(repo, pullRequest.number);
+    if (!mergeResult.merged) {
+      logger.warn("Pull request was marked ready but not merged", {
+        repo,
+        branchName,
+        pullNumber: pullRequest.number,
+        message: mergeResult.message,
+      });
+    }
+  } catch (error) {
+    if (
+      error instanceof githubApi.GitHubApiError &&
+      [405, 409, 422].includes(error.statusCode)
+    ) {
+      logger.warn("Pull request was marked ready but merge was not possible", {
+        repo,
+        branchName,
+        pullNumber: pullRequest.number,
+        statusCode: error.statusCode,
+        error: error.message,
+      });
+      return;
+    }
+
+    throw error;
+  }
 }
 
 function isTerminalTaskState(state: string): boolean {
