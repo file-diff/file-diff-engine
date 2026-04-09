@@ -154,11 +154,23 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
 
       if (taskState.toLowerCase() === "completed") {
         logger.info(`${tag} Task completed successfully, running PR completion mode=${pullRequestCompletionMode ?? "None"}`);
+
+        const token =
+          process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+          process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+          undefined;
+
+        if (!token) {
+          throw new Error(
+            "GitHub token is required to complete pull request. Please set PRIVATE_GITHUB_TOKEN or PUBLIC_GITHUB_TOKEN environment variable.");
+        }
+
         const pullRequestActions = await runPullRequestCompletionMode(
           `${owner}/${repoName}`,
           lastKnownBranchName,
           pullRequestCompletionMode,
-          tag
+          tag,
+          token
         );
         await repo.updateAgentTaskJobStatus(jobId, "completed");
         await sendTerminalTaskNotification(
@@ -256,7 +268,8 @@ async function runPullRequestCompletionMode(
   repo: string,
   branchName: string | null,
   mode: PullRequestCompletionMode | undefined,
-  tag: string
+  tag: string,
+  token: string
 ): Promise<string[]> {
   const prefix = tag;
   if (!mode || mode === "None") {
@@ -277,18 +290,6 @@ async function runPullRequestCompletionMode(
       `Unable to locate an open pull request for branch '${branchName}' in repository '${repo}'.`
     );
   }
-
-  const token =
-    process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-    process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
-    undefined;
-
-  if (!token) {
-    throw new Error(
-      "GitHub token is required to complete pull request. Please set PRIVATE_GITHUB_TOKEN or PUBLIC_GITHUB_TOKEN environment variable.");
-
-  }
-
 
   logger.info(`${prefix} Found PR #${pullRequest.number} draft=${pullRequest.draft}`);
 
@@ -317,7 +318,7 @@ async function runPullRequestCompletionMode(
 
     logger.info(`${prefix} PR #${pullRequest.number} merged successfully`);
     actions.push(`Merged pull request #${pullRequest.number}`);
-    await deleteMergedBranch(repo, branchName, pullRequest.number, token);
+    await deleteMergedBranch(repo, branchName, pullRequest.number, token, prefix);
     return actions;
   } catch (error) {
     if (
@@ -336,16 +337,13 @@ async function deleteMergedBranch(
   repo: string,
   branchName: string,
   pullNumber: number,
-  token: string
-  pullNumber: number,
+  token: string,
   tag: string
 ): Promise<void> {
   const prefix = tag;
   try {
-    await githubApi.deleteRemoteBranch(repo, branchName, token);
     logger.info(`${prefix} Deleting merged branch=${branchName} for PR #${pullNumber}`);
-    await githubApi.deleteRemoteBranch(repo, branchName);
-    logger.info(`${prefix} Deleted merged branch=${branchName}`);
+    await githubApi.deleteRemoteBranch(repo, branchName, token);
   } catch (error) {
     if (
       error instanceof githubApi.GitHubApiError &&
