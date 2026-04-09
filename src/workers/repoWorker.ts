@@ -98,18 +98,23 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     pullRequestCompletionMode?: PullRequestCompletionMode;
   };
 
-  logger.debug("Agent task job started", { jobId, owner, repoName, taskId });
+  const tag = `AgentTask ${jobId}:`;
+  logger.info(`${tag} Started monitoring task=${taskId} repo=${owner}/${repoName}`);
   const startedAt = Date.now();
   const taskCreatedAt = typeof job.timestamp === "number" ? job.timestamp : startedAt;
   let lastKnownBranchName: string | null = null;
+  let pollCount = 0;
 
   try {
     await repo.updateAgentTaskJobStatus(jobId, "active");
+    logger.info(`${tag} Job status set to active`);
 
     const authorizationHeader =
       await githubApi.fetchCopilotAuthorizationHeader();
+    logger.info(`${tag} Copilot authorization header obtained`);
 
     while (true) {
+      pollCount += 1;
       const taskInfo = await githubApi.getTask(
         owner,
         repoName,
@@ -121,6 +126,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       if (branchName) {
         lastKnownBranchName = branchName;
       }
+      logger.info(`${tag} Poll #${pollCount} state=${taskState} branch=${branchName ?? "none"}`);
       await repo.updateAgentTaskStatus(jobId, taskState, branchName);
 
       if (!isTerminalTaskState(taskState)) {
@@ -138,11 +144,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
             [],
             message
           );
-          logger.warn("Agent task monitoring timed out", {
-            jobId,
-            taskId,
-            taskState,
-          });
+          logger.warn(`${tag} Monitoring timed out after ${pollCount} polls, last state=${taskState}`);
           return;
         }
 
@@ -151,10 +153,12 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       }
 
       if (taskState.toLowerCase() === "completed") {
+        logger.info(`${tag} Task completed successfully, running PR completion mode=${pullRequestCompletionMode ?? "None"}`);
         const pullRequestActions = await runPullRequestCompletionMode(
           `${owner}/${repoName}`,
           lastKnownBranchName,
-          pullRequestCompletionMode
+          pullRequestCompletionMode,
+          tag
         );
         await repo.updateAgentTaskJobStatus(jobId, "completed");
         await sendTerminalTaskNotification(
@@ -166,11 +170,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
           Date.now() - taskCreatedAt,
           pullRequestActions
         );
-        logger.info("Agent task completed", {
-          jobId,
-          taskId,
-          taskState,
-        });
+        logger.info(`${tag} Finished successfully after ${pollCount} polls, branch=${lastKnownBranchName ?? "none"}`);
         return;
       }
 
@@ -186,16 +186,12 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
         [],
         message
       );
-      logger.warn("Agent task completed with non-success terminal state", {
-        jobId,
-        taskId,
-        taskState,
-      });
+      logger.warn(`${tag} Finished with non-success terminal state=${taskState} after ${pollCount} polls`);
       return;
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    logger.error("Agent task job failed", { jobId, owner, repoName, error: message });
+    logger.error(`${tag} Job failed for repo=${owner}/${repoName}: ${message}`);
     await repo.updateAgentTaskJobStatus(jobId, "failed", message);
     await sendTerminalTaskNotification(
       owner,
@@ -259,9 +255,12 @@ function normalizeTaskBranchName(value: unknown): string | undefined {
 async function runPullRequestCompletionMode(
   repo: string,
   branchName: string | null,
-  mode?: PullRequestCompletionMode
+  mode: PullRequestCompletionMode | undefined,
+  tag: string
 ): Promise<string[]> {
+  const prefix = tag;
   if (!mode || mode === "None") {
+    logger.info(`${prefix} PR completion mode=None, skipping`);
     return [];
   }
 
@@ -271,6 +270,7 @@ async function runPullRequestCompletionMode(
     );
   }
 
+  logger.info(`${prefix} Looking up open PR for branch=${branchName} in repo=${repo}`);
   const pullRequest = await githubApi.findOpenPullRequestByHeadBranch(repo, branchName);
   if (!pullRequest) {
     throw new Error(
@@ -278,7 +278,10 @@ async function runPullRequestCompletionMode(
     );
   }
 
+  logger.info(`${prefix} Found PR #${pullRequest.number} draft=${pullRequest.draft}`);
+
   if (pullRequest.draft) {
+    logger.info(`${prefix} Marking PR #${pullRequest.number} ready for review`);
     await githubApi.markPullRequestReady(repo, pullRequest.number);
   }
 
@@ -287,36 +290,28 @@ async function runPullRequestCompletionMode(
     : [];
 
   if (mode !== "AutoMerge") {
+    logger.info(`${prefix} PR completion mode=${mode}, done`);
     return actions;
   }
 
   try {
+    logger.info(`${prefix} Attempting to merge PR #${pullRequest.number}`);
     const mergeResult = await githubApi.mergePullRequest(repo, pullRequest.number);
     if (!mergeResult.merged) {
-      logger.warn("Pull request was marked ready but not merged", {
-        repo,
-        branchName,
-        pullNumber: pullRequest.number,
-        message: mergeResult.message,
-      });
+      logger.warn(`${prefix} PR #${pullRequest.number} was not merged: ${mergeResult.message}`);
       return actions;
     }
 
+    logger.info(`${prefix} PR #${pullRequest.number} merged successfully`);
     actions.push(`Merged pull request #${pullRequest.number}`);
-    await deleteMergedBranch(repo, branchName, pullRequest.number);
+    await deleteMergedBranch(repo, branchName, pullRequest.number, tag);
     return actions;
   } catch (error) {
     if (
       error instanceof githubApi.GitHubApiError &&
       [405, 409, 422].includes(error.statusCode)
     ) {
-      logger.warn("Pull request was marked ready but merge was not possible", {
-        repo,
-        branchName,
-        pullNumber: pullRequest.number,
-        statusCode: error.statusCode,
-        error: error.message,
-      });
+      logger.warn(`${prefix} PR #${pullRequest.number} merge not possible, status=${error.statusCode}: ${error.message}`);
       return actions;
     }
 
@@ -327,29 +322,24 @@ async function runPullRequestCompletionMode(
 async function deleteMergedBranch(
   repo: string,
   branchName: string,
-  pullNumber: number
+  pullNumber: number,
+  tag: string
 ): Promise<void> {
+  const prefix = tag;
   try {
+    logger.info(`${prefix} Deleting merged branch=${branchName} for PR #${pullNumber}`);
     await githubApi.deleteRemoteBranch(repo, branchName);
+    logger.info(`${prefix} Deleted merged branch=${branchName}`);
   } catch (error) {
     if (
       error instanceof githubApi.GitHubApiError &&
       error.statusCode === 404
     ) {
-      logger.info("Merged pull request branch was already deleted", {
-        repo,
-        branchName,
-        pullNumber,
-      });
+      logger.info(`${prefix} Merged branch=${branchName} already deleted for PR #${pullNumber}`);
       return;
     }
 
-    logger.warn("Failed to delete merged pull request branch", {
-      repo,
-      branchName,
-      pullNumber,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.warn(`${prefix} Failed to delete branch=${branchName} for PR #${pullNumber}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -411,6 +401,7 @@ async function sendTerminalTaskNotification(
   details?: string
 ): Promise<void> {
   try {
+    logger.info(`AgentTask ${taskId}: Sending Slack notification status=${status} branch=${branch ?? "none"} duration=${Math.round(durationMs / 1000)}s`);
     await sendAgentTaskFinishedSlackNotification({
       owner,
       repoName,
@@ -421,13 +412,8 @@ async function sendTerminalTaskNotification(
       pullRequestActions,
       details,
     });
+    logger.info(`AgentTask ${taskId}: Slack notification sent`);
   } catch (error) {
-    logger.warn("Failed to send Slack notification for agent task", {
-      owner,
-      repoName,
-      taskId,
-      status,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.warn(`AgentTask ${taskId}: Failed to send Slack notification for status=${status}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

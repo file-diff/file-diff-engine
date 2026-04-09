@@ -959,10 +959,7 @@ export function registerDiscoveryRoutes(
       if (base_ref !== undefined) body.base_ref = base_ref;
 
       try {
-        logger.info("Creating GitHub Copilot task", {
-          repo,
-          payload: summarizeCreateTaskPayload(request.body),
-        });
+        logger.info(`AgentTask: Creating task for repo=${repo} model=${model ?? "default"} pr_mode=${pull_request_completion_mode ?? "None"}`);
         const copilotAuthorizationHeader =
           await githubApi.fetchCopilotAuthorizationHeader();
         const result: CreateTaskResponse = await githubApi.createTask(
@@ -981,20 +978,12 @@ export function registerDiscoveryRoutes(
           taskId,
           pull_request_completion_mode
         );
-        logger.info("Created GitHub Copilot task", {
-          repo,
-          taskId,
-        });
+        logger.info(`AgentTask ${taskId}: Created and enqueued for repo=${repo}`);
         return reply.code(201).send(result);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Unable to create task.";
-        logger.warn("Failed to create GitHub Copilot task", {
-          repo,
-          statusCode: error instanceof githubApi.GitHubApiError ? error.statusCode : 500,
-          error: message,
-          payload: summarizeCreateTaskPayload(request.body),
-        });
+        logger.warn(`AgentTask: Failed to create task for repo=${repo}: ${message}`);
         const response: ErrorResponse = { error: message };
         const statusCode =
           error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
