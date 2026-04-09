@@ -255,10 +255,10 @@ function normalizeTaskBranchName(value: unknown): string | undefined {
 async function runPullRequestCompletionMode(
   repo: string,
   branchName: string | null,
-  mode?: PullRequestCompletionMode,
-  tag?: string
+  mode: PullRequestCompletionMode | undefined,
+  tag: string
 ): Promise<string[]> {
-  const prefix = tag ?? "AgentTask:";
+  const prefix = tag;
   if (!mode || mode === "None") {
     logger.info(`${prefix} PR completion mode=None, skipping`);
     return [];
@@ -323,9 +323,9 @@ async function deleteMergedBranch(
   repo: string,
   branchName: string,
   pullNumber: number,
-  tag?: string
+  tag: string
 ): Promise<void> {
-  const prefix = tag ?? "AgentTask:";
+  const prefix = tag;
   try {
     logger.info(`${prefix} Deleting merged branch=${branchName} for PR #${pullNumber}`);
     await githubApi.deleteRemoteBranch(repo, branchName);
