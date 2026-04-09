@@ -34,6 +34,7 @@ import type {
   MergePullRequestResponse,
   OpenPullRequestRequest,
   OpenPullRequestResponse,
+  PullRequestCompletionMode,
 } from "../../types";
 import { revertToCommit, mergeBranch } from "../../github/operations";
 import * as githubApi from "../../services/githubApi";
@@ -54,6 +55,11 @@ import {
 
 const CREATE_TASK_ROUTE_RATE_LIMIT_MAX = 60;
 const CREATE_TASK_ROUTE_RATE_LIMIT_WINDOW_MS = 60_000;
+const PULL_REQUEST_COMPLETION_MODES: readonly PullRequestCompletionMode[] = [
+  "None",
+  "AutoReady",
+  "AutoMerge",
+];
 
 export function registerDiscoveryRoutes(
   app: FastifyInstance,
@@ -898,6 +904,7 @@ export function registerDiscoveryRoutes(
         model,
         custom_agent,
         create_pull_request,
+        pull_request_completion_mode,
         base_ref,
       } = request.body ?? {};
 
@@ -914,6 +921,29 @@ export function registerDiscoveryRoutes(
         const response: ErrorResponse = {
           error:
             "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        pull_request_completion_mode !== undefined &&
+        !PULL_REQUEST_COMPLETION_MODES.includes(pull_request_completion_mode)
+      ) {
+        const response: ErrorResponse = {
+          error:
+            "Field 'pull_request_completion_mode' must be one of: None, AutoReady, AutoMerge.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        pull_request_completion_mode !== undefined &&
+        pull_request_completion_mode !== "None" &&
+        create_pull_request !== true
+      ) {
+        const response: ErrorResponse = {
+          error:
+            "Field 'create_pull_request' must be true when 'pull_request_completion_mode' is AutoReady or AutoMerge.",
         };
         return reply.code(400).send(response);
       }
@@ -943,7 +973,14 @@ export function registerDiscoveryRoutes(
         );
         const taskId = result.id;
         await jobRepo.createAgentTaskJob(taskId, repo, taskId, "queued");
-        await enqueueAgentTaskJob(queue, taskId, owner, repoName, taskId);
+        await enqueueAgentTaskJob(
+          queue,
+          taskId,
+          owner,
+          repoName,
+          taskId,
+          pull_request_completion_mode
+        );
         logger.info("Created GitHub Copilot task", {
           repo,
           taskId,
@@ -983,7 +1020,8 @@ async function enqueueAgentTaskJob(
   jobId: string,
   owner: string,
   repoName: string,
-  taskId: string
+  taskId: string,
+  pullRequestCompletionMode?: PullRequestCompletionMode
 ): Promise<void> {
   await queue.add(
     "create-agent-task",
@@ -992,6 +1030,7 @@ async function enqueueAgentTaskJob(
       owner,
       repoName,
       taskId,
+      pullRequestCompletionMode,
     },
     {
       jobId,
@@ -1055,6 +1094,10 @@ function summarizeCreateTaskPayload(body: CreateTaskRequest | undefined): Record
 
   if (typeof body?.create_pull_request === "boolean") {
     summary.createPullRequest = body.create_pull_request;
+  }
+
+  if (typeof body?.pull_request_completion_mode === "string") {
+    summary.pullRequestCompletionMode = body.pull_request_completion_mode;
   }
 
   if (typeof body?.base_ref === "string") {
