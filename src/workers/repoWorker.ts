@@ -99,11 +99,11 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
   };
 
   logger.debug("Agent task job started", { jobId, owner, repoName, taskId });
+  const startedAt = Date.now();
+  const taskCreatedAt = typeof job.timestamp === "number" ? job.timestamp : startedAt;
+  let lastKnownBranchName: string | null = null;
 
   try {
-    const startedAt = Date.now();
-    const taskCreatedAt = typeof job.timestamp === "number" ? job.timestamp : startedAt;
-    let lastKnownBranchName: string | null = null;
     await repo.updateAgentTaskJobStatus(jobId, "active");
 
     const authorizationHeader =
@@ -128,6 +128,16 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
           const message = "Agent task monitoring timed out before reaching a terminal state.";
           await repo.updateAgentTaskStatus(jobId, "timeout");
           await repo.updateAgentTaskJobStatus(jobId, "failed", message);
+          await sendTerminalTaskNotification(
+            owner,
+            repoName,
+            taskId,
+            "timeout",
+            lastKnownBranchName,
+            Date.now() - taskCreatedAt,
+            [],
+            message
+          );
           logger.warn("Agent task monitoring timed out", {
             jobId,
             taskId,
@@ -172,7 +182,9 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
         taskId,
         taskState,
         lastKnownBranchName,
-        Date.now() - taskCreatedAt
+        Date.now() - taskCreatedAt,
+        [],
+        message
       );
       logger.warn("Agent task completed with non-success terminal state", {
         jobId,
@@ -185,6 +197,16 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     const message = err instanceof Error ? err.message : "Unknown error";
     logger.error("Agent task job failed", { jobId, owner, repoName, error: message });
     await repo.updateAgentTaskJobStatus(jobId, "failed", message);
+    await sendTerminalTaskNotification(
+      owner,
+      repoName,
+      taskId,
+      "failed",
+      lastKnownBranchName,
+      Date.now() - taskCreatedAt,
+      [],
+      message
+    );
     throw err;
   }
 }
@@ -385,7 +407,8 @@ async function sendTerminalTaskNotification(
   status: string,
   branch: string | null,
   durationMs: number,
-  pullRequestActions: string[] = []
+  pullRequestActions: string[] = [],
+  details?: string
 ): Promise<void> {
   try {
     await sendAgentTaskFinishedSlackNotification({
@@ -396,6 +419,7 @@ async function sendTerminalTaskNotification(
       branch,
       durationMs,
       pullRequestActions,
+      details,
     });
   } catch (error) {
     logger.warn("Failed to send Slack notification for agent task", {

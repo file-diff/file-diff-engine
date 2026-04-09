@@ -462,7 +462,57 @@ describe("repoWorker", () => {
       },
     ]);
 
-    expect(sendAgentTaskFinishedSlackNotificationMock).not.toHaveBeenCalled();
+    expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
+      owner: "owner",
+      repoName: "repo",
+      taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      status: "timeout",
+      branch: null,
+      durationMs: 2,
+      pullRequestActions: [],
+      details: "Agent task monitoring timed out before reaching a terminal state.",
+    });
+    vi.useRealTimers();
+  });
+
+  it("should send a Slack notification when an agent task job fails unexpectedly", async () => {
+    process.env.AGENT_TASK_POLL_INTERVAL_MS = "0";
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+
+    repoMethods.updateAgentTaskJobStatus.mockResolvedValue(undefined);
+    fetchCopilotAuthorizationHeaderMock.mockRejectedValue(new Error("Copilot auth failed"));
+    sendAgentTaskFinishedSlackNotificationMock.mockResolvedValue(undefined);
+
+    const { createWorker } = await import("../workers/repoWorker");
+    const worker = (await createWorker({} as never)) as unknown as {
+      handler: (job: unknown) => Promise<void>;
+    };
+
+    await expect(
+      worker.handler({
+        id: "queue-job-7",
+        name: "create-agent-task",
+        timestamp: 9_000,
+        data: {
+          jobId: "task-job-6",
+          owner: "owner",
+          repoName: "repo",
+          taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        },
+      })
+    ).rejects.toThrow("Copilot auth failed");
+
+    expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
+      owner: "owner",
+      repoName: "repo",
+      taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      status: "failed",
+      branch: null,
+      durationMs: 1_000,
+      pullRequestActions: [],
+      details: "Copilot auth failed",
+    });
     vi.useRealTimers();
   });
 });
