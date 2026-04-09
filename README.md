@@ -12,7 +12,7 @@ API reference: [API.md](./API.md)
 - `COPILOT_GITHUB_TOKEN`: Required for GitHub Copilot task creation and lookup. Sent to `https://api.individual.githubcopilot.com/` as `Authorization: GitHub-Bearer <token>`.
 - `AGENT_TASK_POLL_INTERVAL_MS`: Polling delay for monitoring queued GitHub Copilot agent tasks after they are created. Defaults to `5000`.
 - `AGENT_TASK_MAX_POLL_DURATION_MS`: Maximum time to keep polling a GitHub Copilot agent task before marking the local job as failed. Defaults to `1800000` (30 minutes).
-- `SLACK_WEBHOOK_URL`: Optional incoming Slack webhook used to send agent-task completion notifications with the task status, link, duration, and branch name when available.
+- `SLACK_WEBHOOK_URL`: Optional incoming Slack webhook used to send agent-task completion notifications with the task status, link, duration, branch name, and any pull request actions taken when available.
 - `REVERT_TO_COMMIT_BEARER_TOKEN`: Required bearer token for `POST /api/jobs/revert-to-commit`. Clients must send `Authorization: Bearer <token>`.
 - `MERGE_BRANCH_BEARER_TOKEN`: Required bearer token for `POST /api/jobs/merge-branch`. Clients must send `Authorization: Bearer <token>`.
 - `GITHUB_OPERATIONS_BEARER_TOKEN`: Optional bearer token for `POST /api/jobs/delete-remote-branch`, `POST /api/jobs/pull-request/ready`, and `POST /api/jobs/pull-request/merge`. Falls back to `REVERT_TO_COMMIT_BEARER_TOKEN` when not set.

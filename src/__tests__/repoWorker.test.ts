@@ -228,6 +228,7 @@ describe("repoWorker", () => {
       status: "completed",
       branch: "copilot/fix-1",
       durationMs: 6_000,
+      pullRequestActions: [],
     });
     expect(findOpenPullRequestByHeadBranchMock).not.toHaveBeenCalled();
     expect(markPullRequestReadyMock).not.toHaveBeenCalled();
@@ -281,6 +282,15 @@ describe("repoWorker", () => {
     expect(markPullRequestReadyMock).toHaveBeenCalledWith("owner/repo", 123);
     expect(mergePullRequestMock).not.toHaveBeenCalled();
     expect(deleteRemoteBranchMock).not.toHaveBeenCalled();
+    expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
+      owner: "owner",
+      repoName: "repo",
+      taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      status: "completed",
+      branch: "copilot/fix-1",
+      durationMs: expect.any(Number),
+      pullRequestActions: ["Marked pull request #123 ready for review"],
+    });
     vi.useRealTimers();
   });
 
@@ -333,6 +343,15 @@ describe("repoWorker", () => {
       "owner/repo",
       "copilot/fix-1"
     );
+    expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
+      owner: "owner",
+      repoName: "repo",
+      taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      status: "completed",
+      branch: "copilot/fix-1",
+      durationMs: expect.any(Number),
+      pullRequestActions: ["Merged pull request #123"],
+    });
     expect(repoMethods.updateAgentTaskJobStatus).toHaveBeenLastCalledWith(
       "task-job-4",
       "completed"
@@ -383,6 +402,15 @@ describe("repoWorker", () => {
     expect(markPullRequestReadyMock).not.toHaveBeenCalled();
     expect(mergePullRequestMock).toHaveBeenCalledWith("owner/repo", 123);
     expect(deleteRemoteBranchMock).not.toHaveBeenCalled();
+    expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
+      owner: "owner",
+      repoName: "repo",
+      taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      status: "completed",
+      branch: "copilot/fix-1",
+      durationMs: expect.any(Number),
+      pullRequestActions: [],
+    });
     expect(repoMethods.updateAgentTaskJobStatus).toHaveBeenLastCalledWith(
       "task-job-5",
       "completed"

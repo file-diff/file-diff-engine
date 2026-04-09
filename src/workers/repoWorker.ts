@@ -141,7 +141,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       }
 
       if (taskState.toLowerCase() === "completed") {
-        await runPullRequestCompletionMode(
+        const pullRequestActions = await runPullRequestCompletionMode(
           `${owner}/${repoName}`,
           lastKnownBranchName,
           pullRequestCompletionMode
@@ -153,7 +153,8 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
           taskId,
           taskState,
           lastKnownBranchName,
-          Date.now() - taskCreatedAt
+          Date.now() - taskCreatedAt,
+          pullRequestActions
         );
         logger.info("Agent task completed", {
           jobId,
@@ -237,9 +238,9 @@ async function runPullRequestCompletionMode(
   repo: string,
   branchName: string | null,
   mode?: PullRequestCompletionMode
-): Promise<void> {
+): Promise<string[]> {
   if (!mode || mode === "None") {
-    return;
+    return [];
   }
 
   if (!branchName) {
@@ -259,8 +260,12 @@ async function runPullRequestCompletionMode(
     await githubApi.markPullRequestReady(repo, pullRequest.number);
   }
 
+  const actions = pullRequest.draft
+    ? [`Marked pull request #${pullRequest.number} ready for review`]
+    : [];
+
   if (mode !== "AutoMerge") {
-    return;
+    return actions;
   }
 
   try {
@@ -272,10 +277,12 @@ async function runPullRequestCompletionMode(
         pullNumber: pullRequest.number,
         message: mergeResult.message,
       });
-      return;
+      return actions;
     }
 
+    actions.push(`Merged pull request #${pullRequest.number}`);
     await deleteMergedBranch(repo, branchName, pullRequest.number);
+    return actions;
   } catch (error) {
     if (
       error instanceof githubApi.GitHubApiError &&
@@ -288,7 +295,7 @@ async function runPullRequestCompletionMode(
         statusCode: error.statusCode,
         error: error.message,
       });
-      return;
+      return actions;
     }
 
     throw error;
@@ -377,7 +384,8 @@ async function sendTerminalTaskNotification(
   taskId: string,
   status: string,
   branch: string | null,
-  durationMs: number
+  durationMs: number,
+  pullRequestActions: string[] = []
 ): Promise<void> {
   try {
     await sendAgentTaskFinishedSlackNotification({
@@ -387,6 +395,7 @@ async function sendTerminalTaskNotification(
       status,
       branch,
       durationMs,
+      pullRequestActions,
     });
   } catch (error) {
     logger.warn("Failed to send Slack notification for agent task", {
