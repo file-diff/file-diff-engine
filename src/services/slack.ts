@@ -9,6 +9,7 @@ export interface AgentTaskSlackNotification {
   status: string;
   branch: string | null;
   durationMs: number;
+  pullRequestActions?: string[];
 }
 
 export async function sendAgentTaskFinishedSlackNotification(
@@ -59,6 +60,13 @@ function buildAgentTaskFinishedSlackMessage(
 
   if (notification.branch) {
     lines.splice(3, 0, `Branch: ${notification.branch}`);
+  }
+
+  if (notification.pullRequestActions?.length) {
+    lines.push("Pull request actions:");
+    for (const action of notification.pullRequestActions) {
+      lines.push(`- ${action}`);
+    }
   }
 
   return lines.join("\n");
