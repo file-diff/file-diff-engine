@@ -48,6 +48,11 @@ interface GitHubRepositoryApiResponse {
   pushed_at?: string;
   created_at?: string;
   updated_at?: string;
+  permissions?: {
+    pull?: boolean;
+    push?: boolean;
+    admin?: boolean;
+  };
 }
 
 interface GitHubCommitPullRequestApiResponse {
@@ -353,6 +358,43 @@ export async function deleteRemoteBranch(
       token,
     }
   );
+}
+
+export interface BranchPermissionsSummary {
+  read: boolean;
+  write: boolean;
+}
+
+export async function getBranchPermissions(
+  repo: string,
+  branch: string,
+  token?: string
+): Promise<BranchPermissionsSummary> {
+  const [owner, repoName] = repo.split("/", 2);
+  const repository = await getJson<GitHubRepositoryApiResponse>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`,
+    {
+      notFoundMessage: `GitHub repository '${repo}' was not found.`,
+      token,
+    }
+  );
+  const encodedBranch = branch
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  await getJson<Record<string, unknown>>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/branches/${encodedBranch}`,
+    {
+      notFoundMessage: `Branch '${branch}' was not found in repository '${repo}'.`,
+      token,
+    }
+  );
+
+  return {
+    read: true,
+    write: repository.permissions?.push === true,
+  };
 }
 
 export interface BranchLastCommit {

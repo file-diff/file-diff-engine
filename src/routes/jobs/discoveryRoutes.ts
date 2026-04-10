@@ -5,6 +5,8 @@ import { Queue } from "bullmq";
 import { JobRepository } from "../../db/repository";
 import type {
   AgentTaskJobInfo,
+  CheckBranchPermissionsRequest,
+  CheckBranchPermissionsResponse,
   CommitGraphItem,
   ErrorResponse,
   ListBranchesRequest,
@@ -256,6 +258,80 @@ export function registerDiscoveryRoutes(
         message.includes("unsupported control characters")
           ? 400
           : 500;
+      return reply.code(statusCode).send(response);
+    }
+  });
+
+  /**
+   * POST /api/jobs/branch/permissions
+   * Body: { "repo": "owner/repo", "branch": "main" }
+   * Checks whether the configured GitHub token can read from and write to a branch.
+   */
+  app.post<{ Body: CheckBranchPermissionsRequest }>("/branch/permissions", async (request, reply) => {
+    const endpointBearerToken = getConfiguredBearerToken(GITHUB_OPERATIONS_BEARER_TOKEN_ENV)
+      ?? getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
+    if (!endpointBearerToken) {
+      const response: ErrorResponse = {
+        error: "GitHub operations bearer token is not configured.",
+      };
+      return reply.code(503).send(response);
+    }
+
+    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
+      const response: ErrorResponse = {
+        error: "Bearer token is required.",
+      };
+      return reply.code(401).send(response);
+    }
+
+    let { repo, branch, githubKey } = request.body ?? {};
+    if (!repo || !branch) {
+      const response: ErrorResponse = {
+        error: "Both 'repo' and 'branch' are required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+    branch = branch.trim();
+    githubKey = githubKey?.trim() || undefined;
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (!branch || branch.startsWith("-")) {
+      const response: ErrorResponse = {
+        error: "Field 'branch' must be a non-empty branch name and cannot start with '-'.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    const token =
+      githubKey ||
+      process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+      undefined;
+
+    try {
+      const permissions = await githubApi.getBranchPermissions(repo, branch, token);
+      const response: CheckBranchPermissionsResponse = {
+        repo,
+        branch,
+        read: permissions.read,
+        write: permissions.write,
+      };
+      return reply.code(200).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to check branch permissions.";
+      const response: ErrorResponse = { error: message };
+      const statusCode =
+        error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
       return reply.code(statusCode).send(response);
     }
   });

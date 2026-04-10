@@ -437,6 +437,24 @@ export interface DeleteRemoteBranchResponse {
   branch: string;
 }
 
+/** Payload sent when checking access for a selected branch. */
+export interface CheckBranchPermissionsRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Branch name to inspect */
+  branch: string;
+  /** Optional GitHub token */
+  githubKey?: string;
+}
+
+/** Response payload after checking branch read/write access. */
+export interface CheckBranchPermissionsResponse {
+  repo: string;
+  branch: string;
+  read: boolean;
+  write: boolean;
+}
+
 /** Payload sent when marking a pull request as ready for review. */
 export interface MarkPullRequestReadyRequest {
   /** GitHub repository in owner/repo format */

@@ -24,6 +24,7 @@ import type {
   JobFilesResponse,
   JobInfo,
   JobSummary,
+  CheckBranchPermissionsResponse,
   RevertToCommitResponse,
   ResolveCommitResponse,
   ResolvePullRequestResponse,
@@ -286,6 +287,83 @@ describe("Job Routes", () => {
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
       error: "Field 'commit' must be a full 40-character commit SHA.",
+    });
+  });
+
+  it("POST /api/jobs/branch/permissions - should check permissions with a caller PAT", async () => {
+    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+    process.env.PRIVATE_GITHUB_TOKEN = "private-token";
+    const getBranchPermissionsSpy = vi
+      .spyOn(githubApi, "getBranchPermissions")
+      .mockResolvedValue({
+        read: true,
+        write: false,
+      });
+
+    const res = await makeRequest(app, "POST", "/api/jobs/branch/permissions", {
+      repo: "https://github.com/facebook/react.git",
+      branch: " main ",
+      githubKey: " caller-token ",
+    }, {
+      authorization: "Bearer route-secret",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<CheckBranchPermissionsResponse>({
+      repo: "facebook/react",
+      branch: "main",
+      read: true,
+      write: false,
+    });
+    expect(getBranchPermissionsSpy).toHaveBeenCalledWith(
+      "facebook/react",
+      "main",
+      "caller-token"
+    );
+  });
+
+  it("POST /api/jobs/branch/permissions - should fall back to PRIVATE_GITHUB_TOKEN", async () => {
+    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+    process.env.PRIVATE_GITHUB_TOKEN = " private-token ";
+    const getBranchPermissionsSpy = vi
+      .spyOn(githubApi, "getBranchPermissions")
+      .mockResolvedValue({
+        read: true,
+        write: true,
+      });
+
+    const res = await makeRequest(app, "POST", "/api/jobs/branch/permissions", {
+      repo: "facebook/react",
+      branch: "feature/preview",
+    }, {
+      authorization: "Bearer route-secret",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<CheckBranchPermissionsResponse>({
+      repo: "facebook/react",
+      branch: "feature/preview",
+      read: true,
+      write: true,
+    });
+    expect(getBranchPermissionsSpy).toHaveBeenCalledWith(
+      "facebook/react",
+      "feature/preview",
+      "private-token"
+    );
+  });
+
+  it("POST /api/jobs/branch/permissions - should require a valid bearer token", async () => {
+    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+
+    const res = await makeRequest(app, "POST", "/api/jobs/branch/permissions", {
+      repo: "facebook/react",
+      branch: "main",
+    });
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      error: "Bearer token is required.",
     });
   });
 
