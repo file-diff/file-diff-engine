@@ -4,6 +4,7 @@ import type { FileRecord } from "../types";
 const processRepositoryMock = vi.fn();
 const workerConstructorMock = vi.fn();
 const fetchCopilotAuthorizationHeaderMock = vi.fn();
+const createTaskMock = vi.fn();
 const getTaskMock = vi.fn();
 const findOpenPullRequestByHeadBranchMock = vi.fn();
 const markPullRequestReadyMock = vi.fn();
@@ -16,7 +17,9 @@ const repoMethods = {
   insertFiles: vi.fn(),
   updateJobProgress: vi.fn(),
   updateFile: vi.fn(),
+  getAgentTaskJob: vi.fn(),
   updateAgentTaskJobStatus: vi.fn(),
+  attachAgentTaskToJob: vi.fn(),
   updateAgentTaskStatus: vi.fn(),
 };
 
@@ -32,6 +35,7 @@ vi.mock("../db/repository", () => ({
 
 vi.mock("../services/githubApi", () => ({
   fetchCopilotAuthorizationHeader: fetchCopilotAuthorizationHeaderMock,
+  createTask: createTaskMock,
   getTask: getTaskMock,
   findOpenPullRequestByHeadBranch: findOpenPullRequestByHeadBranchMock,
   markPullRequestReady: markPullRequestReadyMock,
@@ -67,20 +71,25 @@ describe("repoWorker", () => {
     vi.clearAllMocks();
     delete process.env.AGENT_TASK_POLL_INTERVAL_MS;
     delete process.env.AGENT_TASK_MAX_POLL_DURATION_MS;
+    process.env.PUBLIC_GITHUB_TOKEN = "test-token";
     processRepositoryMock.mockReset();
     repoMethods.updateJobStatus.mockReset();
     repoMethods.insertFiles.mockReset();
     repoMethods.updateJobProgress.mockReset();
     repoMethods.updateFile.mockReset();
+    repoMethods.getAgentTaskJob.mockReset();
     repoMethods.updateAgentTaskJobStatus.mockReset();
+    repoMethods.attachAgentTaskToJob.mockReset();
     repoMethods.updateAgentTaskStatus.mockReset();
     fetchCopilotAuthorizationHeaderMock.mockReset();
+    createTaskMock.mockReset();
     getTaskMock.mockReset();
     findOpenPullRequestByHeadBranchMock.mockReset();
     markPullRequestReadyMock.mockReset();
     mergePullRequestMock.mockReset();
     deleteRemoteBranchMock.mockReset();
     sendAgentTaskFinishedSlackNotificationMock.mockReset();
+    repoMethods.getAgentTaskJob.mockResolvedValue(undefined);
   });
 
   it("should insert discovered files before updating processed metadata", async () => {
@@ -166,11 +175,18 @@ describe("repoWorker", () => {
     repoMethods.updateAgentTaskJobStatus.mockImplementation(async (_jobId, status) => {
       order.push(`status:${status}`);
     });
+    repoMethods.attachAgentTaskToJob.mockImplementation(async (_jobId, createdTaskId, taskStatus) => {
+      order.push(`attach:${createdTaskId}:${taskStatus ?? "null"}`);
+    });
     repoMethods.updateAgentTaskStatus.mockImplementation(async (_jobId, taskStatus, branchName) => {
       order.push(`task-status:${taskStatus}:${branchName ?? "null"}`);
     });
     fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
     sendAgentTaskFinishedSlackNotificationMock.mockResolvedValue(undefined);
+    const createdTaskId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+    createTaskMock.mockResolvedValue({
+      id: createdTaskId,
+    });
     getTaskMock
       .mockImplementationOnce(async () => ({ state: "queued" }))
       .mockImplementationOnce(async () => {
@@ -197,34 +213,49 @@ describe("repoWorker", () => {
       id: "queue-job-2",
       name: "create-agent-task",
       timestamp: 1_000,
-      data: {
-        jobId: "task-job-1",
-        owner: "owner",
-        repoName: "repo",
-        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      },
-    });
+        data: {
+          jobId: "task-job-1",
+          owner: "owner",
+          repoName: "repo",
+          createTaskBody: {
+            event_content: "Fix the login button on the homepage",
+            problem_statement: "Investigate and fix the login button issue",
+            base_ref: "main",
+          },
+        },
+      });
 
     expect(order).toEqual([
       "status:active",
+      `attach:${createdTaskId}:queued`,
       "task-status:queued:null",
       "task-status:in_progress:copilot/fix-1",
       "task-status:completed:copilot/fix-1",
       "status:completed",
     ]);
     expect(fetchCopilotAuthorizationHeaderMock).toHaveBeenCalledTimes(1);
+    expect(createTaskMock).toHaveBeenCalledWith(
+      "owner",
+      "repo",
+      {
+        event_content: "Fix the login button on the homepage",
+        problem_statement: "Investigate and fix the login button issue",
+        base_ref: "main",
+      },
+      "GitHub-Bearer copilot-token"
+    );
     expect(getTaskMock).toHaveBeenCalledTimes(3);
     expect(getTaskMock).toHaveBeenNthCalledWith(
       1,
       "owner",
       "repo",
-      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      createdTaskId,
       "GitHub-Bearer copilot-token"
     );
     expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
       owner: "owner",
       repoName: "repo",
-      taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      taskId: createdTaskId,
       status: "completed",
       branch: "copilot/fix-1",
       durationMs: 6_000,
@@ -244,6 +275,9 @@ describe("repoWorker", () => {
     repoMethods.updateAgentTaskJobStatus.mockResolvedValue(undefined);
     repoMethods.updateAgentTaskStatus.mockResolvedValue(undefined);
     fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
+    createTaskMock.mockResolvedValue({
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    });
     getTaskMock.mockResolvedValue({
       state: "completed",
       sessions: [{ head_ref: "copilot/fix-1" }],
@@ -267,14 +301,18 @@ describe("repoWorker", () => {
     await worker.handler({
       id: "queue-job-4",
       name: "create-agent-task",
-      data: {
-        jobId: "task-job-3",
-        owner: "owner",
-        repoName: "repo",
-        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-        pullRequestCompletionMode: "AutoReady",
-      },
-    });
+        data: {
+          jobId: "task-job-3",
+          owner: "owner",
+          repoName: "repo",
+          createTaskBody: {
+            event_content: "Fix login button",
+            problem_statement: "Investigate",
+            base_ref: "main",
+          },
+          pullRequestCompletionMode: "AutoReady",
+        },
+      });
 
     expect(findOpenPullRequestByHeadBranchMock).toHaveBeenCalledWith(
       "owner/repo",
@@ -306,6 +344,9 @@ describe("repoWorker", () => {
     repoMethods.updateAgentTaskJobStatus.mockResolvedValue(undefined);
     repoMethods.updateAgentTaskStatus.mockResolvedValue(undefined);
     fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
+    createTaskMock.mockResolvedValue({
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    });
     getTaskMock.mockResolvedValue({
       state: "completed",
       sessions: [{ head_ref: "copilot/fix-1" }],
@@ -334,14 +375,18 @@ describe("repoWorker", () => {
     await worker.handler({
       id: "queue-job-5",
       name: "create-agent-task",
-      data: {
-        jobId: "task-job-4",
-        owner: "owner",
-        repoName: "repo",
-        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-        pullRequestCompletionMode: "AutoMerge",
-      },
-    });
+        data: {
+          jobId: "task-job-4",
+          owner: "owner",
+          repoName: "repo",
+          createTaskBody: {
+            event_content: "Fix login button",
+            problem_statement: "Investigate",
+            base_ref: "main",
+          },
+          pullRequestCompletionMode: "AutoMerge",
+        },
+      });
 
     expect(markPullRequestReadyMock).not.toHaveBeenCalled();
     expect(mergePullRequestMock).toHaveBeenCalledWith("owner/repo", 123, {
@@ -375,6 +420,9 @@ describe("repoWorker", () => {
     repoMethods.updateAgentTaskJobStatus.mockResolvedValue(undefined);
     repoMethods.updateAgentTaskStatus.mockResolvedValue(undefined);
     fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
+    createTaskMock.mockResolvedValue({
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    });
     getTaskMock.mockResolvedValue({
       state: "completed",
       sessions: [{ head_ref: "copilot/fix-1" }],
@@ -400,14 +448,18 @@ describe("repoWorker", () => {
     await worker.handler({
       id: "queue-job-6",
       name: "create-agent-task",
-      data: {
-        jobId: "task-job-5",
-        owner: "owner",
-        repoName: "repo",
-        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-        pullRequestCompletionMode: "AutoMerge",
-      },
-    });
+        data: {
+          jobId: "task-job-5",
+          owner: "owner",
+          repoName: "repo",
+          createTaskBody: {
+            event_content: "Fix login button",
+            problem_statement: "Investigate",
+            base_ref: "main",
+          },
+          pullRequestCompletionMode: "AutoMerge",
+        },
+      });
 
     expect(markPullRequestReadyMock).not.toHaveBeenCalled();
     expect(mergePullRequestMock).toHaveBeenCalledWith("owner/repo", 123, {
@@ -441,6 +493,9 @@ describe("repoWorker", () => {
       statusUpdates.push({ status, error });
     });
     fetchCopilotAuthorizationHeaderMock.mockResolvedValue("GitHub-Bearer copilot-token");
+    createTaskMock.mockResolvedValue({
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    });
     getTaskMock.mockImplementation(async () => {
       vi.setSystemTime(2);
       return { state: "in_progress" };
@@ -454,13 +509,17 @@ describe("repoWorker", () => {
     await worker.handler({
       id: "queue-job-3",
       name: "create-agent-task",
-      data: {
-        jobId: "task-job-2",
-        owner: "owner",
-        repoName: "repo",
-        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      },
-    });
+        data: {
+          jobId: "task-job-2",
+          owner: "owner",
+          repoName: "repo",
+          createTaskBody: {
+            event_content: "Fix login button",
+            problem_statement: "Investigate",
+            base_ref: "main",
+          },
+        },
+      });
 
     expect(repoMethods.updateAgentTaskStatus).toHaveBeenLastCalledWith(
       "task-job-2",
@@ -510,7 +569,11 @@ describe("repoWorker", () => {
           jobId: "task-job-6",
           owner: "owner",
           repoName: "repo",
-          taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          createTaskBody: {
+            event_content: "Fix login button",
+            problem_statement: "Investigate",
+            base_ref: "main",
+          },
         },
       })
     ).rejects.toThrow("Copilot auth failed");
@@ -518,7 +581,7 @@ describe("repoWorker", () => {
     expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
       owner: "owner",
       repoName: "repo",
-      taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      taskId: "task-job-6",
       status: "failed",
       branch: null,
       durationMs: 1_000,
@@ -526,5 +589,42 @@ describe("repoWorker", () => {
       details: "Copilot auth failed",
     });
     vi.useRealTimers();
+  });
+
+  it("should skip canceled delayed agent task jobs", async () => {
+    repoMethods.getAgentTaskJob.mockResolvedValue({
+      id: "task-job-canceled",
+      repo: "owner/repo",
+      status: "canceled",
+      branch: null,
+      taskDelayMs: 1_000,
+      scheduledAt: "2024-01-01T00:00:01.000Z",
+      createdAt: "2024-01-01T00:00:00.000Z",
+      updatedAt: "2024-01-01T00:00:00.000Z",
+    });
+
+    const { createWorker } = await import("../workers/repoWorker");
+    const worker = (await createWorker({} as never)) as unknown as {
+      handler: (job: unknown) => Promise<void>;
+    };
+
+    await worker.handler({
+      id: "queue-job-canceled",
+      name: "create-agent-task",
+      data: {
+        jobId: "task-job-canceled",
+        owner: "owner",
+        repoName: "repo",
+        createTaskBody: {
+          event_content: "Fix login button",
+          problem_statement: "Investigate",
+          base_ref: "main",
+        },
+      },
+    });
+
+    expect(createTaskMock).not.toHaveBeenCalled();
+    expect(fetchCopilotAuthorizationHeaderMock).not.toHaveBeenCalled();
+    expect(repoMethods.updateAgentTaskJobStatus).not.toHaveBeenCalled();
   });
 });

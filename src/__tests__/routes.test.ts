@@ -890,10 +890,6 @@ describe("Job Routes", () => {
 
   it("POST /api/jobs/create-task - should return only the task id", async () => {
     process.env.ADMIN_BEARER_TOKEN = "admin-secret";
-    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
-    const createTaskSpy = vi.spyOn(githubApi, "createTask").mockResolvedValue({
-      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    });
 
     const res = await makeRequest(
       app,
@@ -915,36 +911,38 @@ describe("Job Routes", () => {
 
     expect(res.status).toBe(201);
     expect(res.body).toEqual<CreateTaskResponse>({
-      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      id: expect.any(String),
     });
-    expect(createTaskSpy).toHaveBeenCalledWith(
-      "octocat",
-      "hello-world",
-      {
-        event_content: "Fix the login button on the homepage",
-        problem_statement: "Investigate and fix the login button issue",
-        model: "claude-sonnet-4.6",
-        create_pull_request: true,
-        base_ref: "main",
-      },
-      "GitHub-Bearer copilot-token"
-    );
-    expect(createTaskSpy.mock.calls[0]?.[2]).not.toHaveProperty(
-      "pull_request_completion_mode"
-    );
+    const jobId = (res.body as CreateTaskResponse).id;
     expect(mockQueue.add).toHaveBeenCalledWith(
       "create-agent-task",
       {
-        jobId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        jobId,
         owner: "octocat",
         repoName: "hello-world",
-        taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        createTaskBody: {
+          event_content: "Fix the login button on the homepage",
+          problem_statement: "Investigate and fix the login button issue",
+          model: "claude-sonnet-4.6",
+          create_pull_request: true,
+          base_ref: "main",
+        },
         pullRequestCompletionMode: "AutoMerge",
       },
       {
-        jobId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        jobId,
+        delay: 0,
       }
     );
+
+    const storedJob = await jobRepo.getAgentTaskJob(jobId);
+    expect(storedJob).toMatchObject({
+      id: jobId,
+      repo: "octocat/hello-world",
+      status: "waiting",
+      taskDelayMs: 0,
+      scheduledAt: null,
+    });
   });
 
   it.each(["Later", "automErge", ""])(
@@ -1003,38 +1001,80 @@ describe("Job Routes", () => {
     });
   });
 
-  it("POST /api/jobs/create-task - should surface GitHub task creation failures before queueing", async () => {
+  it("POST /api/jobs/create-task - should reject invalid task delay", async () => {
     process.env.ADMIN_BEARER_TOKEN = "admin-secret";
-    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
-    vi.spyOn(githubApi, "createTask").mockRejectedValue(
-      new githubApi.GitHubApiError(
-        "GitHub repository 'file-diff/file-diff-frontend' was not found.",
-        404
-      )
-    );
 
     const res = await makeRequest(
       app,
       "POST",
       "/api/jobs/create-task",
       {
-        repo: "file-diff/file-diff-frontend",
+        repo: "octocat/hello-world",
         event_content: "Fix the login button on the homepage",
         problem_statement: "Investigate repository lookup",
         base_ref: "main",
         model: "claude-sonnet-4.6",
         create_pull_request: true,
+        task_delay_ms: -1,
       },
       {
         authorization: "Bearer admin-secret",
       }
     );
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
     expect(res.body).toEqual({
-      error: "GitHub repository 'file-diff/file-diff-frontend' was not found.",
+      error: "Field 'task_delay_ms' must be a non-negative integer.",
     });
     expect(mockQueue.add).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/jobs/create-task - should schedule a delayed task job", async () => {
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-task",
+      {
+        repo: "octocat/hello-world",
+        event_content: "Fix the login button on the homepage",
+        problem_statement: "Investigate repository lookup",
+        base_ref: "main",
+        task_delay_ms: 60_000,
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(201);
+    const jobId = (res.body as CreateTaskResponse).id;
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      "create-agent-task",
+      {
+        jobId,
+        owner: "octocat",
+        repoName: "hello-world",
+        createTaskBody: {
+          event_content: "Fix the login button on the homepage",
+          problem_statement: "Investigate repository lookup",
+          base_ref: "main",
+        },
+      },
+      {
+        jobId,
+        delay: 60_000,
+      }
+    );
+
+    const storedJob = await jobRepo.getAgentTaskJob(jobId);
+    expect(storedJob).toMatchObject({
+      id: jobId,
+      status: "waiting",
+      taskDelayMs: 60_000,
+      scheduledAt: expect.any(String),
+    });
   });
 
   it("GET /api/jobs/create-task/:id - should return stored agent task job info", async () => {
@@ -1056,8 +1096,86 @@ describe("Job Routes", () => {
       branch: null,
       taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       taskStatus: "in_progress",
+      taskDelayMs: 0,
+      scheduledAt: null,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
+    });
+  });
+
+  it("GET /api/jobs/create-task/pending - should list pending delayed jobs", async () => {
+    await jobRepo.createAgentTaskJob(
+      "task-job-pending",
+      "octocat/hello-world",
+      undefined,
+      undefined,
+      undefined,
+      30_000,
+      new Date("2024-01-01T00:00:30Z")
+    );
+    await jobRepo.createAgentTaskJob("task-job-active", "octocat/hello-world", "remote-task-1", "queued");
+
+    const res = await makeRequest(app, "GET", "/api/jobs/create-task/pending");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([
+      {
+        id: "task-job-pending",
+        repo: "octocat/hello-world",
+        status: "waiting",
+        branch: null,
+        taskDelayMs: 30_000,
+        scheduledAt: "2024-01-01T00:00:30.000Z",
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+      },
+    ]);
+  });
+
+  it("POST /api/jobs/create-task/:id/cancel - should cancel a pending task job", async () => {
+    await jobRepo.createAgentTaskJob("task-job-cancel", "octocat/hello-world", undefined, undefined, undefined, 30_000);
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const queueWithGetJob = mockQueue as unknown as {
+      getJob: ReturnType<typeof vi.fn>;
+    };
+    queueWithGetJob.getJob.mockResolvedValue({ remove });
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-task/task-job-cancel/cancel",
+      undefined,
+      { authorization: "Bearer admin-secret" }
+    );
+
+    expect(res.status).toBe(200);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(res.body).toEqual({
+      id: "task-job-cancel",
+      repo: "octocat/hello-world",
+      status: "canceled",
+      branch: null,
+      taskDelayMs: 30_000,
+      scheduledAt: null,
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
+    });
+  });
+
+  it("POST /api/jobs/create-task/:id/cancel - should reject started task jobs", async () => {
+    await jobRepo.createAgentTaskJob("task-job-started", "octocat/hello-world", "remote-task-1", "queued");
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-task/task-job-started/cancel",
+      undefined,
+      { authorization: "Bearer admin-secret" }
+    );
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({
+      error: "Task job can only be canceled before it starts.",
     });
   });
 

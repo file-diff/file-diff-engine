@@ -46,6 +46,8 @@ describe("JobRepository", () => {
     expect(job!.branch).toBeNull();
     expect(job!.taskId).toBeUndefined();
     expect(job!.taskStatus).toBeUndefined();
+    expect(job!.taskDelayMs).toBe(0);
+    expect(job!.scheduledAt).toBeNull();
   });
 
   it("should update stored agent task job metadata", async () => {
@@ -67,6 +69,34 @@ describe("JobRepository", () => {
     expect(job!.taskStatus).toBe("completed");
     expect(job!.branch).toBe("copilot/fix-1");
     expect(job!.error).toBeUndefined();
+    expect(job!.taskDelayMs).toBe(0);
+    expect(job!.scheduledAt).toBeNull();
+  });
+
+  it("should list pending delayed agent task jobs", async () => {
+    await repo.createAgentTaskJob(
+      "task-job-3",
+      "owner/repo",
+      undefined,
+      undefined,
+      undefined,
+      60_000,
+      new Date("2024-01-01T00:01:00Z")
+    );
+    await repo.createAgentTaskJob("task-job-4", "owner/repo");
+    await repo.updateAgentTaskJobStatus("task-job-4", "canceled");
+    await repo.createAgentTaskJob("task-job-5", "owner/repo", "remote-task-5", "queued");
+
+    const jobs = await repo.listPendingAgentTaskJobs();
+
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      id: "task-job-3",
+      repo: "owner/repo",
+      status: "waiting",
+      taskDelayMs: 60_000,
+      scheduledAt: "2024-01-01T00:01:00.000Z",
+    });
   });
 
   it("should update job status", async () => {

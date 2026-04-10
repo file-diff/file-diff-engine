@@ -1,5 +1,6 @@
 import type { DatabaseClient } from "./database";
 import {
+  AgentTaskJobStatus,
   AgentTaskJobInfo,
   FileRecord,
   JobInfo,
@@ -51,7 +52,9 @@ export class JobRepository {
     repo: string,
     taskId?: string,
     taskStatus?: string,
-    branchName?: string | null
+    branchName?: string | null,
+    taskDelayMs = 0,
+    scheduledAt?: Date | string | null
   ): Promise<void> {
     await this.db.query(
       `INSERT INTO agent_task_jobs (
@@ -61,11 +64,21 @@ export class JobRepository {
          github_task_id,
          task_status,
          branch_name,
+         task_delay_ms,
+         scheduled_at,
          created_at,
          updated_at
-       )
-       VALUES ($1, $2, 'waiting', $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      [id, repo, taskId ?? null, taskStatus ?? null, branchName ?? null]
+        )
+       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [
+        id,
+        repo,
+        taskId ?? null,
+        taskStatus ?? null,
+        branchName ?? null,
+        taskDelayMs,
+        scheduledAt ?? null,
+      ]
     );
   }
 
@@ -82,10 +95,12 @@ export class JobRepository {
     return {
       id: row.id as string,
       repo: row.repo as string,
-      status: row.status as JobStatus,
+      status: row.status as AgentTaskJobStatus,
       branch: (row.branch_name as string | null) ?? null,
       taskId: (row.github_task_id as string | null) ?? undefined,
       taskStatus: (row.task_status as string | null) ?? undefined,
+      taskDelayMs: Number(row.task_delay_ms ?? 0),
+      scheduledAt: row.scheduled_at ? toIsoString(row.scheduled_at) : null,
       error: (row.error as string | null) ?? undefined,
       createdAt: toIsoString(row.created_at),
       updatedAt: toIsoString(row.updated_at),
@@ -94,7 +109,7 @@ export class JobRepository {
 
   async updateAgentTaskJobStatus(
     id: string,
-    status: JobStatus,
+    status: AgentTaskJobStatus,
     error?: string
   ): Promise<void> {
     await this.db.query(
@@ -135,6 +150,33 @@ export class JobRepository {
         WHERE id = $3`,
       [taskStatus, branchName ?? null, id]
     );
+  }
+
+  async listPendingAgentTaskJobs(): Promise<AgentTaskJobInfo[]> {
+    const result = await this.db.query(
+      `SELECT *
+       FROM agent_task_jobs
+       WHERE status = 'waiting'
+         AND github_task_id IS NULL
+       ORDER BY COALESCE(scheduled_at, created_at) ASC, created_at ASC`
+    );
+
+    return result.rows.map((row) => {
+      const record = row as Record<string, unknown>;
+      return {
+        id: record.id as string,
+        repo: record.repo as string,
+        status: record.status as AgentTaskJobStatus,
+        branch: (record.branch_name as string | null) ?? null,
+        taskId: (record.github_task_id as string | null) ?? undefined,
+        taskStatus: (record.task_status as string | null) ?? undefined,
+        taskDelayMs: Number(record.task_delay_ms ?? 0),
+        scheduledAt: record.scheduled_at ? toIsoString(record.scheduled_at) : null,
+        error: (record.error as string | null) ?? undefined,
+        createdAt: toIsoString(record.created_at),
+        updatedAt: toIsoString(record.updated_at),
+      };
+    });
   }
 
   async createJob(id: string, repo: string, commit: string): Promise<void> {

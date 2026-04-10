@@ -90,22 +90,30 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
 }
 
 async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> {
-  const { jobId, owner, repoName, taskId, pullRequestCompletionMode } = job.data as {
+  const { jobId, owner, repoName, taskId, createTaskBody, pullRequestCompletionMode } = job.data as {
     jobId: string;
     owner: string;
     repoName: string;
-    taskId: string;
+    taskId?: string;
+    createTaskBody?: Record<string, unknown>;
     pullRequestCompletionMode?: PullRequestCompletionMode;
   };
 
   const tag = `AgentTask ${jobId}:`;
-  logger.info(`${tag} Started monitoring task=${taskId} repo=${owner}/${repoName}`);
+  logger.info(`${tag} Started processing repo=${owner}/${repoName}`);
   const startedAt = Date.now();
   const taskCreatedAt = typeof job.timestamp === "number" ? job.timestamp : startedAt;
   let lastKnownBranchName: string | null = null;
   let pollCount = 0;
+  let githubTaskId = taskId;
 
   try {
+    const existingJob = await repo.getAgentTaskJob(jobId);
+    if (existingJob?.status === "canceled") {
+      logger.info(`${tag} Skipping canceled task job`);
+      return;
+    }
+
     await repo.updateAgentTaskJobStatus(jobId, "active");
     logger.info(`${tag} Job status set to active`);
 
@@ -113,12 +121,32 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       await githubApi.fetchCopilotAuthorizationHeader();
     logger.info(`${tag} Copilot authorization header obtained`);
 
+    if (!githubTaskId) {
+      if (!createTaskBody) {
+        throw new Error("Agent task job payload is missing createTaskBody.");
+      }
+
+      const createTaskResult = await githubApi.createTask(
+        owner,
+        repoName,
+        createTaskBody,
+        authorizationHeader
+      );
+      githubTaskId = createTaskResult.id;
+      await repo.attachAgentTaskToJob(jobId, githubTaskId, "queued");
+      logger.info(`${tag} Created remote task=${githubTaskId}`);
+    }
+
+    if (!githubTaskId) {
+      throw new Error("Agent task job did not produce a GitHub task id.");
+    }
+
     while (true) {
       pollCount += 1;
       const taskInfo = await githubApi.getTask(
         owner,
         repoName,
-        taskId,
+        githubTaskId,
         authorizationHeader
       );
       const taskState = getTaskState(taskInfo);
@@ -137,7 +165,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
           await sendTerminalTaskNotification(
             owner,
             repoName,
-            taskId,
+            githubTaskId,
             "timeout",
             lastKnownBranchName,
             Date.now() - taskCreatedAt,
@@ -176,7 +204,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
         await sendTerminalTaskNotification(
           owner,
           repoName,
-          taskId,
+          githubTaskId,
           taskState,
           lastKnownBranchName,
           Date.now() - taskCreatedAt,
@@ -191,7 +219,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       await sendTerminalTaskNotification(
         owner,
         repoName,
-        taskId,
+        githubTaskId,
         taskState,
         lastKnownBranchName,
         Date.now() - taskCreatedAt,
@@ -208,7 +236,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     await sendTerminalTaskNotification(
       owner,
       repoName,
-      taskId,
+      githubTaskId ?? jobId,
       "failed",
       lastKnownBranchName,
       Date.now() - taskCreatedAt,
