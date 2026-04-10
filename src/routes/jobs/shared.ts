@@ -145,7 +145,7 @@ export function authorizeViewerBearerToken(
   const adminBearerToken = getConfiguredBearerToken(ADMIN_BEARER_TOKEN_ENV);
   if (
     matchesBearerToken(authorizationHeader, viewerBearerToken) ||
-    (adminBearerToken !== null &&
+    (adminBearerToken &&
       matchesBearerToken(authorizationHeader, adminBearerToken))
   ) {
     return { ok: true };
