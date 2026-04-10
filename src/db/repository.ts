@@ -37,6 +37,10 @@ function buildLikePattern(value: string): string {
   return value + "%";
 }
 
+function toTaskDelayMs(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 export interface FileLookupRecord {
   jobId: string;
   fileName: string;
@@ -99,7 +103,7 @@ export class JobRepository {
       branch: (row.branch_name as string | null) ?? null,
       taskId: (row.github_task_id as string | null) ?? undefined,
       taskStatus: (row.task_status as string | null) ?? undefined,
-      taskDelayMs: Number(row.task_delay_ms ?? 0),
+      taskDelayMs: toTaskDelayMs(row.task_delay_ms),
       scheduledAt: row.scheduled_at ? toIsoString(row.scheduled_at) : null,
       error: (row.error as string | null) ?? undefined,
       createdAt: toIsoString(row.created_at),
@@ -170,7 +174,7 @@ export class JobRepository {
         branch: (record.branch_name as string | null) ?? null,
         taskId: (record.github_task_id as string | null) ?? undefined,
         taskStatus: (record.task_status as string | null) ?? undefined,
-        taskDelayMs: Number(record.task_delay_ms ?? 0),
+        taskDelayMs: toTaskDelayMs(record.task_delay_ms),
         scheduledAt: record.scheduled_at ? toIsoString(record.scheduled_at) : null,
         error: (record.error as string | null) ?? undefined,
         createdAt: toIsoString(record.created_at),
