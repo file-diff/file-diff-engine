@@ -86,6 +86,8 @@ async function initSchema(db: DatabaseClient): Promise<void> {
         github_task_id TEXT,
         task_status TEXT,
         branch_name TEXT,
+        task_delay_ms INTEGER NOT NULL DEFAULT 0,
+        scheduled_at TIMESTAMPTZ,
         error TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -103,6 +105,12 @@ async function initSchema(db: DatabaseClient): Promise<void> {
 
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS branch_name TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS task_delay_ms INTEGER NOT NULL DEFAULT 0;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
 
       UPDATE files
       SET file_disk_path = file_name

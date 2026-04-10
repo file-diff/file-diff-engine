@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { randomUUID } from "crypto";
 import type { FastifyInstance } from "fastify";
 import { Queue } from "bullmq";
 import { JobRepository } from "../../db/repository";
@@ -904,6 +905,7 @@ export function registerDiscoveryRoutes(
         create_pull_request,
         pull_request_completion_mode,
         base_ref,
+        task_delay_ms,
       } = request.body ?? {};
 
       if (!repo || !event_content || !base_ref || !problem_statement) {
@@ -946,7 +948,22 @@ export function registerDiscoveryRoutes(
         return reply.code(400).send(response);
       }
 
+      if (
+        task_delay_ms !== undefined &&
+        (!Number.isInteger(task_delay_ms) || task_delay_ms < 0)
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'task_delay_ms' must be a non-negative integer.",
+        };
+        return reply.code(400).send(response);
+      }
+
       const [owner, repoName] = repo.split("/", 2);
+      const taskDelayMs = task_delay_ms ?? 0;
+      const jobId = randomUUID();
+      const scheduledAt = taskDelayMs > 0
+        ? new Date(Date.now() + taskDelayMs)
+        : null;
 
       const body: Record<string, unknown> = { event_content };
       if (agent_id !== undefined) body.agent_id = agent_id;
@@ -957,36 +974,47 @@ export function registerDiscoveryRoutes(
       if (base_ref !== undefined) body.base_ref = base_ref;
 
       try {
-        logger.info(`AgentTask: Creating task for repo=${repo} model=${model ?? "default"} pr_mode=${pull_request_completion_mode ?? "None"}`);
-        const copilotAuthorizationHeader =
-          await githubApi.fetchCopilotAuthorizationHeader();
-        const result: CreateTaskResponse = await githubApi.createTask(
+        logger.info(`AgentTask: Scheduling task job=${jobId} repo=${repo} model=${model ?? "default"} pr_mode=${pull_request_completion_mode ?? "None"} delay_ms=${taskDelayMs}`);
+        await jobRepo.createAgentTaskJob(
+          jobId,
+          repo,
+          undefined,
+          undefined,
+          undefined,
+          taskDelayMs,
+          scheduledAt
+        );
+        await enqueueAgentTaskJob(
+          queue,
+          jobId,
           owner,
           repoName,
           body,
-          copilotAuthorizationHeader
-        );
-        const taskId = result.id;
-        await jobRepo.createAgentTaskJob(taskId, repo, taskId, "queued");
-        await enqueueAgentTaskJob(
-          queue,
-          taskId,
-          owner,
-          repoName,
-          taskId,
+          taskDelayMs,
           pull_request_completion_mode
         );
-        logger.info(`AgentTask ${taskId}: Created and enqueued for repo=${repo}`);
-        return reply.code(201).send(result);
+        logger.info(`AgentTask ${jobId}: Enqueued for repo=${repo}`);
+        return reply.code(201).send({ id: jobId } satisfies CreateTaskResponse);
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "Unable to create task.";
-        logger.warn(`AgentTask: Failed to create task for repo=${repo}: ${message}`);
+          error instanceof Error ? error.message : "Unable to schedule task.";
+        logger.warn(`AgentTask: Failed to schedule task for repo=${repo}: ${message}`);
         const response: ErrorResponse = { error: message };
-        const statusCode =
-          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
-        return reply.code(statusCode).send(response);
+        return reply.code(500).send(response);
       }
+    }
+  );
+
+  /**
+   * GET /api/jobs/create-task/pending
+   * Lists local agent task jobs that are queued locally and have not started the remote task yet.
+   */
+  app.get(
+    "/create-task/pending",
+    { preHandler: requireViewerBearerToken },
+    async (_request, reply) => {
+      const jobs = await jobRepo.listPendingAgentTaskJobs();
+      return reply.code(200).send(jobs);
     }
   );
 
@@ -1004,6 +1032,47 @@ export function registerDiscoveryRoutes(
       return reply.code(200).send(response);
     }
   );
+
+  app.post<{ Params: { id: string } }>(
+    "/create-task/:id/cancel",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
+      const job = await jobRepo.getAgentTaskJob(request.params.id);
+      if (!job) {
+        const response: ErrorResponse = { error: "Task job not found." };
+        return reply.code(404).send(response);
+      }
+
+      if (job.status !== "waiting") {
+        const response: ErrorResponse = {
+          error: "Task job is no longer waiting and cannot be canceled.",
+        };
+        return reply.code(409).send(response);
+      }
+
+      if (job.taskId) {
+        const response: ErrorResponse = {
+          error: "Task job has already created a remote task and cannot be canceled.",
+        };
+        return reply.code(409).send(response);
+      }
+
+      const queuedJob = await queue.getJob(request.params.id);
+      if (!queuedJob) {
+        const response: ErrorResponse = {
+          error: "Task job can only be canceled before it starts.",
+        };
+        return reply.code(409).send(response);
+      }
+
+      await queuedJob.remove();
+      await jobRepo.updateAgentTaskJobStatus(request.params.id, "canceled");
+
+      const updatedJob = await jobRepo.getAgentTaskJob(request.params.id);
+      const response: AgentTaskJobInfo = updatedJob!;
+      return reply.code(200).send(response);
+    }
+  );
 }
 
 async function enqueueAgentTaskJob(
@@ -1011,7 +1080,8 @@ async function enqueueAgentTaskJob(
   jobId: string,
   owner: string,
   repoName: string,
-  taskId: string,
+  createTaskBody: Record<string, unknown>,
+  delayMs = 0,
   pullRequestCompletionMode?: PullRequestCompletionMode
 ): Promise<void> {
   await queue.add(
@@ -1020,11 +1090,12 @@ async function enqueueAgentTaskJob(
       jobId,
       owner,
       repoName,
-      taskId,
+      createTaskBody,
       pullRequestCompletionMode,
     },
     {
       jobId,
+      delay: delayMs,
     }
   );
 }
@@ -1096,6 +1167,10 @@ function summarizeCreateTaskPayload(body: CreateTaskRequest | undefined): Record
 
   if (typeof body?.base_ref === "string") {
     summary.baseRef = body.base_ref;
+  }
+
+  if (typeof body?.task_delay_ms === "number") {
+    summary.taskDelayMs = body.task_delay_ms;
   }
 
   return summary;

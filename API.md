@@ -544,7 +544,7 @@ curl -X POST https://your-host.example.com/api/jobs/pull-request/open \
 
 ### `POST /api/jobs/create-task`
 
-Creates a GitHub Copilot coding agent task for a repository immediately. If task creation succeeds, the service then records a local monitoring job and enqueues background polling for that task.
+Creates a local GitHub Copilot agent-task job for a repository and enqueues background processing. By default the remote GitHub task is started as soon as the worker picks up the job. When `task_delay_ms` is provided, remote task creation is deferred until the delay expires.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -561,6 +561,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | `create_pull_request` | `boolean` | No | Whether to create a PR. |
 | `pull_request_completion_mode` | `string` | No | Follow-up PR action after a successful run: `None`, `AutoReady`, or `AutoMerge`. `AutoReady` and `AutoMerge` require `create_pull_request: true`. |
 | `base_ref` | `string` | Yes | Base ref for new branch/PR. |
+| `task_delay_ms` | `integer` | No | Optional non-negative delay in milliseconds before the remote GitHub task is created. |
 
 #### Success response
 
@@ -568,15 +569,13 @@ Status: `201 Created`
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `id` | `string` | Created GitHub Copilot task ID. The same ID is also used for the local monitoring job. |
+| `id` | `string` | Created local agent-task job ID. Use this value to query status, list pending jobs, or cancel the job before it starts. |
 
 #### Common statuses
 
 - `400 Bad Request` when any required field is missing or invalid
 - `401 Unauthorized` when the bearer token is missing or invalid
-- `404 Not Found` when the repository is not found
-- `503 Service Unavailable` when the create-task bearer token or Copilot GitHub token is not configured
-- `500 Internal Server Error` when the task cannot be created or the monitoring job cannot be recorded or queued
+- `500 Internal Server Error` when the local job cannot be recorded or queued
 
 #### Example
 
@@ -591,9 +590,22 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
     "base_ref": "main",
     "model": "claude-sonnet-4.6",
     "create_pull_request": true,
-    "pull_request_completion_mode": "AutoMerge"
+    "pull_request_completion_mode": "AutoMerge",
+    "task_delay_ms": 60000
   }'
 ```
+
+---
+
+### `GET /api/jobs/create-task/pending`
+
+Lists local agent-task jobs that are still waiting to start and have not yet created a remote GitHub task.
+
+#### Success response
+
+Status: `200 OK`
+
+Returns an array of the same objects documented for `GET /api/jobs/create-task/:id`.
 
 ---
 
@@ -607,12 +619,14 @@ Status: `200 OK`
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `id` | `string` | GitHub Copilot task id and local monitoring job id |
+| `id` | `string` | Local agent-task job id |
 | `repo` | `string` | Repository in `owner/repo` format |
-| `status` | `string` | Local job status (`waiting`, `active`, `completed`, `failed`) |
+| `status` | `string` | Local job status (`waiting`, `active`, `completed`, `failed`, `canceled`) |
 | `branch` | `string \| null` | Created branch name once known, otherwise `null` |
 | `taskId` | `string` | Created GitHub Copilot task id when available |
 | `taskStatus` | `string` | Last observed GitHub task state when available |
+| `taskDelayMs` | `integer` | Configured startup delay in milliseconds |
+| `scheduledAt` | `string \| null` | Scheduled start time for delayed jobs, otherwise `null` |
 | `error` | `string` | Error message when the job fails |
 | `createdAt` | `string` | Job creation timestamp |
 | `updatedAt` | `string` | Last update timestamp |
@@ -620,6 +634,25 @@ Status: `200 OK`
 #### Common statuses
 
 - `404 Not Found` when the task job id is unknown
+
+---
+
+### `POST /api/jobs/create-task/:id/cancel`
+
+Cancels a local agent-task job before it starts. This only succeeds while the job is still waiting and has not yet created the remote GitHub task.
+
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Success response
+
+Status: `200 OK`
+
+Returns the updated job payload documented for `GET /api/jobs/create-task/:id`, with `status` set to `canceled`.
+
+#### Common statuses
+
+- `404 Not Found` when the task job id is unknown
+- `409 Conflict` when the task job has already started and can no longer be canceled
 
 ---
 

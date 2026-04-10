@@ -103,6 +103,9 @@ export interface ErrorResponse {
 /** Status of a processing job. */
 export type JobStatus = "waiting" | "active" | "completed" | "failed";
 
+/** Status of a locally tracked GitHub agent task job. */
+export type AgentTaskJobStatus = JobStatus | "canceled";
+
 /** Minimal job payload returned after creating or reusing a job. */
 export interface JobSummary {
   id: string;
@@ -371,6 +374,8 @@ export interface CreateTaskRequest {
   pull_request_completion_mode?: PullRequestCompletionMode;
   /** Base ref for new branch/PR */
   base_ref?: string;
+  /** Optional delay in milliseconds before starting the remote task */
+  task_delay_ms?: number;
 }
 
 /** Response payload after creating a GitHub Copilot coding agent task. */
@@ -383,10 +388,12 @@ export interface CreateTaskResponse {
 export interface AgentTaskJobSummary {
   id: string;
   repo: string;
-  status: JobStatus;
+  status: AgentTaskJobStatus;
   branch: string | null;
   taskId?: string;
   taskStatus?: string;
+  taskDelayMs: number;
+  scheduledAt: string | null;
 }
 
 /** Response payload when querying a queued or monitored agent task job. */
