@@ -1005,6 +1005,10 @@ export function registerDiscoveryRoutes(
     }
   );
 
+  /**
+   * GET /api/jobs/create-task/pending
+   * Lists local agent task jobs that are queued locally and have not started the remote task yet.
+   */
   app.get(
     "/create-task/pending",
     { preHandler: requireViewerBearerToken },
