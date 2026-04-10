@@ -34,7 +34,7 @@ describe("slack", () => {
       durationMs: 61_000,
       pullRequestActions: [
         "Marked pull request #123 ready for review",
-        "Merged pull request #123",
+        "Merged pull request #123, target branch: main",
       ],
     });
 
@@ -54,7 +54,7 @@ describe("slack", () => {
             "Task: https://github.com/owner/repo/tasks/task-123",
             "Pull request actions:",
             "- Marked pull request #123 ready for review",
-            "- Merged pull request #123",
+            "- Merged pull request #123, target branch: main",
           ].join("\n"),
         }),
       })
