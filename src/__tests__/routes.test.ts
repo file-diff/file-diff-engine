@@ -108,7 +108,6 @@ describe("Job Routes", () => {
   const originalAdminBearerToken = process.env.ADMIN_BEARER_TOKEN;
   const originalViewerBearerToken = process.env.VIEWER_BEARER_TOKEN;
   const originalPrivateGitHubToken = process.env.PRIVATE_GITHUB_TOKEN;
-  const originalCopilotGitHubToken = process.env.COPILOT_GITHUB_TOKEN;
 
   beforeEach(async () => {
     tempDirs = [];
@@ -160,11 +159,6 @@ describe("Job Routes", () => {
       delete process.env.PRIVATE_GITHUB_TOKEN;
     } else {
       process.env.PRIVATE_GITHUB_TOKEN = originalPrivateGitHubToken;
-    }
-    if (originalCopilotGitHubToken === undefined) {
-      delete process.env.COPILOT_GITHUB_TOKEN;
-    } else {
-      process.env.COPILOT_GITHUB_TOKEN = originalCopilotGitHubToken;
     }
     for (const tempDir of tempDirs) {
       fs.rmSync(tempDir, { recursive: true, force: true });
