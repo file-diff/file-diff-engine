@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { Queue } from "bullmq";
 import { JobRepository } from "../../db/repository";
 import type {
@@ -43,12 +43,12 @@ import * as githubApi from "../../services/githubApi";
 import * as repoProcessor from "../../services/repoProcessor";
 import { getCommitShort } from "../../utils/commit";
 import {
-  authorizeAdminBearerToken,
-  authorizeViewerBearerToken,
   isValidOrganization,
   isValidRepo,
-  logger,
+   logger,
   normalizeRepo,
+  requireAdminBearerToken,
+  requireViewerBearerToken,
 } from "./shared";
 
 const CREATE_TASK_ROUTE_RATE_LIMIT_MAX = 60;
@@ -58,26 +58,6 @@ const PULL_REQUEST_COMPLETION_MODES: readonly PullRequestCompletionMode[] = [
   "AutoReady",
   "AutoMerge",
 ];
-
-async function requireAdminBearerToken(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
-  const authorization = authorizeAdminBearerToken(request.headers.authorization);
-  if (!authorization.ok) {
-    await reply.code(authorization.statusCode).send(authorization.response);
-  }
-}
-
-async function requireViewerBearerToken(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
-  const authorization = authorizeViewerBearerToken(request.headers.authorization);
-  if (!authorization.ok) {
-    await reply.code(authorization.statusCode).send(authorization.response);
-  }
-}
 
 export function registerDiscoveryRoutes(
   app: FastifyInstance,

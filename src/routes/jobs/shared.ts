@@ -1,5 +1,6 @@
 import path from "path";
 import { timingSafeEqual } from "crypto";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { Queue } from "bullmq";
 import { JobRepository } from "../../db/repository";
 import type { ErrorResponse } from "../../types";
@@ -158,3 +159,25 @@ export function authorizeViewerBearerToken(
     },
   };
 }
+
+function createBearerAuthorizationPreHandler(
+  authorize: (
+    authorizationHeader: string | string[] | undefined
+  ) => BearerAuthorizationResult
+) {
+  return async function requireBearerAuthorization(
+    request: FastifyRequest,
+    reply: FastifyReply
+  ): Promise<void> {
+    const authorization = authorize(request.headers.authorization);
+    if (!authorization.ok) {
+      await reply.code(authorization.statusCode).send(authorization.response);
+    }
+  };
+}
+
+export const requireAdminBearerToken =
+  createBearerAuthorizationPreHandler(authorizeAdminBearerToken);
+
+export const requireViewerBearerToken =
+  createBearerAuthorizationPreHandler(authorizeViewerBearerToken);

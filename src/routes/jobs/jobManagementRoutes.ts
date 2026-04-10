@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { Queue } from "bullmq";
 import { JobRepository, AmbiguousHashError } from "../../db/repository";
 import type {
@@ -9,21 +9,11 @@ import type {
 } from "../../types";
 import { getCommitShort } from "../../utils/commit";
 import {
-  authorizeViewerBearerToken,
   isValidRepo,
   normalizeRepo,
   POSTGRES_UNIQUE_VIOLATION,
+  requireViewerBearerToken,
 } from "./shared";
-
-async function requireViewerBearerToken(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
-  const authorization = authorizeViewerBearerToken(request.headers.authorization);
-  if (!authorization.ok) {
-    await reply.code(authorization.statusCode).send(authorization.response);
-  }
-}
 
 export function registerJobManagementRoutes(
   app: FastifyInstance,

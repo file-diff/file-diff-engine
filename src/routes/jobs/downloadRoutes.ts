@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import * as childProcess from "child_process";
 import { pipeline } from "stream/promises";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   bundledLanguagesInfo,
   bundledThemesInfo,
@@ -16,10 +16,10 @@ import type { ErrorResponse } from "../../types";
 import {
   DEFAULT_DOWNLOAD_RATE_LIMIT_MAX,
   DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS,
-  authorizeViewerBearerToken,
   getDownloadFilename,
   logger,
   parsePositiveInteger,
+  requireViewerBearerToken,
   resolveJobFilePath,
 } from "./shared";
 
@@ -55,16 +55,6 @@ const AUTO_SHIKI_LANGUAGE = "auto";
 const DEFAULT_SHIKI_THEME = "github-dark";
 const shikiLanguagesByAlias = new Map<string, BundledLanguage>();
 const shikiThemesByAlias = new Map<string, BundledTheme>();
-
-async function requireViewerBearerToken(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
-  const authorization = authorizeViewerBearerToken(request.headers.authorization);
-  if (!authorization.ok) {
-    await reply.code(authorization.statusCode).send(authorization.response);
-  }
-}
 
 for (const language of bundledLanguagesInfo) {
   const languageId = language.id as BundledLanguage;

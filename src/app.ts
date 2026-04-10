@@ -1,7 +1,7 @@
 import fs from "fs";
 import readline from "readline";
 import rateLimit from "@fastify/rate-limit";
-import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import { Queue } from "bullmq";
 import { zstdCompressSync } from "node:zlib";
 import {
@@ -27,7 +27,7 @@ import type {
 import { serializeJobFilesResponse } from "./utils/binarySerializer";
 import { createLogger } from "./utils/logger";
 import {
-  authorizeViewerBearerToken,
+  requireViewerBearerToken,
   resolveJobFilePath,
 } from "./routes/jobs/shared";
 
@@ -141,16 +141,6 @@ function getRequestDelayMs(): number {
   }
 
   return parsedDelay;
-}
-
-async function requireViewerBearerToken(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
-  const authorization = authorizeViewerBearerToken(request.headers.authorization);
-  if (!authorization.ok) {
-    await reply.code(authorization.statusCode).send(authorization.response);
-  }
 }
 
 export async function createApp(
