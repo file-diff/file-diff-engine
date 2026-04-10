@@ -317,7 +317,11 @@ async function runPullRequestCompletionMode(
     }
 
     logger.info(`${prefix} PR #${pullRequest.number} merged successfully`);
-    actions.push(`Merged pull request #${pullRequest.number}`);
+    actions.push(
+      pullRequest.baseBranch
+        ? `Merged pull request #${pullRequest.number}, target branch: ${pullRequest.baseBranch}`
+        : `Merged pull request #${pullRequest.number}`
+    );
     await deleteMergedBranch(repo, branchName, pullRequest.number, token, prefix);
     return actions;
   } catch (error) {

@@ -254,6 +254,7 @@ describe("repoWorker", () => {
       url: "https://github.com/owner/repo/pull/123",
       state: "open",
       draft: true,
+      baseBranch: "main",
     });
     markPullRequestReadyMock.mockResolvedValue(undefined);
     sendAgentTaskFinishedSlackNotificationMock.mockResolvedValue(undefined);
@@ -279,7 +280,11 @@ describe("repoWorker", () => {
       "owner/repo",
       "copilot/fix-1"
     );
-    expect(markPullRequestReadyMock).toHaveBeenCalledWith("owner/repo", 123);
+    expect(markPullRequestReadyMock).toHaveBeenCalledWith(
+      "owner/repo",
+      123,
+      "test-token"
+    );
     expect(mergePullRequestMock).not.toHaveBeenCalled();
     expect(deleteRemoteBranchMock).not.toHaveBeenCalled();
     expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
@@ -311,6 +316,7 @@ describe("repoWorker", () => {
       url: "https://github.com/owner/repo/pull/123",
       state: "open",
       draft: false,
+      baseBranch: "main",
     });
     mergePullRequestMock.mockResolvedValue({
       merged: true,
@@ -338,10 +344,13 @@ describe("repoWorker", () => {
     });
 
     expect(markPullRequestReadyMock).not.toHaveBeenCalled();
-    expect(mergePullRequestMock).toHaveBeenCalledWith("owner/repo", 123);
+    expect(mergePullRequestMock).toHaveBeenCalledWith("owner/repo", 123, {
+      token: "test-token",
+    });
     expect(deleteRemoteBranchMock).toHaveBeenCalledWith(
       "owner/repo",
-      "copilot/fix-1"
+      "copilot/fix-1",
+      "test-token"
     );
     expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
       owner: "owner",
@@ -350,7 +359,7 @@ describe("repoWorker", () => {
       status: "completed",
       branch: "copilot/fix-1",
       durationMs: expect.any(Number),
-      pullRequestActions: ["Merged pull request #123"],
+      pullRequestActions: ["Merged pull request #123, target branch: main"],
     });
     expect(repoMethods.updateAgentTaskJobStatus).toHaveBeenLastCalledWith(
       "task-job-4",
@@ -376,6 +385,7 @@ describe("repoWorker", () => {
       url: "https://github.com/owner/repo/pull/123",
       state: "open",
       draft: false,
+      baseBranch: "main",
     });
     sendAgentTaskFinishedSlackNotificationMock.mockResolvedValue(undefined);
 
@@ -400,7 +410,9 @@ describe("repoWorker", () => {
     });
 
     expect(markPullRequestReadyMock).not.toHaveBeenCalled();
-    expect(mergePullRequestMock).toHaveBeenCalledWith("owner/repo", 123);
+    expect(mergePullRequestMock).toHaveBeenCalledWith("owner/repo", 123, {
+      token: "test-token",
+    });
     expect(deleteRemoteBranchMock).not.toHaveBeenCalled();
     expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
       owner: "owner",

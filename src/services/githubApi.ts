@@ -56,6 +56,9 @@ interface GitHubCommitPullRequestApiResponse {
   html_url?: string;
   state?: string;
   draft?: boolean;
+  base?: {
+    ref?: string;
+  };
 }
 
 interface GitHubCreatePullRequestApiRequest {
@@ -466,6 +469,7 @@ export interface MergePullRequestResult {
 
 export interface BranchPullRequestSummary extends CommitPullRequestSummary {
   draft: boolean;
+  baseBranch: string;
 }
 
 export async function findOpenPullRequestByHeadBranch(
@@ -491,6 +495,7 @@ export async function findOpenPullRequestByHeadBranch(
     url: pullRequest.html_url.trim(),
     state: "open",
     draft: pullRequest.draft === true,
+    baseBranch: pullRequest.base?.ref?.trim() || "",
   };
 }
 
