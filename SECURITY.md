@@ -52,16 +52,16 @@ This document lists every HTTP endpoint currently implemented by the service and
 | POST | `/api/agents/repos/:owner/:repo/tasks/:task_id/archive` | Bearer required | `CREATE_TASK_BEARER_TOKEN` |
 | GET | `/api/api/agents/tasks` | Bearer required | `CREATE_TASK_BEARER_TOKEN` |
 
-`/api/api/agents/tasks` is included because that is the route path currently registered in code.
+`/api/api/agents/tasks` is included exactly as implemented today because the route is currently registered with a double `/api` prefix in code.
 
 ## Source of truth
 
 This list was verified against the currently implemented routes in:
 
-- `/home/runner/work/file-diff-engine/file-diff-engine/src/app.ts`
-- `/home/runner/work/file-diff-engine/file-diff-engine/src/routes/jobs/discoveryRoutes.ts`
-- `/home/runner/work/file-diff-engine/file-diff-engine/src/routes/jobs/jobManagementRoutes.ts`
-- `/home/runner/work/file-diff-engine/file-diff-engine/src/routes/jobs/downloadRoutes.ts`
-- `/home/runner/work/file-diff-engine/file-diff-engine/src/routes/taskRoutes.ts`
+- `src/app.ts`
+- `src/routes/jobs/discoveryRoutes.ts`
+- `src/routes/jobs/jobManagementRoutes.ts`
+- `src/routes/jobs/downloadRoutes.ts`
+- `src/routes/taskRoutes.ts`
 
 It is implementation-based and therefore includes endpoints that are not yet listed in `API.md`.
