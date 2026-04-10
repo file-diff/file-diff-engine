@@ -163,6 +163,7 @@ export async function createApp(
     logger.info("Request delay hook is not enabled.");
   }
 
+  await app.register(rateLimit, { global: false });
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
   await app.register(registerTaskRoutes, { prefix: "/api" });
 
@@ -324,17 +325,22 @@ export async function createApp(
     const response: VersionResponse = { version: buildVersion };
     return response;
   });
-  await app.register(async (statsApp) => {
-    await statsApp.register(rateLimit, {
-      max: DEFAULT_STATS_RATE_LIMIT_MAX,
-      timeWindow: DEFAULT_STATS_RATE_LIMIT_WINDOW_MS,
-    });
-
-    statsApp.get("/api/stats", { preHandler: requireViewerBearerToken }, async () => {
+  app.get(
+    "/api/stats",
+    {
+      preHandler: [
+        requireViewerBearerToken,
+        app.rateLimit({
+          max: DEFAULT_STATS_RATE_LIMIT_MAX,
+          timeWindow: DEFAULT_STATS_RATE_LIMIT_WINDOW_MS,
+        }),
+      ],
+    },
+    async () => {
       const response: StatsResponse = await jobRepo.getStats();
       return response;
-    });
-  });
+    }
+  );
 
   return { app, queue, db, jobRepo };
 }
