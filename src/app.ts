@@ -1,7 +1,7 @@
 import fs from "fs";
 import readline from "readline";
 import rateLimit from "@fastify/rate-limit";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { Queue } from "bullmq";
 import { zstdCompressSync } from "node:zlib";
 import {
@@ -26,7 +26,10 @@ import type {
 } from "./types";
 import { serializeJobFilesResponse } from "./utils/binarySerializer";
 import { createLogger } from "./utils/logger";
-import { resolveJobFilePath } from "./routes/jobs/shared";
+import {
+  authorizeViewerBearerToken,
+  resolveJobFilePath,
+} from "./routes/jobs/shared";
 
 export interface AppDependencies {
   queue: Queue;
@@ -140,6 +143,16 @@ function getRequestDelayMs(): number {
   return parsedDelay;
 }
 
+async function requireViewerBearerToken(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  const authorization = authorizeViewerBearerToken(request.headers.authorization);
+  if (!authorization.ok) {
+    await reply.code(authorization.statusCode).send(authorization.response);
+  }
+}
+
 export async function createApp(
   deps?: Partial<AppDependencies>
 ): Promise<AppContext> {
@@ -166,7 +179,10 @@ export async function createApp(
   app.get<{
     Params: { id: string };
     Querystring: { format?: string };
-  }>("/api/commit/:id/files", async (request, reply) => {
+  }>(
+    "/api/commit/:id/files",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     const { id } = request.params;
     const format = (request.query?.format || "json").toLowerCase();
     const allowed = new Set(["json", "binary"]);
@@ -235,12 +251,16 @@ export async function createApp(
     }
 
     return reply.send(responsePayload.payload);
-  });
+    }
+  );
 
   app.get<{
     Params: { id: string };
     Querystring: { query?: string };
-  }>("/api/commit/:id/grep", async (request, reply) => {
+  }>(
+    "/api/commit/:id/grep",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     const { id } = request.params;
     const query = request.query?.query?.trim();
 
@@ -282,9 +302,10 @@ export async function createApp(
       };
       return reply.code(500).send(response);
     }
-  });
+    }
+  );
 
-  app.get("/api/health", async () => {
+  app.get("/api/health", { preHandler: requireViewerBearerToken }, async () => {
     const githubConfigured = Boolean(process.env.PUBLIC_GITHUB_TOKEN?.trim());
     let github: HealthResponse["github"];
 
@@ -309,7 +330,7 @@ export async function createApp(
     };
     return response;
   });
-  app.get("/api/version", async () => {
+  app.get("/api/version", { preHandler: requireViewerBearerToken }, async () => {
     const response: VersionResponse = { version: buildVersion };
     return response;
   });
@@ -319,7 +340,7 @@ export async function createApp(
       timeWindow: DEFAULT_STATS_RATE_LIMIT_WINDOW_MS,
     });
 
-    statsApp.get("/api/stats", async () => {
+    statsApp.get("/api/stats", { preHandler: requireViewerBearerToken }, async () => {
       const response: StatsResponse = await jobRepo.getStats();
       return response;
     });

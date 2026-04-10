@@ -18,6 +18,7 @@ Most routes are served under the `/api` prefix.
 - Repository names use the `owner/repo` format, for example `facebook/react`.
 - Commit hashes are full 40-character hexadecimal Git SHAs unless noted otherwise.
 - Download responses return binary file content instead of JSON.
+- Viewer endpoints require `Authorization: Bearer <token>` with `VIEWER_BEARER_TOKEN`. Admin endpoints require `ADMIN_BEARER_TOKEN`. The current endpoint-to-token mapping is documented in `SECURITY.md`.
 - Set `REQUEST_DELAY_MS` to add a fixed delay before every endpoint response. The default is `0` (no delay); for example, `REQUEST_DELAY_MS=500` simulates 500ms latency in development.
 
 ## Response field reference
@@ -224,7 +225,7 @@ Example response:
 
 Creates a new branch from a base branch, rewrites the branch tree to match a past commit, pushes that branch, and optionally creates a pull request when `githubKey` is provided.
 
-This endpoint requires the server to be configured with `REVERT_TO_COMMIT_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
 #### Request arguments
 
@@ -277,7 +278,7 @@ curl -X POST https://your-host.example.com/api/jobs/revert-to-commit \
 
 Creates a deterministic branch from a base branch, merges another branch into it, pushes that branch, and optionally creates a pull request when `githubKey` is provided. If the merge branch already exists, the other branch is merged into it instead of creating a new one.
 
-This endpoint requires the server to be configured with `MERGE_BRANCH_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
 #### Request arguments
 
@@ -330,7 +331,7 @@ curl -X POST https://your-host.example.com/api/jobs/merge-branch \
 
 Deletes a remote branch from a GitHub repository.
 
-This endpoint requires the server to be configured with `GITHUB_OPERATIONS_BEARER_TOKEN` (or falls back to `REVERT_TO_COMMIT_BEARER_TOKEN`) and the client to send `Authorization: Bearer <token>`.
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
 #### Request arguments
 
@@ -375,7 +376,7 @@ curl -X POST https://your-host.example.com/api/jobs/delete-remote-branch \
 
 Marks a draft pull request as ready for review.
 
-This endpoint requires the server to be configured with `GITHUB_OPERATIONS_BEARER_TOKEN` (or falls back to `REVERT_TO_COMMIT_BEARER_TOKEN`) and the client to send `Authorization: Bearer <token>`.
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
 #### Request arguments
 
@@ -420,7 +421,7 @@ curl -X POST https://your-host.example.com/api/jobs/pull-request/ready \
 
 Merges a pull request on GitHub.
 
-This endpoint requires the server to be configured with `GITHUB_OPERATIONS_BEARER_TOKEN` (or falls back to `REVERT_TO_COMMIT_BEARER_TOKEN`) and the client to send `Authorization: Bearer <token>`.
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
 #### Request arguments
 
@@ -474,7 +475,7 @@ curl -X POST https://your-host.example.com/api/jobs/pull-request/merge \
 
 Opens a new pull request on GitHub. By default, the title and description are derived from the last commit on the head branch.
 
-This endpoint requires the server to be configured with `GITHUB_OPERATIONS_BEARER_TOKEN` (or falls back to `REVERT_TO_COMMIT_BEARER_TOKEN`) and the client to send `Authorization: Bearer <token>`.
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
 #### Request arguments
 
@@ -545,7 +546,7 @@ curl -X POST https://your-host.example.com/api/jobs/pull-request/open \
 
 Creates a GitHub Copilot coding agent task for a repository immediately. If task creation succeeds, the service then records a local monitoring job and enqueues background polling for that task.
 
-This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
 #### Request arguments
 
@@ -626,7 +627,7 @@ Status: `200 OK`
 
 Returns the full GitHub Copilot task payload for an existing task.
 
-This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
 #### Success response
 
@@ -655,7 +656,7 @@ curl https://your-host.example.com/agents/repos/facebook/react/tasks/a1b2c3d4-e5
 
 Returns the GitHub Copilot task listing for a repository.
 
-This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
 #### Success response
 
@@ -684,7 +685,7 @@ curl https://your-host.example.com/agents/repos/facebook/react/tasks \
 
 Archives a specific GitHub Copilot agent task for a repository.
 
-This endpoint requires the server to be configured with `CREATE_TASK_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
 #### Success response
 

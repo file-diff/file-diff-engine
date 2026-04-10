@@ -4,12 +4,9 @@ import type { ErrorResponse } from "../types";
 import * as githubApi from "../services/githubApi";
 import { createLogger } from "../utils/logger";
 import {
-  CREATE_TASK_BEARER_TOKEN_ENV,
-  getConfiguredBearerToken,
+  authorizeAdminBearerToken,
   isValidRepo,
-  matchesBearerToken,
 } from "./jobs/shared";
-import {listAllTasks} from "../services/githubApi";
 
 const TASK_ROUTE_RATE_LIMIT_MAX = 60;
 const TASK_ROUTE_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -24,26 +21,9 @@ async function validateTaskRepoAuthorization(
   | { ok: true; copilotAuthorizationHeader: string }
   | { ok: false; statusCode: number; response: ErrorResponse }
 > {
-  const endpointBearerToken = getConfiguredBearerToken(CREATE_TASK_BEARER_TOKEN_ENV);
-  if (!endpointBearerToken) {
-    return {
-      ok: false,
-      statusCode: 503,
-      response: {
-        error: "Create-task bearer token is not configured.",
-      },
-    };
-  }
-  logger.info("Validating bearer token for task route", { endpointBearerToken });
-
-  if (!matchesBearerToken(authorizationHeader, endpointBearerToken)) {
-    return {
-      ok: false,
-      statusCode: 401,
-      response: {
-        error: "Bearer token is required.",
-      },
-    };
+  const authorization = authorizeAdminBearerToken(authorizationHeader);
+  if (!authorization.ok) {
+    return authorization;
   }
 
   if (!isValidRepo(`${owner}/${repo}`)) {

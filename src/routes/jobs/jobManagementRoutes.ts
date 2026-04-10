@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { Queue } from "bullmq";
 import { JobRepository, AmbiguousHashError } from "../../db/repository";
 import type {
@@ -9,10 +9,21 @@ import type {
 } from "../../types";
 import { getCommitShort } from "../../utils/commit";
 import {
+  authorizeViewerBearerToken,
   isValidRepo,
   normalizeRepo,
   POSTGRES_UNIQUE_VIOLATION,
 } from "./shared";
+
+async function requireViewerBearerToken(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  const authorization = authorizeViewerBearerToken(request.headers.authorization);
+  if (!authorization.ok) {
+    await reply.code(authorization.statusCode).send(authorization.response);
+  }
+}
 
 export function registerJobManagementRoutes(
   app: FastifyInstance,
@@ -24,7 +35,10 @@ export function registerJobManagementRoutes(
    * Body: { "repo": "owner/repo", "commit": "0123456789abcdef0123456789abcdef01234567" }
    * Creates a new processing job and enqueues it.
    */
-  app.post<{ Body: JobRequest }>("/", async (request, reply) => {
+  app.post<{ Body: JobRequest }>(
+    "/",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     let { repo, commit } = request.body ?? {};
     if (!repo || !commit) {
       const response: ErrorResponse = {
@@ -107,13 +121,17 @@ export function registerJobManagementRoutes(
       commitShort: getCommitShort(commit),
     };
     return reply.code(201).send(response);
-  });
+    }
+  );
 
   /**
    * GET /api/jobs/:id
    * Returns job status and progress.
    */
-  app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
+  app.get<{ Params: { id: string } }>(
+    "/:id",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     const { id } = request.params;
     let job;
     try {
@@ -130,13 +148,17 @@ export function registerJobManagementRoutes(
       return reply.code(404).send(response);
     }
     return reply.send(job);
-  });
+    }
+  );
 
   /**
    * GET /api/jobs/:id/files
    * Returns processed file metadata for a completed job.
    */
-  app.get<{ Params: { id: string } }>("/:id/files", async (request, reply) => {
+  app.get<{ Params: { id: string } }>(
+    "/:id/files",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     const { id } = request.params;
     let job;
     try {
@@ -171,7 +193,8 @@ export function registerJobManagementRoutes(
       })),
     };
     return reply.send(response);
-  });
+    }
+  );
 }
 
 async function enqueueJob(

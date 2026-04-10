@@ -2,15 +2,14 @@ import path from "path";
 import { timingSafeEqual } from "crypto";
 import { Queue } from "bullmq";
 import { JobRepository } from "../../db/repository";
+import type { ErrorResponse } from "../../types";
 import { createLogger } from "../../utils/logger";
 
 export const POSTGRES_UNIQUE_VIOLATION = "23505";
 export const DEFAULT_DOWNLOAD_RATE_LIMIT_MAX = 30;
 export const DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS = 60_000;
-export const REVERT_TO_COMMIT_BEARER_TOKEN_ENV = "REVERT_TO_COMMIT_BEARER_TOKEN";
-export const MERGE_BRANCH_BEARER_TOKEN_ENV = "MERGE_BRANCH_BEARER_TOKEN";
-export const CREATE_TASK_BEARER_TOKEN_ENV = "CREATE_TASK_BEARER_TOKEN";
-export const GITHUB_OPERATIONS_BEARER_TOKEN_ENV = "GITHUB_OPERATIONS_BEARER_TOKEN";
+export const ADMIN_BEARER_TOKEN_ENV = "ADMIN_BEARER_TOKEN";
+export const VIEWER_BEARER_TOKEN_ENV = "VIEWER_BEARER_TOKEN";
 export const logger = createLogger("job-routes");
 
 export interface JobRoutesDependencies {
@@ -95,4 +94,67 @@ export function matchesBearerToken(
     expectedBuffer.length === providedBuffer.length &&
     timingSafeEqual(expectedBuffer, providedBuffer)
   );
+}
+
+export type BearerAuthorizationResult =
+  | { ok: true }
+  | { ok: false; statusCode: number; response: ErrorResponse };
+
+export function authorizeAdminBearerToken(
+  authorizationHeader: string | string[] | undefined
+): BearerAuthorizationResult {
+  const adminBearerToken = getConfiguredBearerToken(ADMIN_BEARER_TOKEN_ENV);
+  if (!adminBearerToken) {
+    return {
+      ok: false,
+      statusCode: 503,
+      response: {
+        error: "Admin bearer token is not configured.",
+      },
+    };
+  }
+
+  if (!matchesBearerToken(authorizationHeader, adminBearerToken)) {
+    return {
+      ok: false,
+      statusCode: 401,
+      response: {
+        error: "Bearer token is required.",
+      },
+    };
+  }
+
+  return { ok: true };
+}
+
+export function authorizeViewerBearerToken(
+  authorizationHeader: string | string[] | undefined
+): BearerAuthorizationResult {
+  const viewerBearerToken = getConfiguredBearerToken(VIEWER_BEARER_TOKEN_ENV);
+  if (!viewerBearerToken) {
+    return {
+      ok: false,
+      statusCode: 503,
+      response: {
+        error: "Viewer bearer token is not configured.",
+      },
+    };
+  }
+
+  const adminBearerToken = getConfiguredBearerToken(ADMIN_BEARER_TOKEN_ENV);
+  if (
+    matchesBearerToken(authorizationHeader, viewerBearerToken) ||
+    (adminBearerToken !== null &&
+      matchesBearerToken(authorizationHeader, adminBearerToken))
+  ) {
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    statusCode: 401,
+    response: {
+      error: "Bearer token is required.",
+    },
+  };
 }

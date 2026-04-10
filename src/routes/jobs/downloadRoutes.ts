@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import * as childProcess from "child_process";
 import { pipeline } from "stream/promises";
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   bundledLanguagesInfo,
   bundledThemesInfo,
@@ -16,6 +16,7 @@ import type { ErrorResponse } from "../../types";
 import {
   DEFAULT_DOWNLOAD_RATE_LIMIT_MAX,
   DEFAULT_DOWNLOAD_RATE_LIMIT_WINDOW_MS,
+  authorizeViewerBearerToken,
   getDownloadFilename,
   logger,
   parsePositiveInteger,
@@ -55,6 +56,16 @@ const DEFAULT_SHIKI_THEME = "github-dark";
 const shikiLanguagesByAlias = new Map<string, BundledLanguage>();
 const shikiThemesByAlias = new Map<string, BundledTheme>();
 
+async function requireViewerBearerToken(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  const authorization = authorizeViewerBearerToken(request.headers.authorization);
+  if (!authorization.ok) {
+    await reply.code(authorization.statusCode).send(authorization.response);
+  }
+}
+
 for (const language of bundledLanguagesInfo) {
   const languageId = language.id as BundledLanguage;
   shikiLanguagesByAlias.set(language.id.toLowerCase(), languageId);
@@ -74,6 +85,7 @@ export function registerDownloadRoutes(
   app.get<{ Params: { hash: string } }>(
     "/files/hash/:hash/download",
     {
+      preHandler: requireViewerBearerToken,
       config: {
         rateLimit: {
           max: parsePositiveInteger(
@@ -101,6 +113,7 @@ export function registerDownloadRoutes(
   app.get<{ Params: { id: string; hash: string } }>(
     "/:id/files/hash/:hash/download",
     {
+      preHandler: requireViewerBearerToken,
       config: {
         rateLimit: {
           max: parsePositiveInteger(
@@ -180,6 +193,7 @@ export function registerDownloadRoutes(
 
   app.get<{ Params: { leftHash: string; rightHash: string } }>(
     "/files/hash/:leftHash/diff/:rightHash",
+    { preHandler: requireViewerBearerToken },
     async (request, reply) => {
       const { leftHash, rightHash } = request.params;
       const leftFileResult = await resolveAccessibleFileByHash(jobRepo, leftHash);
@@ -215,6 +229,7 @@ export function registerDownloadRoutes(
 
   app.get<{ Params: { hash: string }; Querystring: TokenizeQuerystring }>(
     "/files/hash/:hash/tokenize",
+    { preHandler: requireViewerBearerToken },
     async (request, reply) => {
       const { hash } = request.params;
       const fileResult = await resolveAccessibleFileByHash(jobRepo, hash);
