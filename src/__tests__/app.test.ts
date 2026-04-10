@@ -18,6 +18,20 @@ import { createTestDatabase } from "./helpers/testDatabase";
 import { deserializeFiles } from "../utils/binarySerializer";
 import * as githubApi from "../services/githubApi";
 
+async function injectWithViewer(
+  app: Awaited<ReturnType<typeof createApp>>["app"],
+  options: Parameters<Awaited<ReturnType<typeof createApp>>["app"]["inject"]>[0]
+) {
+  const headers =
+    "headers" in options && options.headers
+      ? { authorization: "Bearer viewer-secret", ...options.headers }
+      : { authorization: "Bearer viewer-secret" };
+  return app.inject({
+    ...options,
+    headers,
+  });
+}
+
 describe("createApp", () => {
   let db: DatabaseClient;
   let jobRepo: JobRepository;
@@ -26,6 +40,8 @@ describe("createApp", () => {
   const originalRequestDelayMs = process.env.REQUEST_DELAY_MS;
   const originalPublicGitHubToken = process.env.PUBLIC_GITHUB_TOKEN;
   const originalTmpDir = process.env.TMP_DIR;
+  const originalAdminBearerToken = process.env.ADMIN_BEARER_TOKEN;
+  const originalViewerBearerToken = process.env.VIEWER_BEARER_TOKEN;
   let tempDirs: string[];
 
   beforeEach(async () => {
@@ -43,6 +59,7 @@ describe("createApp", () => {
       used: 1,
       resource: "core",
     });
+    process.env.VIEWER_BEARER_TOKEN = "viewer-secret";
   });
 
   afterEach(async () => {
@@ -67,16 +84,63 @@ describe("createApp", () => {
     } else {
       process.env.TMP_DIR = originalTmpDir;
     }
+    if (originalViewerBearerToken === undefined) {
+      delete process.env.VIEWER_BEARER_TOKEN;
+    } else {
+      process.env.VIEWER_BEARER_TOKEN = originalViewerBearerToken;
+    }
+    if (originalAdminBearerToken === undefined) {
+      delete process.env.ADMIN_BEARER_TOKEN;
+    } else {
+      process.env.ADMIN_BEARER_TOKEN = originalAdminBearerToken;
+    }
     for (const tempDir of tempDirs) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
     await db.end();
   });
 
-  it("does not add CORS headers to health checks", async () => {
+  it("requires the viewer bearer token for health checks", async () => {
+    delete process.env.VIEWER_BEARER_TOKEN;
     const { app } = await createApp({ db, queue: mockQueue });
 
     const response = await app.inject({
+      method: "GET",
+      url: "/api/health",
+      headers: {
+        authorization: "Bearer viewer-secret",
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      error: "Viewer bearer token is not configured.",
+    });
+
+    await app.close();
+  });
+
+  it("accepts the admin bearer token for health checks", async () => {
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/health",
+      headers: {
+        authorization: "Bearer admin-secret",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it("does not add CORS headers to health checks", async () => {
+    const { app } = await createApp({ db, queue: mockQueue });
+
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: "/api/health",
       headers: {
@@ -101,7 +165,7 @@ describe("createApp", () => {
     });
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: "/api/health",
     });
@@ -133,7 +197,7 @@ describe("createApp", () => {
     );
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: "/api/health",
     });
@@ -156,7 +220,7 @@ describe("createApp", () => {
     process.env.BUILD_VERSION = "2026.03.10+abc1234";
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: "/api/version",
     });
@@ -175,7 +239,7 @@ describe("createApp", () => {
     const { app } = await createApp({ db, queue: mockQueue });
 
     const startedAt = Date.now();
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: "/api/health",
     });
@@ -196,7 +260,7 @@ describe("createApp", () => {
     const { app } = await createApp({ db, queue: mockQueue });
 
     const startedAt = Date.now();
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: "/api/health",
     });
@@ -216,7 +280,7 @@ describe("createApp", () => {
   it("returns zeroed database storage statistics when no data is stored", async () => {
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: "/api/stats",
     });
@@ -273,7 +337,7 @@ describe("createApp", () => {
 
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: "/api/stats",
     });
@@ -304,7 +368,7 @@ describe("createApp", () => {
 
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/commit/${commit}/files`,
     });
@@ -347,7 +411,7 @@ describe("createApp", () => {
 
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/commit/${commit}/files`,
       headers: {
@@ -401,7 +465,7 @@ describe("createApp", () => {
 
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/commit/${commit}/files?format=csv`,
       headers: {
@@ -441,7 +505,7 @@ describe("createApp", () => {
 
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/commit/${commit}/files?format=binary`,
       headers: {
@@ -474,7 +538,7 @@ describe("createApp", () => {
   it("returns 404 for an unknown commit files endpoint", async () => {
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: "/api/commit/0123456789abcdef0123456789abcdef01234567/files",
     });
@@ -538,7 +602,7 @@ describe("createApp", () => {
 
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/commit/${commit}/grep?query=find%20me%20here`,
     });
@@ -575,7 +639,7 @@ describe("createApp", () => {
 
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/commit/${commit}/grep`,
     });
@@ -605,7 +669,7 @@ describe("createApp", () => {
     const { app } = await createApp({ db, queue: mockQueue });
     const shortCommit = commit.slice(0, 8);
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/commit/${shortCommit}/files`,
     });
@@ -626,7 +690,7 @@ describe("createApp", () => {
 
     const { app } = await createApp({ db, queue: mockQueue });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: "/api/commit/ab/files",
     });

@@ -26,7 +26,10 @@ import type {
 } from "./types";
 import { serializeJobFilesResponse } from "./utils/binarySerializer";
 import { createLogger } from "./utils/logger";
-import { resolveJobFilePath } from "./routes/jobs/shared";
+import {
+  requireViewerBearerToken,
+  resolveJobFilePath,
+} from "./routes/jobs/shared";
 
 export interface AppDependencies {
   queue: Queue;
@@ -160,13 +163,17 @@ export async function createApp(
     logger.info("Request delay hook is not enabled.");
   }
 
+  await app.register(rateLimit, { global: false });
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
   await app.register(registerTaskRoutes, { prefix: "/api" });
 
   app.get<{
     Params: { id: string };
     Querystring: { format?: string };
-  }>("/api/commit/:id/files", async (request, reply) => {
+  }>(
+    "/api/commit/:id/files",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     const { id } = request.params;
     const format = (request.query?.format || "json").toLowerCase();
     const allowed = new Set(["json", "binary"]);
@@ -235,12 +242,16 @@ export async function createApp(
     }
 
     return reply.send(responsePayload.payload);
-  });
+    }
+  );
 
   app.get<{
     Params: { id: string };
     Querystring: { query?: string };
-  }>("/api/commit/:id/grep", async (request, reply) => {
+  }>(
+    "/api/commit/:id/grep",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     const { id } = request.params;
     const query = request.query?.query?.trim();
 
@@ -282,9 +293,10 @@ export async function createApp(
       };
       return reply.code(500).send(response);
     }
-  });
+    }
+  );
 
-  app.get("/api/health", async () => {
+  app.get("/api/health", { preHandler: requireViewerBearerToken }, async () => {
     const githubConfigured = Boolean(process.env.PUBLIC_GITHUB_TOKEN?.trim());
     let github: HealthResponse["github"];
 
@@ -309,21 +321,26 @@ export async function createApp(
     };
     return response;
   });
-  app.get("/api/version", async () => {
+  app.get("/api/version", { preHandler: requireViewerBearerToken }, async () => {
     const response: VersionResponse = { version: buildVersion };
     return response;
   });
-  await app.register(async (statsApp) => {
-    await statsApp.register(rateLimit, {
-      max: DEFAULT_STATS_RATE_LIMIT_MAX,
-      timeWindow: DEFAULT_STATS_RATE_LIMIT_WINDOW_MS,
-    });
-
-    statsApp.get("/api/stats", async () => {
+  app.get(
+    "/api/stats",
+    {
+      preHandler: [
+        requireViewerBearerToken,
+        app.rateLimit({
+          max: DEFAULT_STATS_RATE_LIMIT_MAX,
+          timeWindow: DEFAULT_STATS_RATE_LIMIT_WINDOW_MS,
+        }),
+      ],
+    },
+    async () => {
       const response: StatsResponse = await jobRepo.getStats();
       return response;
-    });
-  });
+    }
+  );
 
   return { app, queue, db, jobRepo };
 }

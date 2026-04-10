@@ -43,19 +43,53 @@ async function makeRequest(
   body?: unknown,
   headers?: Record<string, string>
 ): Promise<{ status: number; body: unknown }> {
+  const protectedRoutes = [
+    "/api/jobs/revert-to-commit",
+    "/api/jobs/merge-branch",
+    "/api/jobs/delete-remote-branch",
+    "/api/jobs/branch-permissions",
+    "/api/jobs/pull-request/ready",
+    "/api/jobs/pull-request/merge",
+    "/api/jobs/pull-request/open",
+    "/api/jobs/create-task",
+  ];
+  const defaultAuthorization = protectedRoutes.includes(url) || url.startsWith("/agents/repos/")
+    ? "Bearer admin-secret"
+    : "Bearer viewer-secret";
   const response = await app.inject({
     method,
     url,
     payload: body,
     headers: body
-      ? { "content-type": "application/json", ...headers }
-      : headers,
+      ? {
+          "content-type": "application/json",
+          authorization: defaultAuthorization,
+          ...headers,
+        }
+      : {
+          authorization: defaultAuthorization,
+          ...headers,
+        },
   });
 
   return {
     status: response.statusCode,
     body: response.json(),
   };
+}
+
+async function injectWithViewer(
+  app: FastifyInstance,
+  options: Parameters<FastifyInstance["inject"]>[0]
+) {
+  const headers =
+    "headers" in options && options.headers
+      ? { authorization: "Bearer viewer-secret", ...options.headers }
+      : { authorization: "Bearer viewer-secret" };
+  return app.inject({
+    ...options,
+    headers,
+  });
 }
 
 describe("Job Routes", () => {
@@ -71,8 +105,8 @@ describe("Job Routes", () => {
   const originalDownloadRateLimitMax = process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_MAX;
   const originalDownloadRateLimitWindowMs =
     process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS;
-  const originalRevertBearerToken = process.env.REVERT_TO_COMMIT_BEARER_TOKEN;
-  const originalCreateTaskBearerToken = process.env.CREATE_TASK_BEARER_TOKEN;
+  const originalAdminBearerToken = process.env.ADMIN_BEARER_TOKEN;
+  const originalViewerBearerToken = process.env.VIEWER_BEARER_TOKEN;
   const originalPrivateGitHubToken = process.env.PRIVATE_GITHUB_TOKEN;
   const originalCopilotGitHubToken = process.env.COPILOT_GITHUB_TOKEN;
 
@@ -91,6 +125,8 @@ describe("Job Routes", () => {
       prefix: "/api/jobs",
     });
     await app.register(registerTaskRoutes);
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
+    process.env.VIEWER_BEARER_TOKEN = "viewer-secret";
   });
 
   afterEach(async () => {
@@ -110,15 +146,15 @@ describe("Job Routes", () => {
       process.env.DOWNLOAD_BY_HASH_RATE_LIMIT_WINDOW_MS =
         originalDownloadRateLimitWindowMs;
     }
-    if (originalRevertBearerToken === undefined) {
-      delete process.env.REVERT_TO_COMMIT_BEARER_TOKEN;
+    if (originalAdminBearerToken === undefined) {
+      delete process.env.ADMIN_BEARER_TOKEN;
     } else {
-      process.env.REVERT_TO_COMMIT_BEARER_TOKEN = originalRevertBearerToken;
+      process.env.ADMIN_BEARER_TOKEN = originalAdminBearerToken;
     }
-    if (originalCreateTaskBearerToken === undefined) {
-      delete process.env.CREATE_TASK_BEARER_TOKEN;
+    if (originalViewerBearerToken === undefined) {
+      delete process.env.VIEWER_BEARER_TOKEN;
     } else {
-      process.env.CREATE_TASK_BEARER_TOKEN = originalCreateTaskBearerToken;
+      process.env.VIEWER_BEARER_TOKEN = originalViewerBearerToken;
     }
     if (originalPrivateGitHubToken === undefined) {
       delete process.env.PRIVATE_GITHUB_TOKEN;
@@ -191,8 +227,59 @@ describe("Job Routes", () => {
     });
   });
 
+  it("POST /api/jobs/resolve - should require a valid viewer bearer token", async () => {
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/resolve",
+      {
+        repo: "facebook/react",
+        ref: "main",
+      },
+      {
+        authorization: "",
+      }
+    );
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      error: "Bearer token is required.",
+    });
+  });
+
+  it("POST /api/jobs/resolve - should accept the admin bearer token", async () => {
+    const resolveSpy = vi
+      .spyOn(repoProcessor, "resolveRefToCommitHash")
+      .mockResolvedValue(commitHash);
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/resolve",
+      {
+        repo: "facebook/react",
+        ref: "main",
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<ResolveCommitResponse>({
+      repo: "facebook/react",
+      ref: "main",
+      commit: commitHash,
+      commitShort: commitHash.slice(0, 7),
+    });
+    expect(resolveSpy).toHaveBeenCalledWith(
+      "https://github.com/facebook/react.git",
+      "main"
+    );
+  });
+
   it("POST /api/jobs/revert-to-commit - should run the revert operation", async () => {
-    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = " route-secret ";
+    process.env.ADMIN_BEARER_TOKEN = " admin-secret ";
     const revertResponse: RevertToCommitResponse = {
       repo: "facebook/react",
       branch: "main",
@@ -223,7 +310,7 @@ describe("Job Routes", () => {
       commit: commitHash,
       githubKey: " portal-token ",
     }, {
-      authorization: "Bearer route-secret",
+      authorization: "Bearer admin-secret",
     });
 
     expect(res.status).toBe(200);
@@ -239,21 +326,7 @@ describe("Job Routes", () => {
   });
 
   it("POST /api/jobs/revert-to-commit - should require a valid bearer token", async () => {
-    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
-
-    const res = await makeRequest(app, "POST", "/api/jobs/revert-to-commit", {
-      repo: "facebook/react",
-      commit: commitHash,
-    });
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({
-      error: "Bearer token is required.",
-    });
-  });
-
-  it("POST /api/jobs/revert-to-commit - should fail closed when bearer auth is not configured", async () => {
-    delete process.env.REVERT_TO_COMMIT_BEARER_TOKEN;
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
 
     const res = await makeRequest(
       app,
@@ -264,24 +337,66 @@ describe("Job Routes", () => {
         commit: commitHash,
       },
       {
-        authorization: "Bearer route-secret",
+        authorization: "",
+      }
+    );
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      error: "Bearer token is required.",
+    });
+  });
+
+  it("POST /api/jobs/revert-to-commit - should fail closed when bearer auth is not configured", async () => {
+    delete process.env.ADMIN_BEARER_TOKEN;
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/revert-to-commit",
+      {
+        repo: "facebook/react",
+        commit: commitHash,
+      },
+      {
+        authorization: "Bearer admin-secret",
       }
     );
 
     expect(res.status).toBe(503);
     expect(res.body).toEqual({
-      error: "Revert-to-commit bearer token is not configured.",
+      error: "Admin bearer token is not configured.",
+    });
+  });
+
+  it("POST /api/jobs/revert-to-commit - should reject the viewer bearer token", async () => {
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/revert-to-commit",
+      {
+        repo: "facebook/react",
+        commit: commitHash,
+      },
+      {
+        authorization: "Bearer viewer-secret",
+      }
+    );
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({
+      error: "Bearer token is required.",
     });
   });
 
   it("POST /api/jobs/revert-to-commit - should reject invalid commit hashes", async () => {
-    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
 
     const res = await makeRequest(app, "POST", "/api/jobs/revert-to-commit", {
       repo: "facebook/react",
       commit: "abc123",
     }, {
-      authorization: "Bearer route-secret",
+      authorization: "Bearer admin-secret",
     });
 
     expect(res.status).toBe(400);
@@ -422,7 +537,7 @@ describe("Job Routes", () => {
   });
 
   it("POST /api/jobs/branch-permissions - should use the request githubKey when provided", async () => {
-    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
     const getBranchPermissionsSpy = vi
       .spyOn(githubApi, "getBranchPermissions")
       .mockResolvedValue({ read: true, write: false });
@@ -437,7 +552,7 @@ describe("Job Routes", () => {
         githubKey: " portal-token ",
       },
       {
-        authorization: "Bearer route-secret",
+        authorization: "Bearer admin-secret",
       }
     );
 
@@ -456,7 +571,7 @@ describe("Job Routes", () => {
   });
 
   it("POST /api/jobs/branch-permissions - should fall back to PRIVATE_GITHUB_TOKEN", async () => {
-    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
     process.env.PRIVATE_GITHUB_TOKEN = " private-token ";
     const getBranchPermissionsSpy = vi
       .spyOn(githubApi, "getBranchPermissions")
@@ -471,7 +586,7 @@ describe("Job Routes", () => {
         branch: "main",
       },
       {
-        authorization: "Bearer route-secret",
+        authorization: "Bearer admin-secret",
       }
     );
 
@@ -490,7 +605,7 @@ describe("Job Routes", () => {
   });
 
   it("POST /api/jobs/branch-permissions - should reject invalid branch names", async () => {
-    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
 
     const res = await makeRequest(
       app,
@@ -501,7 +616,7 @@ describe("Job Routes", () => {
         branch: "-main",
       },
       {
-        authorization: "Bearer route-secret",
+        authorization: "Bearer admin-secret",
       }
     );
 
@@ -780,7 +895,7 @@ describe("Job Routes", () => {
   });
 
   it("POST /api/jobs/create-task - should return only the task id", async () => {
-    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
     vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
     const createTaskSpy = vi.spyOn(githubApi, "createTask").mockResolvedValue({
       id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -800,7 +915,7 @@ describe("Job Routes", () => {
         pull_request_completion_mode: "AutoMerge",
       },
       {
-        authorization: "Bearer route-secret",
+        authorization: "Bearer admin-secret",
       }
     );
 
@@ -841,7 +956,7 @@ describe("Job Routes", () => {
   it.each(["Later", "automErge", ""])(
     "POST /api/jobs/create-task - should reject invalid pull request completion mode %p",
     async (pullRequestCompletionMode) => {
-      process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+      process.env.ADMIN_BEARER_TOKEN = "admin-secret";
 
       const res = await makeRequest(
         app,
@@ -856,7 +971,7 @@ describe("Job Routes", () => {
           pull_request_completion_mode: pullRequestCompletionMode,
         },
         {
-          authorization: "Bearer route-secret",
+          authorization: "Bearer admin-secret",
         }
       );
 
@@ -869,7 +984,7 @@ describe("Job Routes", () => {
   );
 
   it("POST /api/jobs/create-task - should require create_pull_request for automatic PR actions", async () => {
-    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
 
     const res = await makeRequest(
       app,
@@ -883,7 +998,7 @@ describe("Job Routes", () => {
         pull_request_completion_mode: "AutoReady",
       },
       {
-        authorization: "Bearer route-secret",
+        authorization: "Bearer admin-secret",
       }
     );
 
@@ -895,7 +1010,7 @@ describe("Job Routes", () => {
   });
 
   it("POST /api/jobs/create-task - should surface GitHub task creation failures before queueing", async () => {
-    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
     vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
     vi.spyOn(githubApi, "createTask").mockRejectedValue(
       new githubApi.GitHubApiError(
@@ -917,7 +1032,7 @@ describe("Job Routes", () => {
         create_pull_request: true,
       },
       {
-        authorization: "Bearer route-secret",
+        authorization: "Bearer admin-secret",
       }
     );
 
@@ -953,7 +1068,7 @@ describe("Job Routes", () => {
   });
 
   it("GET /agents/repos/:owner/:repo/tasks/:task_id - should return task info", async () => {
-    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
     vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
     const taskInfo: TaskInfoResponse = {
       id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -977,7 +1092,7 @@ describe("Job Routes", () => {
       "/agents/repos/octocat/hello-world/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       undefined,
       {
-        authorization: "Bearer route-secret",
+        authorization: "Bearer admin-secret",
       }
     );
 
@@ -992,7 +1107,7 @@ describe("Job Routes", () => {
   });
 
   it("GET /agents/repos/:owner/:repo/tasks - should return repository tasks", async () => {
-    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
     vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
     const tasks: ListTasksResponse = [
       {
@@ -1012,7 +1127,7 @@ describe("Job Routes", () => {
       "/agents/repos/octocat/hello-world/tasks",
       undefined,
       {
-        authorization: "Bearer route-secret",
+        authorization: "Bearer admin-secret",
       }
     );
 
@@ -1026,7 +1141,7 @@ describe("Job Routes", () => {
   });
 
   it("POST /agents/repos/:owner/:repo/tasks/:task_id/archive - should archive a task", async () => {
-    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
     vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
     const archiveTaskSpy = vi.spyOn(githubApi, "archiveTask").mockResolvedValue({});
 
@@ -1036,7 +1151,7 @@ describe("Job Routes", () => {
       "/agents/repos/octocat/hello-world/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890/archive",
       undefined,
       {
-        authorization: "Bearer route-secret",
+        authorization: "Bearer admin-secret",
       }
     );
 
@@ -1061,12 +1176,16 @@ describe("Job Routes", () => {
   });
 
   it("GET /agents/repos/:owner/:repo/tasks/:task_id - should require a valid bearer token", async () => {
-    process.env.CREATE_TASK_BEARER_TOKEN = "route-secret";
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
 
     const res = await makeRequest(
       app,
       "GET",
-      "/agents/repos/octocat/hello-world/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      "/agents/repos/octocat/hello-world/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      undefined,
+      {
+        authorization: "",
+      }
     );
 
     expect(res.status).toBe(401);
@@ -1322,7 +1441,7 @@ describe("Job Routes", () => {
       },
     ]);
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/${commitHash}/files/hash/${fileHash}/download`,
     });
@@ -1339,7 +1458,7 @@ describe("Job Routes", () => {
   it("GET /api/jobs/:id/files/hash/:hash/download - should report when the hash is missing from the database", async () => {
     await jobRepo.createJob(commitHash, "owner/repo", commitHash);
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/${commitHash}/files/hash/${fileHash}/download`,
     });
@@ -1368,7 +1487,7 @@ describe("Job Routes", () => {
       },
     ]);
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/${commitHash}/files/hash/${fileHash}/download`,
     });
@@ -1420,13 +1539,13 @@ describe("Job Routes", () => {
       },
     ]);
 
-    const firstResponse = await app.inject({
+    const firstResponse = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/${commitHash}/files/hash/${fileHash}/download`,
     });
     expect(firstResponse.statusCode).toBe(200);
 
-    const secondResponse = await app.inject({
+    const secondResponse = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/${commitHash}/files/hash/${fileHash}/download`,
     });
@@ -1463,7 +1582,7 @@ describe("Job Routes", () => {
       },
     ]);
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash.slice(0, 7)}/download`,
     });
@@ -1477,7 +1596,7 @@ describe("Job Routes", () => {
   });
 
   it("GET /api/jobs/files/hash/:hash/download - should report when the hash is missing from the database", async () => {
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/download`,
     });
@@ -1515,7 +1634,7 @@ describe("Job Routes", () => {
       },
     ]);
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: "/api/jobs/files/hash/cc/download",
     });
@@ -1587,7 +1706,7 @@ describe("Job Routes", () => {
         return {} as ReturnType<typeof difftCommandRunner.execFile>;
       });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/diff/${otherFileHash}`,
     });
@@ -1623,7 +1742,7 @@ describe("Job Routes", () => {
       },
     ]);
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/diff/${otherFileHash}`,
     });
@@ -1681,7 +1800,7 @@ describe("Job Routes", () => {
       return {} as ReturnType<typeof difftCommandRunner.execFile>;
     });
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/diff/${otherFileHash}`,
     });
@@ -1716,7 +1835,7 @@ describe("Job Routes", () => {
       },
     ]);
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/tokenize`,
     });
@@ -1753,7 +1872,7 @@ describe("Job Routes", () => {
       },
     ]);
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/tokenize?theme=github-light`,
     });
@@ -1790,11 +1909,11 @@ describe("Job Routes", () => {
       },
     ]);
 
-    const autoResponse = await app.inject({
+    const autoResponse = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/tokenize?language=auto`,
     });
-    const overrideResponse = await app.inject({
+    const overrideResponse = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/tokenize?language=javascript`,
     });
@@ -1850,11 +1969,11 @@ describe("Job Routes", () => {
       },
     ]);
 
-    const themeResponse = await app.inject({
+    const themeResponse = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/tokenize?theme=not-a-theme`,
     });
-    const languageResponse = await app.inject({
+    const languageResponse = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/tokenize?language=not-a-language`,
     });
@@ -1870,7 +1989,7 @@ describe("Job Routes", () => {
   });
 
   it("GET /api/jobs/files/hash/:hash/tokenize - should report when a hash is missing from the database", async () => {
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/tokenize`,
     });
@@ -1908,7 +2027,7 @@ describe("Job Routes", () => {
       new Error("shiki tokenization failed")
     );
 
-    const response = await app.inject({
+    const response = await injectWithViewer(app, {
       method: "GET",
       url: `/api/jobs/files/hash/${fileHash}/tokenize`,
     });
@@ -1982,7 +2101,7 @@ describe("Job Routes", () => {
 
       const shortJobId = commitHash.slice(0, 7);
       const shortFileHash = fileHash.slice(0, 7);
-      const response = await app.inject({
+      const response = await injectWithViewer(app, {
         method: "GET",
         url: `/api/jobs/${shortJobId}/files/hash/${shortFileHash}/download`,
       });
@@ -2046,7 +2165,7 @@ describe("Job Routes", () => {
 
       const shortLeft = fileHash.slice(0, 5);
       const shortRight = otherFileHash.slice(0, 5);
-      const response = await app.inject({
+      const response = await injectWithViewer(app, {
         method: "GET",
         url: `/api/jobs/files/hash/${shortLeft}/diff/${shortRight}`,
       });
@@ -2082,7 +2201,7 @@ describe("Job Routes", () => {
         },
       ]);
 
-      const response = await app.inject({
+      const response = await injectWithViewer(app, {
         method: "GET",
         url: `/api/jobs/files/hash/cc/diff/${otherFileHash}`,
       });
@@ -2120,7 +2239,7 @@ describe("Job Routes", () => {
       );
 
       const shortHash = fileHash.slice(0, 6);
-      const response = await app.inject({
+      const response = await injectWithViewer(app, {
         method: "GET",
         url: `/api/jobs/files/hash/${shortHash}/tokenize`,
       });

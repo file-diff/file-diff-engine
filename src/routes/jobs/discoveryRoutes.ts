@@ -43,16 +43,12 @@ import * as githubApi from "../../services/githubApi";
 import * as repoProcessor from "../../services/repoProcessor";
 import { getCommitShort } from "../../utils/commit";
 import {
-  getConfiguredBearerToken,
   isValidOrganization,
   isValidRepo,
-  logger,
-  matchesBearerToken,
-  CREATE_TASK_BEARER_TOKEN_ENV,
-  GITHUB_OPERATIONS_BEARER_TOKEN_ENV,
-  MERGE_BRANCH_BEARER_TOKEN_ENV,
+   logger,
   normalizeRepo,
-  REVERT_TO_COMMIT_BEARER_TOKEN_ENV,
+  requireAdminBearerToken,
+  requireViewerBearerToken,
 } from "./shared";
 
 const CREATE_TASK_ROUTE_RATE_LIMIT_MAX = 60;
@@ -73,7 +69,10 @@ export function registerDiscoveryRoutes(
    * Body: { "repo": "owner/repo", "ref": "main" }
    * Resolves a Git ref to a full commit SHA.
    */
-  app.post<{ Body: ResolveCommitRequest }>("/resolve", async (request, reply) => {
+  app.post<{ Body: ResolveCommitRequest }>(
+    "/resolve",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     let { repo, ref } = request.body ?? {};
     if (!repo || !ref) {
       const response: ErrorResponse = {
@@ -117,29 +116,18 @@ export function registerDiscoveryRoutes(
             : 500;
       return reply.code(statusCode).send(response);
     }
-  });
+    }
+  );
 
   /**
    * POST /api/jobs/revert-to-commit
    * Body: { "repo": "owner/repo", "commit": "<sha>", "branch": "main" }
    * Creates a new branch from the requested base branch with the tree restored to a past commit.
    */
-  app.post<{ Body: RevertToCommitRequest }>("/revert-to-commit", async (request, reply) => {
-    const endpointBearerToken = getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
-    if (!endpointBearerToken) {
-      const response: ErrorResponse = {
-        error: "Revert-to-commit bearer token is not configured.",
-      };
-      return reply.code(503).send(response);
-    }
-
-    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
-      const response: ErrorResponse = {
-        error: "Bearer token is required.",
-      };
-      return reply.code(401).send(response);
-    }
-
+  app.post<{ Body: RevertToCommitRequest }>(
+    "/revert-to-commit",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
     let { repo, commit, branch, githubKey } = request.body ?? {};
     if (!repo || !commit) {
       const response: ErrorResponse = {
@@ -192,7 +180,8 @@ export function registerDiscoveryRoutes(
           : 500;
       return reply.code(statusCode).send(response);
     }
-  });
+    }
+  );
 
   /**
    * POST /api/jobs/merge-branch
@@ -200,22 +189,10 @@ export function registerDiscoveryRoutes(
    * Creates a branch from baseBranch, merges otherBranch into it, and creates a pull request.
    * If the merge branch already exists, merges otherBranch into it.
    */
-  app.post<{ Body: MergeBranchRequest }>("/merge-branch", async (request, reply) => {
-    const endpointBearerToken = getConfiguredBearerToken(MERGE_BRANCH_BEARER_TOKEN_ENV);
-    if (!endpointBearerToken) {
-      const response: ErrorResponse = {
-        error: "Merge-branch bearer token is not configured.",
-      };
-      return reply.code(503).send(response);
-    }
-
-    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
-      const response: ErrorResponse = {
-        error: "Bearer token is required.",
-      };
-      return reply.code(401).send(response);
-    }
-
+  app.post<{ Body: MergeBranchRequest }>(
+    "/merge-branch",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
     let { repo, baseBranch, otherBranch, githubKey } = request.body ?? {};
     if (!repo || !otherBranch) {
       const response: ErrorResponse = {
@@ -260,30 +237,18 @@ export function registerDiscoveryRoutes(
           : 500;
       return reply.code(statusCode).send(response);
     }
-  });
+    }
+  );
 
   /**
    * POST /api/jobs/delete-remote-branch
    * Body: { "repo": "owner/repo", "branch": "branch-name" }
    * Deletes a remote branch from a GitHub repository.
    */
-  app.post<{ Body: DeleteRemoteBranchRequest }>("/delete-remote-branch", async (request, reply) => {
-    const endpointBearerToken = getConfiguredBearerToken(GITHUB_OPERATIONS_BEARER_TOKEN_ENV)
-      ?? getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
-    if (!endpointBearerToken) {
-      const response: ErrorResponse = {
-        error: "GitHub operations bearer token is not configured.",
-      };
-      return reply.code(503).send(response);
-    }
-
-    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
-      const response: ErrorResponse = {
-        error: "Bearer token is required.",
-      };
-      return reply.code(401).send(response);
-    }
-
+  app.post<{ Body: DeleteRemoteBranchRequest }>(
+    "/delete-remote-branch",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
     let { repo, branch, githubKey } = request.body ?? {};
     if (!repo || !branch) {
       const response: ErrorResponse = {
@@ -329,30 +294,18 @@ export function registerDiscoveryRoutes(
         error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
       return reply.code(statusCode).send(response);
     }
-  });
+    }
+  );
 
   /**
    * POST /api/jobs/branch-permissions
    * Body: { "repo": "owner/repo", "branch": "main" }
    * Checks whether the configured GitHub token can read from and write to the selected branch.
    */
-  app.post<{ Body: BranchPermissionsRequest }>("/branch-permissions", async (request, reply) => {
-    const endpointBearerToken = getConfiguredBearerToken(GITHUB_OPERATIONS_BEARER_TOKEN_ENV)
-      ?? getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
-    if (!endpointBearerToken) {
-      const response: ErrorResponse = {
-        error: "GitHub operations bearer token is not configured.",
-      };
-      return reply.code(503).send(response);
-    }
-
-    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
-      const response: ErrorResponse = {
-        error: "Bearer token is required.",
-      };
-      return reply.code(401).send(response);
-    }
-
+  app.post<{ Body: BranchPermissionsRequest }>(
+    "/branch-permissions",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
     let { repo, branch, githubKey } = request.body ?? {};
     if (!repo || !branch) {
       const response: ErrorResponse = {
@@ -403,30 +356,18 @@ export function registerDiscoveryRoutes(
         error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
       return reply.code(statusCode).send(response);
     }
-  });
+    }
+  );
 
   /**
    * POST /api/jobs/pull-request/ready
    * Body: { "repo": "owner/repo", "pullNumber": 123 }
    * Marks a draft pull request as ready for review.
    */
-  app.post<{ Body: MarkPullRequestReadyRequest }>("/pull-request/ready", async (request, reply) => {
-    const endpointBearerToken = getConfiguredBearerToken(GITHUB_OPERATIONS_BEARER_TOKEN_ENV)
-      ?? getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
-    if (!endpointBearerToken) {
-      const response: ErrorResponse = {
-        error: "GitHub operations bearer token is not configured.",
-      };
-      return reply.code(503).send(response);
-    }
-
-    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
-      const response: ErrorResponse = {
-        error: "Bearer token is required.",
-      };
-      return reply.code(401).send(response);
-    }
-
+  app.post<{ Body: MarkPullRequestReadyRequest }>(
+    "/pull-request/ready",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
     let { repo, pullNumber, githubKey } = request.body ?? {};
     if (!repo || !pullNumber) {
       const response: ErrorResponse = {
@@ -471,30 +412,18 @@ export function registerDiscoveryRoutes(
         error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
       return reply.code(statusCode).send(response);
     }
-  });
+    }
+  );
 
   /**
    * POST /api/jobs/pull-request/merge
    * Body: { "repo": "owner/repo", "pullNumber": 123, "mergeMethod": "squash" }
    * Merges a pull request.
    */
-  app.post<{ Body: MergePullRequestRequest }>("/pull-request/merge", async (request, reply) => {
-    const endpointBearerToken = getConfiguredBearerToken(GITHUB_OPERATIONS_BEARER_TOKEN_ENV)
-      ?? getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
-    if (!endpointBearerToken) {
-      const response: ErrorResponse = {
-        error: "GitHub operations bearer token is not configured.",
-      };
-      return reply.code(503).send(response);
-    }
-
-    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
-      const response: ErrorResponse = {
-        error: "Bearer token is required.",
-      };
-      return reply.code(401).send(response);
-    }
-
+  app.post<{ Body: MergePullRequestRequest }>(
+    "/pull-request/merge",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
     let { repo, pullNumber, commitTitle, commitMessage, mergeMethod, githubKey } = request.body ?? {};
     if (!repo || !pullNumber) {
       const response: ErrorResponse = {
@@ -559,7 +488,8 @@ export function registerDiscoveryRoutes(
         error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
       return reply.code(statusCode).send(response);
     }
-  });
+    }
+  );
 
   /**
    * POST /api/jobs/pull-request/open
@@ -567,23 +497,10 @@ export function registerDiscoveryRoutes(
    * Opens a new pull request. Defaults to the last commit message on the head branch
    * for the title and description if not provided.
    */
-  app.post<{ Body: OpenPullRequestRequest }>("/pull-request/open", async (request, reply) => {
-    const endpointBearerToken = getConfiguredBearerToken(GITHUB_OPERATIONS_BEARER_TOKEN_ENV)
-      ?? getConfiguredBearerToken(REVERT_TO_COMMIT_BEARER_TOKEN_ENV);
-    if (!endpointBearerToken) {
-      const response: ErrorResponse = {
-        error: "GitHub operations bearer token is not configured.",
-      };
-      return reply.code(503).send(response);
-    }
-
-    if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
-      const response: ErrorResponse = {
-        error: "Bearer token is required.",
-      };
-      return reply.code(401).send(response);
-    }
-
+  app.post<{ Body: OpenPullRequestRequest }>(
+    "/pull-request/open",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
     let { repo, head, base, title, body: prBody, draft, githubKey } = request.body ?? {};
     if (!repo || !head) {
       const response: ErrorResponse = {
@@ -671,7 +588,8 @@ export function registerDiscoveryRoutes(
         error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
       return reply.code(statusCode).send(response);
     }
-  });
+    }
+  );
 
   /**
    * POST /api/jobs/pull-request/resolve
@@ -680,6 +598,7 @@ export function registerDiscoveryRoutes(
    */
   app.post<{ Body: ResolvePullRequestRequest }>(
     "/pull-request/resolve",
+    { preHandler: requireViewerBearerToken },
     async (request, reply) => {
       const pullRequestUrl = request.body?.pullRequestUrl?.trim();
       if (!pullRequestUrl) {
@@ -711,7 +630,10 @@ export function registerDiscoveryRoutes(
    * Body: { "repo": "owner/repo" }
    * Lists available branch and tag refs for a repository.
    */
-  app.post<{ Body: ListRefsRequest }>("/refs", async (request, reply) => {
+  app.post<{ Body: ListRefsRequest }>(
+    "/refs",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     let { repo } = request.body ?? {};
     if (!repo) {
       const response: ErrorResponse = {
@@ -745,14 +667,18 @@ export function registerDiscoveryRoutes(
       const response: ErrorResponse = { error: message };
       return reply.code(500).send(response);
     }
-  });
+    }
+  );
 
   /**
    * POST /api/jobs/branches
    * Body: { "repo": "owner/repo" }
    * Lists repository branches with branch head metadata and pull request status.
    */
-  app.post<{ Body: ListBranchesRequest }>("/branches", async (request, reply) => {
+  app.post<{ Body: ListBranchesRequest }>(
+    "/branches",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     let { repo } = request.body ?? {};
     if (!repo) {
       const response: ErrorResponse = {
@@ -786,14 +712,18 @@ export function registerDiscoveryRoutes(
       const response: ErrorResponse = { error: message };
       return reply.code(500).send(response);
     }
-  });
+    }
+  );
 
   /**
    * POST /api/jobs/commits
    * Body: { "repo": "owner/repo", "limit": 10 }
    * Lists repository commits from newest to oldest.
    */
-  app.post<{ Body: ListCommitsRequest }>("/commits", async (request, reply) => {
+  app.post<{ Body: ListCommitsRequest }>(
+    "/commits",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     let { repo, limit } = request.body ?? {};
     if (!repo) {
       const response: ErrorResponse = {
@@ -835,14 +765,18 @@ export function registerDiscoveryRoutes(
       const response: ErrorResponse = { error: message };
       return reply.code(500).send(response);
     }
-  });
+    }
+  );
 
   /**
    * POST /api/jobs/commits/graph
    * Body: { "repo": "owner/repo", "limit": 10 }
    * Lists repository commits as node/edge items for visualization.
    */
-  app.post<{ Body: ListCommitsRequest }>("/commits/graph", async (request, reply) => {
+  app.post<{ Body: ListCommitsRequest }>(
+    "/commits/graph",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
     let { repo, limit } = request.body ?? {};
     if (!repo) {
       const response: ErrorResponse = {
@@ -881,7 +815,8 @@ export function registerDiscoveryRoutes(
       const response: ErrorResponse = { error: message };
       return reply.code(500).send(response);
     }
-  });
+    }
+  );
 
   /**
    * GET /api/jobs/organizations/:organization/repositories
@@ -889,6 +824,7 @@ export function registerDiscoveryRoutes(
    */
   app.get<{ Params: { organization: string } }>(
     "/organizations/:organization/repositories",
+    { preHandler: requireViewerBearerToken },
     async (request, reply) => {
       const organization = request.params.organization?.trim();
       if (!organization) {
@@ -926,7 +862,7 @@ export function registerDiscoveryRoutes(
    * GET /api/jobs/cache
    * Lists git cache folders and their sizes from disk.
    */
-  app.get("/cache", async (_request, reply) => {
+  app.get("/cache", { preHandler: requireViewerBearerToken }, async (_request, reply) => {
     try {
       const response: GitCacheStatsResponse = getGitCacheStats();
       return reply.code(200).send(response);
@@ -949,6 +885,7 @@ export function registerDiscoveryRoutes(
   app.post<{ Body: CreateTaskRequest }>(
     "/create-task",
     {
+      preHandler: requireAdminBearerToken,
       config: {
         rateLimit: {
           max: CREATE_TASK_ROUTE_RATE_LIMIT_MAX,
@@ -957,21 +894,6 @@ export function registerDiscoveryRoutes(
       },
     },
     async (request, reply) => {
-      const endpointBearerToken = getConfiguredBearerToken(CREATE_TASK_BEARER_TOKEN_ENV);
-      if (!endpointBearerToken) {
-        const response: ErrorResponse = {
-          error: "Create-task bearer token is not configured.",
-        };
-        return reply.code(503).send(response);
-      }
-
-      if (!matchesBearerToken(request.headers.authorization, endpointBearerToken)) {
-        const response: ErrorResponse = {
-          error: "Bearer token is required.",
-        };
-        return reply.code(401).send(response);
-      }
-
       let { repo } = request.body ?? {};
       const {
         event_content,
@@ -1068,16 +990,20 @@ export function registerDiscoveryRoutes(
     }
   );
 
-  app.get<{ Params: { id: string } }>("/create-task/:id", async (request, reply) => {
-    const job = await jobRepo.getAgentTaskJob(request.params.id);
-    if (!job) {
-      const response: ErrorResponse = { error: "Task job not found." };
-      return reply.code(404).send(response);
-    }
+  app.get<{ Params: { id: string } }>(
+    "/create-task/:id",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
+      const job = await jobRepo.getAgentTaskJob(request.params.id);
+      if (!job) {
+        const response: ErrorResponse = { error: "Task job not found." };
+        return reply.code(404).send(response);
+      }
 
-    const response: AgentTaskJobInfo = job;
-    return reply.code(200).send(response);
-  });
+      const response: AgentTaskJobInfo = job;
+      return reply.code(200).send(response);
+    }
+  );
 }
 
 async function enqueueAgentTaskJob(

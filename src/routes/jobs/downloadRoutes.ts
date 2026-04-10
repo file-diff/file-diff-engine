@@ -19,6 +19,7 @@ import {
   getDownloadFilename,
   logger,
   parsePositiveInteger,
+  requireViewerBearerToken,
   resolveJobFilePath,
 } from "./shared";
 
@@ -74,6 +75,7 @@ export function registerDownloadRoutes(
   app.get<{ Params: { hash: string } }>(
     "/files/hash/:hash/download",
     {
+      preHandler: requireViewerBearerToken,
       config: {
         rateLimit: {
           max: parsePositiveInteger(
@@ -101,6 +103,7 @@ export function registerDownloadRoutes(
   app.get<{ Params: { id: string; hash: string } }>(
     "/:id/files/hash/:hash/download",
     {
+      preHandler: requireViewerBearerToken,
       config: {
         rateLimit: {
           max: parsePositiveInteger(
@@ -180,6 +183,7 @@ export function registerDownloadRoutes(
 
   app.get<{ Params: { leftHash: string; rightHash: string } }>(
     "/files/hash/:leftHash/diff/:rightHash",
+    { preHandler: requireViewerBearerToken },
     async (request, reply) => {
       const { leftHash, rightHash } = request.params;
       const leftFileResult = await resolveAccessibleFileByHash(jobRepo, leftHash);
@@ -215,6 +219,7 @@ export function registerDownloadRoutes(
 
   app.get<{ Params: { hash: string }; Querystring: TokenizeQuerystring }>(
     "/files/hash/:hash/tokenize",
+    { preHandler: requireViewerBearerToken },
     async (request, reply) => {
       const { hash } = request.params;
       const fileResult = await resolveAccessibleFileByHash(jobRepo, hash);
