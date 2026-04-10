@@ -13,6 +13,7 @@ import {
 import { Queue } from "bullmq";
 import type {
   AgentTaskJobInfo,
+  BranchPermissionsResponse,
   ListBranchesResponse,
   CreateTaskResponse,
   ListTasksResponse,
@@ -417,6 +418,96 @@ describe("Job Routes", () => {
     expect(res.status).toBe(500);
     expect(res.body).toEqual({
       error: "Unable to list branches for repository 'https://github.com/facebook/react.git'.",
+    });
+  });
+
+  it("POST /api/jobs/branch-permissions - should use the request githubKey when provided", async () => {
+    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+    const getBranchPermissionsSpy = vi
+      .spyOn(githubApi, "getBranchPermissions")
+      .mockResolvedValue({ read: true, write: false });
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/branch-permissions",
+      {
+        repo: "https://github.com/facebook/react.git",
+        branch: " main ",
+        githubKey: " portal-token ",
+      },
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<BranchPermissionsResponse>({
+      repo: "facebook/react",
+      branch: "main",
+      read: true,
+      write: false,
+    });
+    expect(getBranchPermissionsSpy).toHaveBeenCalledWith(
+      "facebook/react",
+      "main",
+      "portal-token"
+    );
+  });
+
+  it("POST /api/jobs/branch-permissions - should fall back to PRIVATE_GITHUB_TOKEN", async () => {
+    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+    process.env.PRIVATE_GITHUB_TOKEN = " private-token ";
+    const getBranchPermissionsSpy = vi
+      .spyOn(githubApi, "getBranchPermissions")
+      .mockResolvedValue({ read: true, write: true });
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/branch-permissions",
+      {
+        repo: "facebook/react",
+        branch: "main",
+      },
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<BranchPermissionsResponse>({
+      repo: "facebook/react",
+      branch: "main",
+      read: true,
+      write: true,
+    });
+    expect(getBranchPermissionsSpy).toHaveBeenCalledWith(
+      "facebook/react",
+      "main",
+      "private-token"
+    );
+  });
+
+  it("POST /api/jobs/branch-permissions - should reject invalid branch names", async () => {
+    process.env.REVERT_TO_COMMIT_BEARER_TOKEN = "route-secret";
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/branch-permissions",
+      {
+        repo: "facebook/react",
+        branch: "-main",
+      },
+      {
+        authorization: "Bearer route-secret",
+      }
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Field 'branch' must be a non-empty branch name and cannot start with '-'.",
     });
   });
 
