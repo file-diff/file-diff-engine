@@ -433,10 +433,14 @@ export async function getBranchPermissions(
       token,
     }
   );
+  const read = repository.permissions
+    ? repository.permissions.pull === true
+    : true;
+  const write = repository.permissions?.push === true;
 
   return {
-    read: repository.permissions?.pull !== false,
-    write: repository.permissions?.push === true,
+    read,
+    write,
   };
 }
 
