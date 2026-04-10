@@ -411,13 +411,20 @@ export async function getBranchPermissions(
     .map((segment) => encodeURIComponent(segment))
     .join("/");
 
-  await getJson<Record<string, unknown>>(
+  const branchDetails = await getJson<{ name?: string }>(
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/branches/${encodedBranch}`,
     {
       notFoundMessage: `Branch '${branch}' was not found in repository '${repo}'.`,
       token,
     }
   );
+
+  if (!branchDetails.name?.trim()) {
+    throw new GitHubApiError(
+      `Branch '${branch}' in repository '${repo}' did not include a branch name.`,
+      502
+    );
+  }
 
   const repository = await getJson<GitHubRepositoryApiResponse>(
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`,
@@ -428,7 +435,7 @@ export async function getBranchPermissions(
   );
 
   return {
-    read: true,
+    read: repository.permissions?.pull !== false,
     write: repository.permissions?.push === true,
   };
 }
