@@ -37,7 +37,7 @@ function buildLikePattern(value: string): string {
   return value + "%";
 }
 
-function getTaskDelayMs(value: unknown): number {
+function normalizeTaskDelayMs(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
@@ -103,7 +103,7 @@ export class JobRepository {
       branch: (row.branch_name as string | null) ?? null,
       taskId: (row.github_task_id as string | null) ?? undefined,
       taskStatus: (row.task_status as string | null) ?? undefined,
-      taskDelayMs: getTaskDelayMs(row.task_delay_ms),
+      taskDelayMs: normalizeTaskDelayMs(row.task_delay_ms),
       scheduledAt: row.scheduled_at ? toIsoString(row.scheduled_at) : null,
       error: (row.error as string | null) ?? undefined,
       createdAt: toIsoString(row.created_at),
@@ -174,7 +174,7 @@ export class JobRepository {
         branch: (record.branch_name as string | null) ?? null,
         taskId: (record.github_task_id as string | null) ?? undefined,
         taskStatus: (record.task_status as string | null) ?? undefined,
-        taskDelayMs: getTaskDelayMs(record.task_delay_ms),
+        taskDelayMs: normalizeTaskDelayMs(record.task_delay_ms),
         scheduledAt: record.scheduled_at ? toIsoString(record.scheduled_at) : null,
         error: (record.error as string | null) ?? undefined,
         createdAt: toIsoString(record.created_at),
