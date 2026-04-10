@@ -48,6 +48,10 @@ interface GitHubRepositoryApiResponse {
   pushed_at?: string;
   created_at?: string;
   updated_at?: string;
+  permissions?: {
+    pull?: boolean;
+    push?: boolean;
+  };
 }
 
 interface GitHubCommitPullRequestApiResponse {
@@ -360,6 +364,11 @@ export interface BranchLastCommit {
   message: string;
 }
 
+export interface BranchPermissionsSummary {
+  read: boolean;
+  write: boolean;
+}
+
 export async function getLastCommitOnBranch(
   repo: string,
   branch: string,
@@ -389,6 +398,51 @@ export async function getLastCommitOnBranch(
   } catch {
     return null;
   }
+}
+
+export async function getBranchPermissions(
+  repo: string,
+  branch: string,
+  token?: string
+): Promise<BranchPermissionsSummary> {
+  const [owner, repoName] = repo.split("/", 2);
+  const encodedBranch = branch
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  const branchDetails = await getJson<{ name?: string }>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/branches/${encodedBranch}`,
+    {
+      notFoundMessage: `Branch '${branch}' was not found in repository '${repo}'.`,
+      token,
+    }
+  );
+
+  if (!branchDetails.name?.trim()) {
+    throw new GitHubApiError(
+      `Branch '${branch}' in repository '${repo}' did not include a branch name.`,
+      502
+    );
+  }
+
+  const repository = await getJson<GitHubRepositoryApiResponse>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`,
+    {
+      notFoundMessage: `GitHub repository '${repo}' was not found.`,
+      token,
+    }
+  );
+  // GitHub omits the permissions block for successful public-repo reads without repo-specific auth.
+  const read = repository.permissions
+    ? repository.permissions.pull === true
+    : true;
+  const write = repository.permissions?.push === true;
+
+  return {
+    read,
+    write,
+  };
 }
 
 export async function markPullRequestReady(

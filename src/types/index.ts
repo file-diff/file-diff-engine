@@ -431,6 +431,24 @@ export interface DeleteRemoteBranchRequest {
   githubKey?: string;
 }
 
+/** Payload sent when checking access to a repository branch. */
+export interface BranchPermissionsRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Branch name */
+  branch: string;
+  /** Optional GitHub token */
+  githubKey?: string;
+}
+
+/** Response payload after checking access to a repository branch. */
+export interface BranchPermissionsResponse {
+  repo: string;
+  branch: string;
+  read: boolean;
+  write: boolean;
+}
+
 /** Response payload after deleting a remote branch. */
 export interface DeleteRemoteBranchResponse {
   repo: string;
