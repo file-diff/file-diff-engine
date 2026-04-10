@@ -433,6 +433,7 @@ export async function getBranchPermissions(
       token,
     }
   );
+  // GitHub omits the permissions block for successful public-repo reads without repo-specific auth.
   const read = repository.permissions
     ? repository.permissions.pull === true
     : true;
