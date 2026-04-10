@@ -1175,7 +1175,7 @@ describe("Job Routes", () => {
 
     expect(res.status).toBe(409);
     expect(res.body).toEqual({
-      error: "Task job can only be canceled before it starts.",
+      error: "Task job has already created a remote task and cannot be canceled.",
     });
   });
 

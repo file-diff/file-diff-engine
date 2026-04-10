@@ -137,10 +137,6 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       logger.info(`${tag} Created remote task=${githubTaskId}`);
     }
 
-    if (!githubTaskId) {
-      throw new Error("Agent task job did not produce a GitHub task id.");
-    }
-
     while (true) {
       pollCount += 1;
       const taskInfo = await githubApi.getTask(

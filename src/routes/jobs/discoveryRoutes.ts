@@ -1039,9 +1039,16 @@ export function registerDiscoveryRoutes(
         return reply.code(404).send(response);
       }
 
-      if (job.status !== "waiting" || job.taskId) {
+      if (job.status !== "waiting") {
         const response: ErrorResponse = {
-          error: "Task job can only be canceled before it starts.",
+          error: "Task job is no longer waiting and cannot be canceled.",
+        };
+        return reply.code(409).send(response);
+      }
+
+      if (job.taskId) {
+        const response: ErrorResponse = {
+          error: "Task job has already created a remote task and cannot be canceled.",
         };
         return reply.code(409).send(response);
       }
