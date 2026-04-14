@@ -39,6 +39,7 @@ describe("createApp", () => {
   const originalBuildVersion = process.env.BUILD_VERSION;
   const originalRequestDelayMs = process.env.REQUEST_DELAY_MS;
   const originalPublicGitHubToken = process.env.PUBLIC_GITHUB_TOKEN;
+  const originalPrivateGitHubToken = process.env.PRIVATE_GITHUB_TOKEN;
   const originalTmpDir = process.env.TMP_DIR;
   const originalAdminBearerToken = process.env.ADMIN_BEARER_TOKEN;
   const originalViewerBearerToken = process.env.VIEWER_BEARER_TOKEN;
@@ -78,6 +79,11 @@ describe("createApp", () => {
       delete process.env.PUBLIC_GITHUB_TOKEN;
     } else {
       process.env.PUBLIC_GITHUB_TOKEN = originalPublicGitHubToken;
+    }
+    if (originalPrivateGitHubToken === undefined) {
+      delete process.env.PRIVATE_GITHUB_TOKEN;
+    } else {
+      process.env.PRIVATE_GITHUB_TOKEN = originalPrivateGitHubToken;
     }
     if (originalTmpDir === undefined) {
       delete process.env.TMP_DIR;
@@ -192,6 +198,7 @@ describe("createApp", () => {
 
   it("returns GitHub health errors without failing the health endpoint", async () => {
     delete process.env.PUBLIC_GITHUB_TOKEN;
+    delete process.env.PRIVATE_GITHUB_TOKEN;
     vi.spyOn(githubApi, "getGitHubRateLimit").mockRejectedValueOnce(
       new githubApi.GitHubApiError("Bad credentials", 401)
     );

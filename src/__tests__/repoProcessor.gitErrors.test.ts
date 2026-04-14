@@ -97,8 +97,9 @@ describe("repoProcessor git error handling", () => {
     }
   });
 
-  it("should configure git to use PUBLIC_GITHUB_TOKEN for GitHub HTTPS requests", async () => {
+  it("should configure git to use PRIVATE_GITHUB_TOKEN or PUBLIC_GITHUB_TOKEN for GitHub HTTPS requests", async () => {
     const originalToken = process.env.PUBLIC_GITHUB_TOKEN;
+    const originalPrivateToken = process.env.PRIVATE_GITHUB_TOKEN;
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-github-token-"));
     const execFile = vi.fn((...args: unknown[]) => {
       const callback = args[args.length - 1] as (
@@ -116,6 +117,7 @@ describe("repoProcessor git error handling", () => {
     });
 
     try {
+      delete process.env.PRIVATE_GITHUB_TOKEN;
       process.env.PUBLIC_GITHUB_TOKEN = " test-token ";
 
       vi.doMock("child_process", () => ({
@@ -143,6 +145,11 @@ describe("repoProcessor git error handling", () => {
         delete process.env.PUBLIC_GITHUB_TOKEN;
       } else {
         process.env.PUBLIC_GITHUB_TOKEN = originalToken;
+      }
+      if (originalPrivateToken === undefined) {
+        delete process.env.PRIVATE_GITHUB_TOKEN;
+      } else {
+        process.env.PRIVATE_GITHUB_TOKEN = originalPrivateToken;
       }
       fs.rmSync(workDir, { recursive: true, force: true });
     }
