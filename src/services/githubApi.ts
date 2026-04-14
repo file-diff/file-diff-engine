@@ -984,7 +984,7 @@ function normalizeFetchHeaders(headers: Headers): IncomingHttpHeaders {
 }
 
 function getRequestHeaders(tokenOverride?: string): Record<string, string> {
-  const token = tokenOverride?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim();
+  const token = tokenOverride?.trim() || process.env.PRIVATE_GITHUB_TOKEN?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim();
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "file-diff-engine",
