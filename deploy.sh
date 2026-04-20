@@ -46,7 +46,21 @@ escape_sql_literal() {
   printf "%s" "$1" | sed "s/'/''/g"
 }
 
-export BUILD_VERSION="${BUILD_VERSION:-$(git rev-parse HEAD)}"
+commit_hash="$(git rev-parse --short=7 HEAD)"
+full_commit_hash="$(git rev-parse HEAD)"
+build_version="${BUILD_VERSION:-${full_commit_hash}}"
+short_hash_pattern="(^|[+.-])${commit_hash}($|[.-])"
+full_hash_pattern="(^|[+.-])${full_commit_hash}($|[.-])"
+
+if [[ ! "${build_version}" =~ ${short_hash_pattern} && ! "${build_version}" =~ ${full_hash_pattern} ]]; then
+  if [[ "${build_version}" == *"+"* ]]; then
+    build_version="${build_version}.${commit_hash}"
+  else
+    build_version="${build_version}+${commit_hash}"
+  fi
+fi
+
+export BUILD_VERSION="${build_version}"
 
 docker compose down
 
