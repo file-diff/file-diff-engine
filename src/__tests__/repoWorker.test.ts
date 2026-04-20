@@ -10,6 +10,7 @@ const findOpenPullRequestByHeadBranchMock = vi.fn();
 const markPullRequestReadyMock = vi.fn();
 const mergePullRequestMock = vi.fn();
 const deleteRemoteBranchMock = vi.fn();
+const archiveTaskMock = vi.fn();
 const sendAgentTaskFinishedSlackNotificationMock = vi.fn();
 
 const repoMethods = {
@@ -41,6 +42,7 @@ vi.mock("../services/githubApi", () => ({
   markPullRequestReady: markPullRequestReadyMock,
   mergePullRequest: mergePullRequestMock,
   deleteRemoteBranch: deleteRemoteBranchMock,
+  archiveTask: archiveTaskMock,
   GitHubApiError: class GitHubApiError extends Error {
     constructor(
       message: string,
@@ -88,6 +90,7 @@ describe("repoWorker", () => {
     markPullRequestReadyMock.mockReset();
     mergePullRequestMock.mockReset();
     deleteRemoteBranchMock.mockReset();
+    archiveTaskMock.mockReset();
     sendAgentTaskFinishedSlackNotificationMock.mockReset();
     repoMethods.getAgentTaskJob.mockResolvedValue(undefined);
   });
@@ -365,6 +368,7 @@ describe("repoWorker", () => {
       sha: "deadbeef",
     });
     deleteRemoteBranchMock.mockResolvedValue(undefined);
+    archiveTaskMock.mockResolvedValue({});
     sendAgentTaskFinishedSlackNotificationMock.mockResolvedValue(undefined);
 
     const { createWorker } = await import("../workers/repoWorker");
@@ -396,6 +400,12 @@ describe("repoWorker", () => {
       "owner/repo",
       "copilot/fix-1",
       "test-token"
+    );
+    expect(archiveTaskMock).toHaveBeenCalledWith(
+      "owner",
+      "repo",
+      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "GitHub-Bearer copilot-token"
     );
     expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
       owner: "owner",
@@ -466,6 +476,7 @@ describe("repoWorker", () => {
       token: "test-token",
     });
     expect(deleteRemoteBranchMock).not.toHaveBeenCalled();
+    expect(archiveTaskMock).not.toHaveBeenCalled();
     expect(sendAgentTaskFinishedSlackNotificationMock).toHaveBeenCalledWith({
       owner: "owner",
       repoName: "repo",
