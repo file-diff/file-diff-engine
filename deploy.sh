@@ -49,8 +49,10 @@ escape_sql_literal() {
 commit_hash="$(git rev-parse --short=7 HEAD)"
 full_commit_hash="$(git rev-parse HEAD)"
 build_version="${BUILD_VERSION:-${full_commit_hash}}"
+short_hash_pattern="(^|[+.-])${commit_hash}($|[.-])"
+full_hash_pattern="(^|[+.-])${full_commit_hash}($|[.-])"
 
-if [[ "${build_version}" != *"${commit_hash}"* && "${build_version}" != *"${full_commit_hash}"* ]]; then
+if [[ ! "${build_version}" =~ ${short_hash_pattern} && ! "${build_version}" =~ ${full_hash_pattern} ]]; then
   if [[ "${build_version}" == *"+"* ]]; then
     build_version="${build_version}.${commit_hash}"
   else
