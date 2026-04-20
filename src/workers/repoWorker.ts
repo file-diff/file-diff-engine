@@ -194,7 +194,13 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
           lastKnownBranchName,
           pullRequestCompletionMode,
           tag,
-          token
+          token,
+          {
+            owner,
+            repoName,
+            taskId: githubTaskId,
+            authorizationHeader,
+          }
         );
         await repo.updateAgentTaskJobStatus(jobId, "completed");
         await sendTerminalTaskNotification(
@@ -293,7 +299,13 @@ async function runPullRequestCompletionMode(
   branchName: string | null,
   mode: PullRequestCompletionMode | undefined,
   tag: string,
-  token: string
+  token: string,
+  taskContext: {
+    owner: string;
+    repoName: string;
+    taskId: string;
+    authorizationHeader: string;
+  }
 ): Promise<string[]> {
   const prefix = tag;
   if (!mode || mode === "None") {
@@ -347,6 +359,13 @@ async function runPullRequestCompletionMode(
         : `Merged pull request #${pullRequest.number}`
     );
     await deleteMergedBranch(repo, branchName, pullRequest.number, token, prefix);
+    await archiveCompletedTask(
+      taskContext.owner,
+      taskContext.repoName,
+      taskContext.taskId,
+      taskContext.authorizationHeader,
+      prefix
+    );
     return actions;
   } catch (error) {
     if (
@@ -358,6 +377,30 @@ async function runPullRequestCompletionMode(
     }
 
     throw error;
+  }
+}
+
+async function archiveCompletedTask(
+  owner: string,
+  repoName: string,
+  taskId: string,
+  authorizationHeader: string,
+  tag: string
+): Promise<void> {
+  const prefix = tag;
+  try {
+    logger.info(`${prefix} Archiving completed task=${taskId} for repo=${owner}/${repoName}`);
+    await githubApi.archiveTask(owner, repoName, taskId, authorizationHeader);
+  } catch (error) {
+    if (
+      error instanceof githubApi.GitHubApiError &&
+      error.statusCode === 404
+    ) {
+      logger.info(`${prefix} Completed task=${taskId} already archived or not found for repo=${owner}/${repoName}`);
+      return;
+    }
+
+    logger.warn(`${prefix} Failed to archive completed task=${taskId} for repo=${owner}/${repoName}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
