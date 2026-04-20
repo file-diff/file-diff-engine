@@ -400,7 +400,7 @@ async function archiveCompletedTask(
       return;
     }
 
-    logger.warn(`${prefix} Failed to archive completed task=${taskId} for repo=${owner}/${repoName}; retry or archive it manually if it remains visible: ${error instanceof Error ? error.message : String(error)}`);
+    logger.warn(`${prefix} Failed to archive completed task=${taskId} for repo=${owner}/${repoName}; no automatic retry is scheduled: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
