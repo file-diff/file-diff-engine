@@ -42,6 +42,7 @@ This document lists every HTTP endpoint currently implemented by the service and
 | POST | `/api/jobs/revert-to-commit` | Admin | `ADMIN_BEARER_TOKEN` |
 | POST | `/api/jobs/merge-branch` | Admin | `ADMIN_BEARER_TOKEN` |
 | POST | `/api/jobs/delete-remote-branch` | Admin | `ADMIN_BEARER_TOKEN` |
+| POST | `/api/jobs/create-tag` | Admin | `ADMIN_BEARER_TOKEN` |
 | POST | `/api/jobs/branch-permissions` | Admin | `ADMIN_BEARER_TOKEN` |
 | POST | `/api/jobs/pull-request/ready` | Admin | `ADMIN_BEARER_TOKEN` |
 | POST | `/api/jobs/pull-request/merge` | Admin | `ADMIN_BEARER_TOKEN` |

@@ -372,6 +372,69 @@ curl -X POST https://your-host.example.com/api/jobs/delete-remote-branch \
 
 ---
 
+### `POST /api/jobs/create-tag`
+
+Creates and pushes a remote tag for a specific commit in a GitHub repository.
+
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `tag` | `string` | Yes | Tag name to create, for example `v1.2.3` or `release/2026.04.22`. |
+| `commit` | `string` | Yes | Full 40-character commit SHA the tag should point to. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+
+#### Success response
+
+Status: `201 Created`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `tag` | `string` | Created tag name |
+| `ref` | `string` | Created Git ref, always `refs/tags/<tag>` |
+| `commit` | `string` | Full commit SHA the tag points to |
+| `commitShort` | `string` | Short commit SHA |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo`, `tag`, or `commit` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `404 Not Found` when the repository does not exist
+- `422 Unprocessable Entity` when the tag already exists or GitHub rejects the ref creation
+- `503 Service Unavailable` when the bearer token is not configured
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/create-tag \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "tag": "v1.2.3",
+    "commit": "0123456789abcdef0123456789abcdef01234567"
+  }'
+```
+
+Example response:
+
+```json
+{
+  "repo": "facebook/react",
+  "tag": "v1.2.3",
+  "ref": "refs/tags/v1.2.3",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "commitShort": "0123456"
+}
+```
+
+---
+
 ### `POST /api/jobs/pull-request/ready`
 
 Marks a draft pull request as ready for review.
