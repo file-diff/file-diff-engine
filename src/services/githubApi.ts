@@ -73,6 +73,11 @@ interface GitHubCreatePullRequestApiRequest {
   draft?: boolean;
 }
 
+interface GitHubCreateRefApiRequest {
+  ref: string;
+  sha: string;
+}
+
 interface GitHubErrorApiResponse {
   message?: string;
   documentation_url?: string;
@@ -354,6 +359,27 @@ export async function deleteRemoteBranch(
     {
       notFoundMessage: `Branch '${branch}' was not found in repository '${repo}'.`,
       method: "DELETE",
+      token,
+    }
+  );
+}
+
+export async function createTag(
+  repo: string,
+  tag: string,
+  commit: string,
+  token?: string
+): Promise<void> {
+  const [owner, repoName] = repo.split("/", 2);
+  await getJson<Record<string, unknown>>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/git/refs`,
+    {
+      notFoundMessage: `GitHub repository '${repo}' was not found.`,
+      method: "POST",
+      body: {
+        ref: `refs/tags/${tag}`,
+        sha: commit,
+      } satisfies GitHubCreateRefApiRequest,
       token,
     }
   );

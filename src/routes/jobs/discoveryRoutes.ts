@@ -29,6 +29,8 @@ import type {
   ResolvePullRequestResponse,
   CreateTaskRequest,
   CreateTaskResponse,
+  CreateTagRequest,
+  CreateTagResponse,
   DeleteRemoteBranchRequest,
   DeleteRemoteBranchResponse,
   MarkPullRequestReadyRequest,
@@ -290,6 +292,78 @@ export function registerDiscoveryRoutes(
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to delete remote branch.";
+      const response: ErrorResponse = { error: message };
+      const statusCode =
+        error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+      return reply.code(statusCode).send(response);
+    }
+    }
+  );
+
+  /**
+   * POST /api/jobs/create-tag
+   * Body: { "repo": "owner/repo", "tag": "v1.0.0", "commit": "<sha>" }
+   * Creates and pushes a remote tag for a commit on GitHub.
+   */
+  app.post<{ Body: CreateTagRequest }>(
+    "/create-tag",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
+    let { repo, tag, commit, githubKey } = request.body ?? {};
+    if (!repo || !tag || !commit) {
+      const response: ErrorResponse = {
+        error: "Fields 'repo', 'tag', and 'commit' are required.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    repo = normalizeRepo(repo);
+    tag = tag.trim();
+    commit = commit.trim().toLowerCase();
+    githubKey = githubKey?.trim() || undefined;
+
+    if (!isValidRepo(repo)) {
+      const response: ErrorResponse = {
+        error:
+          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (!tag || tag.startsWith("-") || /[\u0000-\u001F\u007F]/.test(tag)) {
+      const response: ErrorResponse = {
+        error:
+          "Field 'tag' must be a non-empty tag name, cannot start with '-', and cannot contain control characters.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    if (!/^[a-f0-9]{40}$/.test(commit)) {
+      const response: ErrorResponse = {
+        error: "Field 'commit' must be a full 40-character commit SHA.",
+      };
+      return reply.code(400).send(response);
+    }
+
+    const token =
+      githubKey ||
+      process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+      undefined;
+
+    try {
+      await githubApi.createTag(repo, tag, commit, token);
+      const response: CreateTagResponse = {
+        repo,
+        tag,
+        ref: `refs/tags/${tag}`,
+        commit,
+        commitShort: getCommitShort(commit),
+      };
+      return reply.code(201).send(response);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to create tag.";
       const response: ErrorResponse = { error: message };
       const statusCode =
         error instanceof githubApi.GitHubApiError ? error.statusCode : 500;

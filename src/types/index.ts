@@ -438,6 +438,18 @@ export interface DeleteRemoteBranchRequest {
   githubKey?: string;
 }
 
+/** Payload sent when creating a remote tag in a GitHub repository. */
+export interface CreateTagRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Tag name to create */
+  tag: string;
+  /** Full 40-character commit SHA */
+  commit: string;
+  /** Optional GitHub token */
+  githubKey?: string;
+}
+
 /** Payload sent when checking access to a repository branch. */
 export interface BranchPermissionsRequest {
   /** GitHub repository in owner/repo format */
@@ -460,6 +472,15 @@ export interface BranchPermissionsResponse {
 export interface DeleteRemoteBranchResponse {
   repo: string;
   branch: string;
+}
+
+/** Response payload after creating a remote tag. */
+export interface CreateTagResponse {
+  repo: string;
+  tag: string;
+  ref: string;
+  commit: string;
+  commitShort: string;
 }
 
 /** Payload sent when marking a pull request as ready for review. */

@@ -14,6 +14,7 @@ import { Queue } from "bullmq";
 import type {
   AgentTaskJobInfo,
   BranchPermissionsResponse,
+  CreateTagResponse,
   ListBranchesResponse,
   CreateTaskResponse,
   ListTasksResponse,
@@ -47,6 +48,7 @@ async function makeRequest(
     "/api/jobs/revert-to-commit",
     "/api/jobs/merge-branch",
     "/api/jobs/delete-remote-branch",
+    "/api/jobs/create-tag",
     "/api/jobs/branch-permissions",
     "/api/jobs/pull-request/ready",
     "/api/jobs/pull-request/merge",
@@ -617,6 +619,127 @@ describe("Job Routes", () => {
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
       error: "Field 'branch' must be a non-empty branch name and cannot start with '-'.",
+    });
+  });
+
+  it("POST /api/jobs/create-tag - should use the request githubKey when provided", async () => {
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
+    const createTagSpy = vi
+      .spyOn(githubApi, "createTag")
+      .mockResolvedValue(undefined);
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-tag",
+      {
+        repo: "https://github.com/facebook/react.git",
+        tag: " v1.2.3 ",
+        commit: ` ${commitHash.toUpperCase()} `,
+        githubKey: " portal-token ",
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual<CreateTagResponse>({
+      repo: "facebook/react",
+      tag: "v1.2.3",
+      ref: "refs/tags/v1.2.3",
+      commit: commitHash,
+      commitShort: commitHash.slice(0, 7),
+    });
+    expect(createTagSpy).toHaveBeenCalledWith(
+      "facebook/react",
+      "v1.2.3",
+      commitHash,
+      "portal-token"
+    );
+  });
+
+  it("POST /api/jobs/create-tag - should fall back to PRIVATE_GITHUB_TOKEN", async () => {
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
+    process.env.PRIVATE_GITHUB_TOKEN = " private-token ";
+    const createTagSpy = vi
+      .spyOn(githubApi, "createTag")
+      .mockResolvedValue(undefined);
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-tag",
+      {
+        repo: "facebook/react",
+        tag: "release/2026.04.22",
+        commit: commitHash,
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual<CreateTagResponse>({
+      repo: "facebook/react",
+      tag: "release/2026.04.22",
+      ref: "refs/tags/release/2026.04.22",
+      commit: commitHash,
+      commitShort: commitHash.slice(0, 7),
+    });
+    expect(createTagSpy).toHaveBeenCalledWith(
+      "facebook/react",
+      "release/2026.04.22",
+      commitHash,
+      "private-token"
+    );
+  });
+
+  it("POST /api/jobs/create-tag - should reject invalid tag names", async () => {
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-tag",
+      {
+        repo: "facebook/react",
+        tag: "-release",
+        commit: commitHash,
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error:
+        "Field 'tag' must be a non-empty tag name, cannot start with '-', and cannot contain control characters.",
+    });
+  });
+
+  it("POST /api/jobs/create-tag - should reject invalid commit hashes", async () => {
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/create-tag",
+      {
+        repo: "facebook/react",
+        tag: "v1.2.3",
+        commit: "abc123",
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Field 'commit' must be a full 40-character commit SHA.",
     });
   });
 
