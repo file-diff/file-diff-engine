@@ -435,6 +435,242 @@ Example response:
 
 ---
 
+### `POST /api/jobs/delete-tag`
+
+Deletes a remote tag from a GitHub repository.
+
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `tag` | `string` | Yes | Tag name to delete from the remote (without the `refs/tags/` prefix). |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `tag` | `string` | Deleted tag name |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` or `tag` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `404 Not Found` when the tag does not exist
+- `503 Service Unavailable` when the bearer token is not configured
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/delete-tag \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "tag": "v1.2.3"
+  }'
+```
+
+---
+
+### `POST /api/jobs/delete-repository`
+
+Deletes a GitHub repository.
+
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`. The GitHub token used for the call (request `githubKey` or environment) must have the `delete_repo` scope.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `403 Forbidden` when the GitHub token does not have permission to delete the repository
+- `404 Not Found` when the repository does not exist
+- `503 Service Unavailable` when the bearer token is not configured
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/delete-repository \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react"
+  }'
+```
+
+---
+
+### `POST /api/jobs/tags`
+
+Lists tags for a repository, newest first as returned by GitHub. The API itself does not paginate &mdash; the server iterates over GitHub's pages internally until at least `limit` tags have been collected (or the repository runs out of tags).
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `limit` | `number` | Yes | Maximum number of tags to return. Must be a positive integer. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `tags` | `array` | List of tag entries, capped at `limit` |
+
+Each `tags` entry contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | Tag name (e.g. `v1.2.3`) |
+| `ref` | `string` | Full Git ref, always `refs/tags/<name>` |
+| `commit` | `string` | Commit SHA the tag points to |
+| `commitShort` | `string` | Short commit SHA |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` is missing/invalid or `limit` is not a positive integer
+- `404 Not Found` when the repository does not exist
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/tags \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "limit": 50
+  }'
+```
+
+Example response:
+
+```json
+{
+  "repo": "facebook/react",
+  "tags": [
+    {
+      "name": "v1.2.3",
+      "ref": "refs/tags/v1.2.3",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "commitShort": "0123456"
+    }
+  ]
+}
+```
+
+---
+
+### `POST /api/jobs/actions`
+
+Lists GitHub Actions workflow runs for a repository, newest first as returned by GitHub. The API itself does not paginate &mdash; the server iterates over GitHub's pages internally until at least `limit` runs have been collected (or the repository runs out of workflow runs).
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `limit` | `number` | Yes | Maximum number of workflow runs to return. Must be a positive integer. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `runs` | `array` | List of workflow run entries, capped at `limit` |
+
+Each `runs` entry contains:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `number` | GitHub workflow run id |
+| `runNumber` | `number` | Run-level number (monotonic per workflow) |
+| `name` | `string` | Display name of the run |
+| `workflowId` | `number` | Id of the workflow this run belongs to |
+| `event` | `string` | Event that triggered the run, e.g. `push`, `pull_request` |
+| `status` | `string` | Run status, e.g. `queued`, `in_progress`, `completed` |
+| `conclusion` | `string \| null` | Run conclusion when completed, e.g. `success`, `failure`; `null` while in progress |
+| `branch` | `string` | Branch the run was triggered for |
+| `commit` | `string` | Commit SHA the run was triggered for |
+| `commitShort` | `string` | Short commit SHA |
+| `createdAt` | `string` | Run creation timestamp |
+| `updatedAt` | `string` | Run last update timestamp |
+| `url` | `string` | URL to the run on GitHub |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` is missing/invalid or `limit` is not a positive integer
+- `404 Not Found` when the repository does not exist
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/actions \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "limit": 50
+  }'
+```
+
+Example response:
+
+```json
+{
+  "repo": "facebook/react",
+  "runs": [
+    {
+      "id": 42,
+      "runNumber": 7,
+      "name": "CI",
+      "workflowId": 100,
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "branch": "main",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "commitShort": "0123456",
+      "createdAt": "2026-04-01T12:00:00Z",
+      "updatedAt": "2026-04-01T12:05:00Z",
+      "url": "https://github.com/facebook/react/actions/runs/42"
+    }
+  ]
+}
+```
+
+---
+
 ### `POST /api/jobs/pull-request/ready`
 
 Marks a draft pull request as ready for review.

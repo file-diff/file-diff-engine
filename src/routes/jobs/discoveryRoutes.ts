@@ -33,6 +33,14 @@ import type {
   CreateTagResponse,
   DeleteRemoteBranchRequest,
   DeleteRemoteBranchResponse,
+  DeleteRepositoryRequest,
+  DeleteRepositoryResponse,
+  DeleteTagRequest,
+  DeleteTagResponse,
+  ListActionsRequest,
+  ListActionsResponse,
+  ListTagsRequest,
+  ListTagsResponse,
   MarkPullRequestReadyRequest,
   MarkPullRequestReadyResponse,
   MergePullRequestRequest,
@@ -890,6 +898,217 @@ export function registerDiscoveryRoutes(
       const response: ErrorResponse = { error: message };
       return reply.code(500).send(response);
     }
+    }
+  );
+
+  /**
+   * POST /api/jobs/tags
+   * Body: { "repo": "owner/repo", "limit": 50 }
+   * Lists tags for a repository. The API does not paginate; the server
+   * iterates GitHub pages until `limit` tags have been collected.
+   */
+  app.post<{ Body: ListTagsRequest }>(
+    "/tags",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
+      let { repo, limit } = request.body ?? {};
+      if (!repo) {
+        const response: ErrorResponse = {
+          error: "Field 'repo' is required.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      repo = normalizeRepo(repo);
+
+      if (!isValidRepo(repo)) {
+        const response: ErrorResponse = {
+          error:
+            "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (!Number.isInteger(limit) || limit <= 0) {
+        const response: ErrorResponse = {
+          error: "Field 'limit' must be a positive integer.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      try {
+        const tags = await githubApi.listTags(repo, limit);
+        const response: ListTagsResponse = { repo, tags };
+        return reply.code(200).send(response);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to list repository tags.";
+        const response: ErrorResponse = { error: message };
+        const statusCode =
+          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+        return reply.code(statusCode).send(response);
+      }
+    }
+  );
+
+  /**
+   * POST /api/jobs/actions
+   * Body: { "repo": "owner/repo", "limit": 50 }
+   * Lists GitHub Actions workflow runs for a repository. The API does not
+   * paginate; the server iterates GitHub pages until `limit` runs have been
+   * collected.
+   */
+  app.post<{ Body: ListActionsRequest }>(
+    "/actions",
+    { preHandler: requireViewerBearerToken },
+    async (request, reply) => {
+      let { repo, limit } = request.body ?? {};
+      if (!repo) {
+        const response: ErrorResponse = {
+          error: "Field 'repo' is required.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      repo = normalizeRepo(repo);
+
+      if (!isValidRepo(repo)) {
+        const response: ErrorResponse = {
+          error:
+            "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (!Number.isInteger(limit) || limit <= 0) {
+        const response: ErrorResponse = {
+          error: "Field 'limit' must be a positive integer.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      try {
+        const runs = await githubApi.listActions(repo, limit);
+        const response: ListActionsResponse = { repo, runs };
+        return reply.code(200).send(response);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to list repository workflow runs.";
+        const response: ErrorResponse = { error: message };
+        const statusCode =
+          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+        return reply.code(statusCode).send(response);
+      }
+    }
+  );
+
+  /**
+   * POST /api/jobs/delete-tag
+   * Body: { "repo": "owner/repo", "tag": "v1.2.3" }
+   * Deletes a remote tag from a GitHub repository.
+   */
+  app.post<{ Body: DeleteTagRequest }>(
+    "/delete-tag",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
+      let { repo, tag, githubKey } = request.body ?? {};
+      if (!repo || !tag) {
+        const response: ErrorResponse = {
+          error: "Both 'repo' and 'tag' are required.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      repo = normalizeRepo(repo);
+      tag = tag.trim();
+      githubKey = githubKey?.trim() || undefined;
+
+      if (!isValidRepo(repo)) {
+        const response: ErrorResponse = {
+          error:
+            "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (!tag || tag.startsWith("-") || /[\u0000-\u001F\u007F]/.test(tag)) {
+        const response: ErrorResponse = {
+          error:
+            "Field 'tag' must be a non-empty tag name, cannot start with '-', and cannot contain control characters.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      const token =
+        githubKey ||
+        process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+        process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+        undefined;
+
+      try {
+        await githubApi.deleteTag(repo, tag, token);
+        const response: DeleteTagResponse = { repo, tag };
+        return reply.code(200).send(response);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to delete tag.";
+        const response: ErrorResponse = { error: message };
+        const statusCode =
+          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+        return reply.code(statusCode).send(response);
+      }
+    }
+  );
+
+  /**
+   * POST /api/jobs/delete-repository
+   * Body: { "repo": "owner/repo" }
+   * Deletes a GitHub repository. Requires an admin bearer token and a GitHub
+   * token (request body or environment) with `delete_repo` scope.
+   */
+  app.post<{ Body: DeleteRepositoryRequest }>(
+    "/delete-repository",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
+      let { repo, githubKey } = request.body ?? {};
+      if (!repo) {
+        const response: ErrorResponse = {
+          error: "Field 'repo' is required.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      repo = normalizeRepo(repo);
+      githubKey = githubKey?.trim() || undefined;
+
+      if (!isValidRepo(repo)) {
+        const response: ErrorResponse = {
+          error:
+            "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        };
+        return reply.code(400).send(response);
+      }
+
+      const token =
+        githubKey ||
+        process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+        process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+        undefined;
+
+      try {
+        await githubApi.deleteRepository(repo, token);
+        const response: DeleteRepositoryResponse = { repo };
+        return reply.code(200).send(response);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to delete repository.";
+        const response: ErrorResponse = { error: message };
+        const statusCode =
+          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+        return reply.code(statusCode).send(response);
+      }
     }
   );
 

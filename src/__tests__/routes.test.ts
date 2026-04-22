@@ -15,8 +15,12 @@ import type {
   AgentTaskJobInfo,
   BranchPermissionsResponse,
   CreateTagResponse,
+  DeleteRepositoryResponse,
+  DeleteTagResponse,
+  ListActionsResponse,
   ListBranchesResponse,
   CreateTaskResponse,
+  ListTagsResponse,
   ListTasksResponse,
   ListCommitsGraphResponse,
   GitCacheStatsResponse,
@@ -49,6 +53,8 @@ async function makeRequest(
     "/api/jobs/merge-branch",
     "/api/jobs/delete-remote-branch",
     "/api/jobs/create-tag",
+    "/api/jobs/delete-tag",
+    "/api/jobs/delete-repository",
     "/api/jobs/branch-permissions",
     "/api/jobs/pull-request/ready",
     "/api/jobs/pull-request/merge",
@@ -741,6 +747,246 @@ describe("Job Routes", () => {
     expect(res.body).toEqual({
       error: "Field 'commit' must be a full 40-character commit SHA.",
     });
+  });
+
+  it("POST /api/jobs/tags - should list tags for a repository", async () => {
+    const listTagsSpy = vi.spyOn(githubApi, "listTags").mockResolvedValue([
+      {
+        name: "v1.0.0",
+        ref: "refs/tags/v1.0.0",
+        commit: commitHash,
+        commitShort: commitHash.slice(0, 7),
+      },
+    ]);
+
+    const res = await makeRequest(app, "POST", "/api/jobs/tags", {
+      repo: "https://github.com/facebook/react.git",
+      limit: 5,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<ListTagsResponse>({
+      repo: "facebook/react",
+      tags: [
+        {
+          name: "v1.0.0",
+          ref: "refs/tags/v1.0.0",
+          commit: commitHash,
+          commitShort: commitHash.slice(0, 7),
+        },
+      ],
+    });
+    expect(listTagsSpy).toHaveBeenCalledWith("facebook/react", 5);
+  });
+
+  it("POST /api/jobs/tags - should reject an invalid limit", async () => {
+    const res = await makeRequest(app, "POST", "/api/jobs/tags", {
+      repo: "facebook/react",
+      limit: 0,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Field 'limit' must be a positive integer.",
+    });
+  });
+
+  it("POST /api/jobs/actions - should list workflow runs for a repository", async () => {
+    const listActionsSpy = vi.spyOn(githubApi, "listActions").mockResolvedValue([
+      {
+        id: 42,
+        runNumber: 7,
+        name: "CI",
+        workflowId: 100,
+        event: "push",
+        status: "completed",
+        conclusion: "success",
+        branch: "main",
+        commit: commitHash,
+        commitShort: commitHash.slice(0, 7),
+        createdAt: "2026-04-01T12:00:00Z",
+        updatedAt: "2026-04-01T12:05:00Z",
+        url: "https://github.com/facebook/react/actions/runs/42",
+      },
+    ]);
+
+    const res = await makeRequest(app, "POST", "/api/jobs/actions", {
+      repo: "facebook/react",
+      limit: 10,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<ListActionsResponse>({
+      repo: "facebook/react",
+      runs: [
+        {
+          id: 42,
+          runNumber: 7,
+          name: "CI",
+          workflowId: 100,
+          event: "push",
+          status: "completed",
+          conclusion: "success",
+          branch: "main",
+          commit: commitHash,
+          commitShort: commitHash.slice(0, 7),
+          createdAt: "2026-04-01T12:00:00Z",
+          updatedAt: "2026-04-01T12:05:00Z",
+          url: "https://github.com/facebook/react/actions/runs/42",
+        },
+      ],
+    });
+    expect(listActionsSpy).toHaveBeenCalledWith("facebook/react", 10);
+  });
+
+  it("POST /api/jobs/actions - should reject missing repo", async () => {
+    const res = await makeRequest(app, "POST", "/api/jobs/actions", {
+      limit: 10,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "Field 'repo' is required." });
+  });
+
+  it("POST /api/jobs/delete-tag - should delete the tag using the request githubKey", async () => {
+    const deleteTagSpy = vi
+      .spyOn(githubApi, "deleteTag")
+      .mockResolvedValue(undefined);
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/delete-tag",
+      {
+        repo: "https://github.com/facebook/react.git",
+        tag: " v1.2.3 ",
+        githubKey: " portal-token ",
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<DeleteTagResponse>({
+      repo: "facebook/react",
+      tag: "v1.2.3",
+    });
+    expect(deleteTagSpy).toHaveBeenCalledWith(
+      "facebook/react",
+      "v1.2.3",
+      "portal-token"
+    );
+  });
+
+  it("POST /api/jobs/delete-tag - should reject invalid tag names", async () => {
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/delete-tag",
+      {
+        repo: "facebook/react",
+        tag: "-bad",
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error:
+        "Field 'tag' must be a non-empty tag name, cannot start with '-', and cannot contain control characters.",
+    });
+  });
+
+  it("POST /api/jobs/delete-tag - should require an admin bearer token", async () => {
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/delete-tag",
+      {
+        repo: "facebook/react",
+        tag: "v1.2.3",
+      },
+      {
+        authorization: "Bearer viewer-secret",
+      }
+    );
+
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /api/jobs/delete-repository - should delete the repository using the request githubKey", async () => {
+    const deleteRepositorySpy = vi
+      .spyOn(githubApi, "deleteRepository")
+      .mockResolvedValue(undefined);
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/delete-repository",
+      {
+        repo: "https://github.com/facebook/react.git",
+        githubKey: " portal-token ",
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<DeleteRepositoryResponse>({
+      repo: "facebook/react",
+    });
+    expect(deleteRepositorySpy).toHaveBeenCalledWith(
+      "facebook/react",
+      "portal-token"
+    );
+  });
+
+  it("POST /api/jobs/delete-repository - should fall back to PRIVATE_GITHUB_TOKEN", async () => {
+    process.env.PRIVATE_GITHUB_TOKEN = " private-token ";
+    const deleteRepositorySpy = vi
+      .spyOn(githubApi, "deleteRepository")
+      .mockResolvedValue(undefined);
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/delete-repository",
+      {
+        repo: "facebook/react",
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<DeleteRepositoryResponse>({
+      repo: "facebook/react",
+    });
+    expect(deleteRepositorySpy).toHaveBeenCalledWith(
+      "facebook/react",
+      "private-token"
+    );
+  });
+
+  it("POST /api/jobs/delete-repository - should require an admin bearer token", async () => {
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/delete-repository",
+      {
+        repo: "facebook/react",
+      },
+      {
+        authorization: "Bearer viewer-secret",
+      }
+    );
+
+    expect(res.status).toBe(401);
   });
 
   it("POST /api/jobs/commits - should list commits for a repository", async () => {
