@@ -483,6 +483,105 @@ export interface CreateTagResponse {
   commitShort: string;
 }
 
+/** Payload sent when listing tags for a repository. */
+export interface ListTagsRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Maximum number of tags to return */
+  limit: number;
+}
+
+/** Response entry when listing tags for a repository. */
+export interface TagSummary {
+  /** Tag name (e.g. `v1.2.3`) */
+  name: string;
+  /** Full Git ref (always `refs/tags/<name>`) */
+  ref: string;
+  /** Commit SHA the tag points to */
+  commit: string;
+  /** Short commit SHA */
+  commitShort: string;
+}
+
+/** Response payload when listing tags for a repository. */
+export interface ListTagsResponse {
+  repo: string;
+  tags: TagSummary[];
+}
+
+/** Payload sent when listing GitHub Actions workflow runs for a repository. */
+export interface ListActionsRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Maximum number of workflow runs to return */
+  limit: number;
+}
+
+/** Response entry when listing GitHub Actions workflow runs for a repository. */
+export interface WorkflowRunSummary {
+  /** GitHub workflow run id */
+  id: number;
+  /** Run-level number (monotonic per workflow) */
+  runNumber: number;
+  /** Display name of the run, when available */
+  name: string;
+  /** Workflow id this run belongs to */
+  workflowId: number;
+  /** Event that triggered the run, e.g. `push`, `pull_request` */
+  event: string;
+  /** Run status, e.g. `queued`, `in_progress`, `completed` */
+  status: string;
+  /** Run conclusion when the run has completed (e.g. `success`, `failure`), otherwise `null` */
+  conclusion: string | null;
+  /** Branch the run was triggered for */
+  branch: string;
+  /** Commit SHA the run was triggered for */
+  commit: string;
+  /** Short commit SHA */
+  commitShort: string;
+  /** Run creation timestamp */
+  createdAt: string;
+  /** Run last update timestamp */
+  updatedAt: string;
+  /** URL to the run on GitHub */
+  url: string;
+}
+
+/** Response payload when listing GitHub Actions workflow runs for a repository. */
+export interface ListActionsResponse {
+  repo: string;
+  runs: WorkflowRunSummary[];
+}
+
+/** Payload sent when deleting a remote tag from a GitHub repository. */
+export interface DeleteTagRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Tag name to delete */
+  tag: string;
+  /** Optional GitHub token */
+  githubKey?: string;
+}
+
+/** Response payload after deleting a remote tag. */
+export interface DeleteTagResponse {
+  repo: string;
+  tag: string;
+}
+
+/** Payload sent when deleting a GitHub repository. */
+export interface DeleteRepositoryRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Optional GitHub token */
+  githubKey?: string;
+}
+
+/** Response payload after deleting a GitHub repository. */
+export interface DeleteRepositoryResponse {
+  repo: string;
+}
+
 /** Payload sent when marking a pull request as ready for review. */
 export interface MarkPullRequestReadyRequest {
   /** GitHub repository in owner/repo format */

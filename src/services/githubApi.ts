@@ -7,7 +7,9 @@ import type {
   ListOrganizationRepositoriesResponse,
   OrganizationRepositorySummary,
   ResolvePullRequestResponse,
+  TagSummary,
   TaskInfoResponse,
+  WorkflowRunSummary,
 } from "../types";
 import { getCommitShort } from "../utils/commit";
 import { createLogger } from "../utils/logger";
@@ -383,6 +385,163 @@ export async function createTag(
       token,
     }
   );
+}
+
+export async function deleteTag(
+  repo: string,
+  tag: string,
+  token?: string
+): Promise<void> {
+  const [owner, repoName] = repo.split("/", 2);
+  const encodedRef = tag
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  await getJson<Record<string, unknown>>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/git/refs/tags/${encodedRef}`,
+    {
+      notFoundMessage: `Tag '${tag}' was not found in repository '${repo}'.`,
+      method: "DELETE",
+      token,
+    }
+  );
+}
+
+export async function deleteRepository(
+  repo: string,
+  token?: string
+): Promise<void> {
+  const [owner, repoName] = repo.split("/", 2);
+  await getJson<Record<string, unknown>>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`,
+    {
+      notFoundMessage: `GitHub repository '${repo}' was not found.`,
+      method: "DELETE",
+      token,
+    }
+  );
+}
+
+interface GitHubTagApiResponse {
+  name?: string;
+  commit?: {
+    sha?: string;
+  };
+}
+
+interface GitHubWorkflowRunApiResponse {
+  id?: number;
+  name?: string | null;
+  display_title?: string;
+  workflow_id?: number;
+  run_number?: number;
+  event?: string;
+  status?: string | null;
+  conclusion?: string | null;
+  head_branch?: string | null;
+  head_sha?: string;
+  created_at?: string;
+  updated_at?: string;
+  html_url?: string;
+}
+
+interface GitHubWorkflowRunsApiResponse {
+  total_count?: number;
+  workflow_runs?: GitHubWorkflowRunApiResponse[];
+}
+
+const GITHUB_TAGS_PAGE_SIZE = 100;
+const GITHUB_WORKFLOW_RUNS_PAGE_SIZE = 100;
+
+export async function listTags(
+  repo: string,
+  limit: number
+): Promise<TagSummary[]> {
+  const [owner, repoName] = repo.split("/", 2);
+  const tags: TagSummary[] = [];
+
+  for (let page = 1; tags.length < limit; page += 1) {
+    const pageSize = Math.min(GITHUB_TAGS_PAGE_SIZE, limit - tags.length);
+    const pageResults = await getJson<GitHubTagApiResponse[]>(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/tags?per_page=${pageSize}&page=${page}`,
+      {
+        notFoundMessage: `GitHub repository '${repo}' was not found.`,
+      }
+    );
+
+    for (const tag of pageResults) {
+      const name = tag.name?.trim();
+      const commit = tag.commit?.sha?.trim().toLowerCase();
+      if (!name || !commit) {
+        continue;
+      }
+      tags.push({
+        name,
+        ref: `refs/tags/${name}`,
+        commit,
+        commitShort: getCommitShort(commit),
+      });
+      if (tags.length >= limit) {
+        break;
+      }
+    }
+
+    if (pageResults.length < pageSize) {
+      break;
+    }
+  }
+
+  return tags;
+}
+
+export async function listActions(
+  repo: string,
+  limit: number
+): Promise<WorkflowRunSummary[]> {
+  const [owner, repoName] = repo.split("/", 2);
+  const runs: WorkflowRunSummary[] = [];
+
+  for (let page = 1; runs.length < limit; page += 1) {
+    const pageSize = Math.min(GITHUB_WORKFLOW_RUNS_PAGE_SIZE, limit - runs.length);
+    const pageResults = await getJson<GitHubWorkflowRunsApiResponse>(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/actions/runs?per_page=${pageSize}&page=${page}`,
+      {
+        notFoundMessage: `GitHub repository '${repo}' was not found.`,
+      }
+    );
+
+    const workflowRuns = pageResults.workflow_runs ?? [];
+    for (const run of workflowRuns) {
+      if (typeof run.id !== "number") {
+        continue;
+      }
+      const commit = run.head_sha?.trim().toLowerCase() || "";
+      runs.push({
+        id: run.id,
+        runNumber: typeof run.run_number === "number" ? run.run_number : 0,
+        name: (run.name ?? run.display_title ?? "").trim(),
+        workflowId: typeof run.workflow_id === "number" ? run.workflow_id : 0,
+        event: run.event?.trim() || "",
+        status: run.status?.trim() || "",
+        conclusion: run.conclusion ? run.conclusion.trim() : null,
+        branch: run.head_branch?.trim() || "",
+        commit,
+        commitShort: commit ? getCommitShort(commit) : "",
+        createdAt: run.created_at?.trim() || "",
+        updatedAt: run.updated_at?.trim() || "",
+        url: run.html_url?.trim() || "",
+      });
+      if (runs.length >= limit) {
+        break;
+      }
+    }
+
+    if (workflowRuns.length < pageSize) {
+      break;
+    }
+  }
+
+  return runs;
 }
 
 export interface BranchLastCommit {
