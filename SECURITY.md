@@ -66,3 +66,15 @@ This list was verified against the currently implemented routes in:
 - `src/routes/taskRoutes.ts`
 
 It is implementation-based and therefore includes endpoints that are not yet listed in `API.md`.
+
+## Security assessment findings (2026-04-23)
+
+The following findings were identified during an implementation review of the current codebase.
+
+| Severity | Finding | Evidence | Recommendation |
+| --- | --- | --- | --- |
+| High | Outbound GitHub credentials are written to logs. | `src/services/githubApi.ts` logs full request headers in `requestJson()` and logs the resolved Copilot authorization header in `fetchCopilotAuthorizationHeader()`. `src/routes/taskRoutes.ts` also logs the full `authorizedRequest` object, which includes `copilotAuthorizationHeader`. | Stop logging live authorization headers, redact sensitive header values before logging, and avoid logging auth-bearing objects wholesale. |
+| Medium | Admin routes accept raw GitHub personal access tokens in request bodies. | `src/routes/jobs/discoveryRoutes.ts` accepts `githubKey` on admin endpoints such as `/api/jobs/revert-to-commit`, `/api/jobs/merge-branch`, `/api/jobs/delete-remote-branch`, `/api/jobs/create-tag`, `/api/jobs/branch-permissions`, `/api/jobs/pull-request/ready`, `/api/jobs/pull-request/merge`, and `/api/jobs/pull-request/open`. | Prefer server-side credentials or a secret manager, and if request-supplied tokens remain necessary, explicitly redact `githubKey` from request logging and traces. |
+| Medium | Viewer credentials can trigger expensive repository-processing work. | `src/routes/jobs/jobManagementRoutes.ts` protects `POST /api/jobs` with `requireViewerBearerToken`, but the route creates database state and enqueues repository-processing jobs. | Consider a separate write-scoped token, stricter per-token quotas, and stronger rate limiting around job creation. |
+| Medium | GitHub API responses are buffered in memory without a size limit. | `src/services/githubApi.ts` accumulates every response chunk in `requestJson()` and concatenates the full body before parsing. | Add a maximum response size, abort oversized responses, and stream large payloads where possible. |
+| High | Known dependency advisories are present in the current install set. | `npm audit --json` reports `fastify@5.8.4` as vulnerable to GHSA-247c-9743-5963, plus high-severity `vite` advisories in the test toolchain and moderate `uuid` findings affecting direct and transitive installs. | Upgrade vulnerable packages to patched versions and re-run the audit as part of dependency maintenance. |
