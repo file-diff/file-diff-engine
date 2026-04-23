@@ -31,6 +31,8 @@ import type {
   CreateTaskResponse,
   CreateTagRequest,
   CreateTagResponse,
+  DeleteActionRunRequest,
+  DeleteActionRunResponse,
   DeleteRemoteBranchRequest,
   DeleteRemoteBranchResponse,
   DeleteRepositoryRequest,
@@ -56,7 +58,7 @@ import { getCommitShort } from "../../utils/commit";
 import {
   isValidOrganization,
   isValidRepo,
-   logger,
+  logger,
   normalizeRepo,
   requireAdminBearerToken,
   requireViewerBearerToken,
@@ -996,6 +998,62 @@ export function registerDiscoveryRoutes(
           error instanceof Error
             ? error.message
             : "Unable to list repository workflow runs.";
+        const response: ErrorResponse = { error: message };
+        const statusCode =
+          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+        return reply.code(statusCode).send(response);
+      }
+    }
+  );
+
+  /**
+   * POST /api/jobs/delete-action-run
+   * Body: { "repo": "owner/repo", "runId": 42 }
+   * Deletes a specific GitHub Actions workflow run.
+   */
+  app.post<{ Body: DeleteActionRunRequest }>(
+    "/delete-action-run",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
+      let { repo, runId, githubKey } = request.body ?? {};
+      if (!repo || typeof runId !== "number") {
+        const response: ErrorResponse = {
+          error: "Both 'repo' and 'runId' are required.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      repo = normalizeRepo(repo);
+      githubKey = githubKey?.trim() || undefined;
+
+      if (!isValidRepo(repo)) {
+        const response: ErrorResponse = {
+          error:
+            "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (!Number.isInteger(runId) || runId <= 0) {
+        const response: ErrorResponse = {
+          error: "Field 'runId' must be a positive integer.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      const token =
+        githubKey ||
+        process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
+        process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
+        undefined;
+
+      try {
+        await githubApi.deleteActionRun(repo, runId, token);
+        const response: DeleteActionRunResponse = { repo, runId };
+        return reply.code(200).send(response);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to delete workflow run.";
         const response: ErrorResponse = { error: message };
         const statusCode =
           error instanceof githubApi.GitHubApiError ? error.statusCode : 500;

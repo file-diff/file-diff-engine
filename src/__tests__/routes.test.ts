@@ -15,6 +15,7 @@ import type {
   AgentTaskJobInfo,
   BranchPermissionsResponse,
   CreateTagResponse,
+  DeleteActionRunResponse,
   DeleteRepositoryResponse,
   DeleteTagResponse,
   ListActionsResponse,
@@ -53,6 +54,7 @@ async function makeRequest(
     "/api/jobs/merge-branch",
     "/api/jobs/delete-remote-branch",
     "/api/jobs/create-tag",
+    "/api/jobs/delete-action-run",
     "/api/jobs/delete-tag",
     "/api/jobs/delete-repository",
     "/api/jobs/branch-permissions",
@@ -846,6 +848,105 @@ describe("Job Routes", () => {
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: "Field 'repo' is required." });
+  });
+
+  it("POST /api/jobs/delete-action-run - should delete the workflow run using the request githubKey", async () => {
+    const deleteActionRunSpy = vi
+      .spyOn(githubApi, "deleteActionRun")
+      .mockResolvedValue(undefined);
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/delete-action-run",
+      {
+        repo: "https://github.com/facebook/react.git",
+        runId: 42,
+        githubKey: " portal-token ",
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<DeleteActionRunResponse>({
+      repo: "facebook/react",
+      runId: 42,
+    });
+    expect(deleteActionRunSpy).toHaveBeenCalledWith(
+      "facebook/react",
+      42,
+      "portal-token"
+    );
+  });
+
+  it("POST /api/jobs/delete-action-run - should fall back to PRIVATE_GITHUB_TOKEN", async () => {
+    process.env.PRIVATE_GITHUB_TOKEN = " private-token ";
+    const deleteActionRunSpy = vi
+      .spyOn(githubApi, "deleteActionRun")
+      .mockResolvedValue(undefined);
+
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/delete-action-run",
+      {
+        repo: "facebook/react",
+        runId: 42,
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual<DeleteActionRunResponse>({
+      repo: "facebook/react",
+      runId: 42,
+    });
+    expect(deleteActionRunSpy).toHaveBeenCalledWith(
+      "facebook/react",
+      42,
+      "private-token"
+    );
+  });
+
+  it("POST /api/jobs/delete-action-run - should reject an invalid runId", async () => {
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/delete-action-run",
+      {
+        repo: "facebook/react",
+        runId: 0,
+      },
+      {
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Field 'runId' must be a positive integer.",
+    });
+  });
+
+  it("POST /api/jobs/delete-action-run - should require an admin bearer token", async () => {
+    const res = await makeRequest(
+      app,
+      "POST",
+      "/api/jobs/delete-action-run",
+      {
+        repo: "facebook/react",
+        runId: 42,
+      },
+      {
+        authorization: "Bearer viewer-secret",
+      }
+    );
+
+    expect(res.status).toBe(401);
   });
 
   it("POST /api/jobs/delete-tag - should delete the tag using the request githubKey", async () => {

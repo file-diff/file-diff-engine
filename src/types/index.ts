@@ -553,6 +553,22 @@ export interface ListActionsResponse {
   runs: WorkflowRunSummary[];
 }
 
+/** Payload sent when deleting a specific GitHub Actions workflow run. */
+export interface DeleteActionRunRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Workflow run id to delete */
+  runId: number;
+  /** Optional GitHub token */
+  githubKey?: string;
+}
+
+/** Response payload after deleting a specific workflow run. */
+export interface DeleteActionRunResponse {
+  repo: string;
+  runId: number;
+}
+
 /** Payload sent when deleting a remote tag from a GitHub repository. */
 export interface DeleteTagRequest {
   /** GitHub repository in owner/repo format */
