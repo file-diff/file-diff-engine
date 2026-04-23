@@ -671,6 +671,51 @@ Example response:
 
 ---
 
+### `POST /api/jobs/delete-action-run`
+
+Deletes a specific GitHub Actions workflow run.
+
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `runId` | `number` | Yes | Workflow run id to delete. Must be a positive integer. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `runId` | `number` | Deleted workflow run id |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` or `runId` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `404 Not Found` when the workflow run does not exist
+- `503 Service Unavailable` when the bearer token is not configured
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/delete-action-run \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "runId": 42
+  }'
+```
+
+---
+
 ### `POST /api/jobs/pull-request/ready`
 
 Marks a draft pull request as ready for review.

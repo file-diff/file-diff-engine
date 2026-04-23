@@ -422,6 +422,22 @@ export async function deleteRepository(
   );
 }
 
+export async function deleteActionRun(
+  repo: string,
+  runId: number,
+  token?: string
+): Promise<void> {
+  const [owner, repoName] = repo.split("/", 2);
+  await getJson<Record<string, unknown>>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/actions/runs/${runId}`,
+    {
+      notFoundMessage: `Workflow run '${runId}' was not found in repository '${repo}'.`,
+      method: "DELETE",
+      token,
+    }
+  );
+}
+
 interface GitHubTagApiResponse {
   name?: string;
   commit?: {
