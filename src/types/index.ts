@@ -358,8 +358,8 @@ export type PullRequestCompletionMode = "None" | "AutoReady" | "AutoMerge";
 export interface CreateTaskRequest {
   /** GitHub repository in owner/repo format */
   repo: string;
-  /** User's written prompt (required) */
-  event_content: string;
+  /** User's written prompt (deprecated; ignored for task creation payloads) */
+  event_content?: string;
   /** Agent ID (optional, defaults to coding agent) */
   agent_id?: number;
   /** Additional prompting for the agent */

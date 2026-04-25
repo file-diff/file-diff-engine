@@ -897,7 +897,6 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
-| `event_content` | `string` | Yes | User's written prompt. |
 | `agent_id` | `integer` | No | Agent ID (optional, defaults to coding agent). |
 | `problem_statement` | `string` | Yes | Additional prompting for the agent. |
 | `model` | `string` | No | The model to use for this task (e.g. `claude-sonnet-4.6`, `gpt-5.2-codex`). |
@@ -929,7 +928,6 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
   -H "Content-Type: application/json" \
   -d '{
     "repo": "facebook/react",
-    "event_content": "Fix the bug in the login form",
     "problem_statement": "Investigate and fix the login flow bug",
     "base_ref": "main",
     "model": "claude-sonnet-4.6",

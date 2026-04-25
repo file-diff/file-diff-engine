@@ -1367,7 +1367,6 @@ describe("Job Routes", () => {
       "/api/jobs/create-task",
       {
         repo: "https://github.com/octocat/hello-world.git",
-        event_content: "Fix the login button on the homepage",
         problem_statement: "Investigate and fix the login button issue",
         base_ref: "main",
         model: "claude-sonnet-4.6",
@@ -1391,7 +1390,6 @@ describe("Job Routes", () => {
         owner: "octocat",
         repoName: "hello-world",
         createTaskBody: {
-          event_content: "Fix the login button on the homepage",
           problem_statement: "Investigate and fix the login button issue",
           model: "claude-sonnet-4.6",
           create_pull_request: true,
@@ -1426,7 +1424,6 @@ describe("Job Routes", () => {
         "/api/jobs/create-task",
         {
           repo: "octocat/hello-world",
-          event_content: "Fix the login button on the homepage",
           problem_statement: "Investigate and fix the login button issue",
           base_ref: "main",
           create_pull_request: true,
@@ -1454,7 +1451,6 @@ describe("Job Routes", () => {
       "/api/jobs/create-task",
       {
         repo: "octocat/hello-world",
-        event_content: "Fix the login button on the homepage",
         problem_statement: "Investigate and fix the login button issue",
         base_ref: "main",
         pull_request_completion_mode: "AutoReady",
@@ -1480,7 +1476,6 @@ describe("Job Routes", () => {
       "/api/jobs/create-task",
       {
         repo: "octocat/hello-world",
-        event_content: "Fix the login button on the homepage",
         problem_statement: "Investigate repository lookup",
         base_ref: "main",
         model: "claude-sonnet-4.6",
@@ -1508,7 +1503,6 @@ describe("Job Routes", () => {
       "/api/jobs/create-task",
       {
         repo: "octocat/hello-world",
-        event_content: "Fix the login button on the homepage",
         problem_statement: "Investigate repository lookup",
         base_ref: "main",
         task_delay_ms: 60_000,
@@ -1527,7 +1521,6 @@ describe("Job Routes", () => {
         owner: "octocat",
         repoName: "hello-world",
         createTaskBody: {
-          event_content: "Fix the login button on the homepage",
           problem_statement: "Investigate repository lookup",
           base_ref: "main",
         },
