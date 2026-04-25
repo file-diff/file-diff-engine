@@ -1198,11 +1198,17 @@ function getRequestHeaders(
   tokenOverride?: string | null,
   allowEnvironmentFallback = true
 ): Record<string, string> {
-  const token =
-    tokenOverride?.trim() ||
-    (allowEnvironmentFallback
-      ? process.env.PRIVATE_GITHUB_TOKEN?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim()
-      : undefined);
+  let token: string | undefined;
+
+  if (tokenOverride === null) {
+    token = undefined;
+  } else if (tokenOverride !== undefined) {
+    token = tokenOverride.trim() || undefined;
+  } else if (allowEnvironmentFallback) {
+    token =
+      process.env.PRIVATE_GITHUB_TOKEN?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim();
+  }
+
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "file-diff-engine",
