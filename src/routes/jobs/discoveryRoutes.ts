@@ -1231,7 +1231,7 @@ export function registerDiscoveryRoutes(
 
   /**
    * POST /api/jobs/create-task
-   * Body: { "repo": "owner/repo", "event_content": "prompt text", ... }
+   * Body: { "repo": "owner/repo", "problem_statement": "prompt text", ... }
    * Creates a new GitHub Copilot coding agent task for a repository.
    */
   app.post<{ Body: CreateTaskRequest }>(
@@ -1248,7 +1248,6 @@ export function registerDiscoveryRoutes(
     async (request, reply) => {
       let { repo } = request.body ?? {};
       const {
-        event_content,
         agent_id,
         problem_statement,
         model,
@@ -1259,9 +1258,9 @@ export function registerDiscoveryRoutes(
         task_delay_ms,
       } = request.body ?? {};
 
-      if (!repo || !event_content || !base_ref || !problem_statement) {
+      if (!repo || !base_ref || !problem_statement) {
         const response: ErrorResponse = {
-          error: "'event_content', 'problem_statement', 'repo' and 'base_ref' are required.",
+          error: "'problem_statement', 'repo' and 'base_ref' are required.",
         };
         return reply.code(400).send(response);
       }
@@ -1316,7 +1315,7 @@ export function registerDiscoveryRoutes(
         ? new Date(Date.now() + taskDelayMs)
         : null;
 
-      const body: Record<string, unknown> = { event_content };
+      const body: Record<string, unknown> = {};
       if (agent_id !== undefined) body.agent_id = agent_id;
       if (problem_statement !== undefined) body.problem_statement = problem_statement;
       if (model !== undefined) body.model = model;

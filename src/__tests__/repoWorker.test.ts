@@ -221,7 +221,6 @@ describe("repoWorker", () => {
           owner: "owner",
           repoName: "repo",
           createTaskBody: {
-            event_content: "Fix the login button on the homepage",
             problem_statement: "Investigate and fix the login button issue",
             base_ref: "main",
           },
@@ -241,7 +240,6 @@ describe("repoWorker", () => {
       "owner",
       "repo",
       {
-        event_content: "Fix the login button on the homepage",
         problem_statement: "Investigate and fix the login button issue",
         base_ref: "main",
       },
@@ -309,7 +307,6 @@ describe("repoWorker", () => {
           owner: "owner",
           repoName: "repo",
           createTaskBody: {
-            event_content: "Fix login button",
             problem_statement: "Investigate",
             base_ref: "main",
           },
@@ -384,7 +381,6 @@ describe("repoWorker", () => {
           owner: "owner",
           repoName: "repo",
           createTaskBody: {
-            event_content: "Fix login button",
             problem_statement: "Investigate",
             base_ref: "main",
           },
@@ -463,7 +459,6 @@ describe("repoWorker", () => {
           owner: "owner",
           repoName: "repo",
           createTaskBody: {
-            event_content: "Fix login button",
             problem_statement: "Investigate",
             base_ref: "main",
           },
@@ -525,7 +520,6 @@ describe("repoWorker", () => {
           owner: "owner",
           repoName: "repo",
           createTaskBody: {
-            event_content: "Fix login button",
             problem_statement: "Investigate",
             base_ref: "main",
           },
@@ -581,7 +575,6 @@ describe("repoWorker", () => {
           owner: "owner",
           repoName: "repo",
           createTaskBody: {
-            event_content: "Fix login button",
             problem_statement: "Investigate",
             base_ref: "main",
           },
@@ -627,7 +620,6 @@ describe("repoWorker", () => {
         owner: "owner",
         repoName: "repo",
         createTaskBody: {
-          event_content: "Fix login button",
           problem_statement: "Investigate",
           base_ref: "main",
         },
