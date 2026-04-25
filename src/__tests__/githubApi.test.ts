@@ -88,7 +88,7 @@ describe("getGitHubRateLimit", () => {
   });
 
   it("does not fall back to PUBLIC_GITHUB_TOKEN for the rate limit request", async () => {
-    delete process.env.PRIVATE_GITHUB_TOKEN;
+    process.env.PRIVATE_GITHUB_TOKEN = "   ";
     process.env.PUBLIC_GITHUB_TOKEN = " public-token ";
     const { getCapturedOptions } = mockRateLimitRequest();
 

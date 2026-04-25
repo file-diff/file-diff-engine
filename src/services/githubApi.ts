@@ -757,7 +757,7 @@ export async function findOpenPullRequestByHeadBranch(
 export async function getGitHubRateLimit(): Promise<GitHubRateLimitSummary> {
   const response = await getJson<GitHubRateLimitApiResponse>("/rate_limit", {
     notFoundMessage: "GitHub rate limit endpoint was not found.",
-    token: process.env.PRIVATE_GITHUB_TOKEN?.trim() ?? null,
+    token: process.env.PRIVATE_GITHUB_TOKEN?.trim() || null,
     allowEnvironmentFallback: false,
   });
   const rate = response.rate;
