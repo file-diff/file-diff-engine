@@ -757,7 +757,8 @@ export async function findOpenPullRequestByHeadBranch(
 export async function getGitHubRateLimit(): Promise<GitHubRateLimitSummary> {
   const response = await getJson<GitHubRateLimitApiResponse>("/rate_limit", {
     notFoundMessage: "GitHub rate limit endpoint was not found.",
-    token: process.env.PRIVATE_GITHUB_TOKEN?.trim(),
+    token: process.env.PRIVATE_GITHUB_TOKEN?.trim() ?? null,
+    allowEnvironmentFallback: false,
   });
   const rate = response.rate;
 
@@ -906,13 +907,15 @@ async function getJson<T>(
     notFoundMessage: string;
     method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
-    token?: string;
+    token?: string | null;
+    allowEnvironmentFallback?: boolean;
   }
 ): Promise<T> {
   const response = await requestGitHub(path, {
     method: options.method,
     body: options.body,
     token: options.token,
+    allowEnvironmentFallback: options.allowEnvironmentFallback,
   });
   return parseJsonResponse(path, options, response);
 }
@@ -1046,10 +1049,16 @@ function requestGitHub(
   options: {
     method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
-    token?: string;
+    token?: string | null;
+    allowEnvironmentFallback?: boolean;
   } = {}
 ): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
-  return requestJson(GITHUB_API_HOSTNAME, path, getRequestHeaders(options.token), options);
+  return requestJson(
+    GITHUB_API_HOSTNAME,
+    path,
+    getRequestHeaders(options.token, options.allowEnvironmentFallback),
+    options
+  );
 }
 
 function requestCopilot(
@@ -1185,8 +1194,15 @@ function normalizeFetchHeaders(headers: Headers): IncomingHttpHeaders {
   return normalizedHeaders;
 }
 
-function getRequestHeaders(tokenOverride?: string): Record<string, string> {
-  const token = tokenOverride?.trim() || process.env.PRIVATE_GITHUB_TOKEN?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim();
+function getRequestHeaders(
+  tokenOverride?: string | null,
+  allowEnvironmentFallback = true
+): Record<string, string> {
+  const token =
+    tokenOverride?.trim() ||
+    (allowEnvironmentFallback
+      ? process.env.PRIVATE_GITHUB_TOKEN?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim()
+      : undefined);
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "file-diff-engine",
