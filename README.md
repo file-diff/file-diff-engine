@@ -7,7 +7,7 @@ API reference: [API.md](./API.md)
 ## Configuration
 
 - `REQUEST_DELAY_MS`: Adds a delay before every API request is handled. Defaults to `0` (disabled). Set `REQUEST_DELAY_MS=500` to simulate 500ms of latency during development.
-- `PRIVATE_GITHUB_TOKEN`: Optional GitHub token used by the `revertToCommit` CLI by default for GitHub git operations and pull request creation.
+- `PRIVATE_GITHUB_TOKEN`: Optional GitHub token used by the `revertToCommit` CLI by default for GitHub git operations, pull request creation, and GitHub rate-limit checks.
 - `PUBLIC_GITHUB_TOKEN`: Optional GitHub token used to authorize GitHub API requests and Git HTTPS operations so the service can use higher authenticated rate limits.
 - `AGENT_TASK_POLL_INTERVAL_MS`: Polling delay for monitoring queued GitHub Copilot agent tasks after they are created. Defaults to `5000`.
 - `AGENT_TASK_MAX_POLL_DURATION_MS`: Maximum time to keep polling a GitHub Copilot agent task before marking the local job as failed. Defaults to `1800000` (30 minutes).
