@@ -22,7 +22,6 @@ import type {
   ListBranchesResponse,
   CreateTaskResponse,
   ListTagsResponse,
-  ListTasksResponse,
   ListCommitsGraphResponse,
   GitCacheStatsResponse,
   ListCommitsResponse,
@@ -34,13 +33,12 @@ import type {
   RevertToCommitResponse,
   ResolveCommitResponse,
   ResolvePullRequestResponse,
-  TaskInfoResponse,
 } from "../types";
 import { createTestDatabase } from "./helpers/testDatabase";
 import * as githubOperations from "../github/operations";
 import * as githubApi from "../services/githubApi";
 import * as repoProcessor from "../services/repoProcessor";
-import { registerTaskRoutes } from "../routes/taskRoutes";
+import { createTaskRoutes } from "../routes/taskRoutes";
 
 async function makeRequest(
   app: FastifyInstance,
@@ -133,7 +131,7 @@ describe("Job Routes", () => {
     await app.register(createJobRoutes(mockQueue, jobRepo), {
       prefix: "/api/jobs",
     });
-    await app.register(registerTaskRoutes);
+    await app.register(createTaskRoutes(jobRepo));
     process.env.ADMIN_BEARER_TOKEN = "admin-secret";
     process.env.VIEWER_BEARER_TOKEN = "viewer-secret";
   });
@@ -1644,29 +1642,25 @@ describe("Job Routes", () => {
     });
   });
 
-  it("GET /agents/repos/:owner/:repo/tasks/:task_id - should return task info", async () => {
+  it("GET /agents/repos/:owner/:repo/tasks/:task_id - should return local task info", async () => {
     process.env.ADMIN_BEARER_TOKEN = "admin-secret";
-    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
-    const taskInfo: TaskInfoResponse = {
-      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      state: "completed",
-      session_count: 1,
-      sessions: [
-        {
-          id: "s1a2b3c4-d5e6-7890-abcd-ef1234567890",
-          task_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-          state: "completed",
-          base_ref: "main",
-          head_ref: "copilot/fix-1",
-        },
-      ],
-    };
-    const getTaskSpy = vi.spyOn(githubApi, "getTask").mockResolvedValue(taskInfo);
+
+    await jobRepo.createAgentTaskJob(
+      "task-job-1",
+      "octocat/hello-world",
+      undefined,
+      undefined,
+      undefined,
+      0,
+      null,
+      "deepseek-v4-flash",
+      "main"
+    );
 
     const res = await makeRequest(
       app,
       "GET",
-      "/agents/repos/octocat/hello-world/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "/agents/repos/octocat/hello-world/tasks/task-job-1",
       undefined,
       {
         authorization: "Bearer admin-secret",
@@ -1674,29 +1668,86 @@ describe("Job Routes", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual<TaskInfoResponse>(taskInfo);
-    expect(getTaskSpy).toHaveBeenCalledWith(
-      "octocat",
-      "hello-world",
-      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "GitHub-Bearer copilot-token"
-    );
+    const body = res.body as AgentTaskJobInfo;
+    expect(body.id).toBe("task-job-1");
+    expect(body.repo).toBe("octocat/hello-world");
+    expect(body.status).toBe("waiting");
+    expect(body.model).toBe("deepseek-v4-flash");
+    expect(body.baseRef).toBe("main");
   });
 
-  it("GET /agents/repos/:owner/:repo/tasks - should return repository tasks", async () => {
+  it("GET /agents/repos/:owner/:repo/tasks/:task_id - returns 404 for unknown id", async () => {
     process.env.ADMIN_BEARER_TOKEN = "admin-secret";
-    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
-    const tasks: ListTasksResponse = [
+
+    const res = await makeRequest(
+      app,
+      "GET",
+      "/agents/repos/octocat/hello-world/tasks/unknown-id",
+      undefined,
       {
-        id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-        state: "completed",
-      },
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("GET /agents/repos/:owner/:repo/tasks/:task_id - returns 404 when repo does not match", async () => {
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
+
+    await jobRepo.createAgentTaskJob(
+      "task-job-mismatch",
+      "octocat/other-repo"
+    );
+
+    const res = await makeRequest(
+      app,
+      "GET",
+      "/agents/repos/octocat/hello-world/tasks/task-job-mismatch",
+      undefined,
       {
-        id: "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-        state: "queued",
-      },
-    ];
-    const listTasksSpy = vi.spyOn(githubApi, "listTasks").mockResolvedValue(tasks);
+        authorization: "Bearer admin-secret",
+      }
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("GET /agents/repos/:owner/:repo/tasks - returns active tasks for the repo", async () => {
+    process.env.ADMIN_BEARER_TOKEN = "admin-secret";
+
+    await jobRepo.createAgentTaskJob(
+      "active-1",
+      "octocat/hello-world",
+      undefined,
+      undefined,
+      undefined,
+      0,
+      null,
+      "deepseek-v4-flash",
+      "main"
+    );
+    await jobRepo.createAgentTaskJob(
+      "active-2",
+      "octocat/hello-world",
+      undefined,
+      undefined,
+      undefined,
+      0,
+      null,
+      "deepseek-v4-pro",
+      "main"
+    );
+    await jobRepo.updateAgentTaskJobStatus("active-2", "active");
+    await jobRepo.createAgentTaskJob(
+      "completed-1",
+      "octocat/hello-world"
+    );
+    await jobRepo.updateAgentTaskJobStatus("completed-1", "completed");
+    await jobRepo.createAgentTaskJob(
+      "active-other-repo",
+      "octocat/other-repo"
+    );
 
     const res = await makeRequest(
       app,
@@ -1709,23 +1760,24 @@ describe("Job Routes", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual<ListTasksResponse>(tasks);
-    expect(listTasksSpy).toHaveBeenCalledWith(
-      "octocat",
-      "hello-world",
-      "GitHub-Bearer copilot-token"
-    );
+    const body = res.body as AgentTaskJobInfo[];
+    const ids = body.map((task) => task.id).sort();
+    expect(ids).toEqual(["active-1", "active-2"]);
   });
 
-  it("POST /agents/repos/:owner/:repo/tasks/:task_id/archive - should archive a task", async () => {
+  it("GET /agents/tasks - returns active tasks across all repos", async () => {
     process.env.ADMIN_BEARER_TOKEN = "admin-secret";
-    vi.spyOn(githubApi, "fetchCopilotAuthorizationHeader").mockResolvedValue("GitHub-Bearer copilot-token");
-    const archiveTaskSpy = vi.spyOn(githubApi, "archiveTask").mockResolvedValue({});
+
+    await jobRepo.createAgentTaskJob("a", "octocat/hello-world");
+    await jobRepo.createAgentTaskJob("b", "octocat/other-repo");
+    await jobRepo.updateAgentTaskJobStatus("b", "active");
+    await jobRepo.createAgentTaskJob("c", "octocat/third-repo");
+    await jobRepo.updateAgentTaskJobStatus("c", "completed");
 
     const res = await makeRequest(
       app,
-      "POST",
-      "/agents/repos/octocat/hello-world/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890/archive",
+      "GET",
+      "/agents/tasks",
       undefined,
       {
         authorization: "Bearer admin-secret",
@@ -1733,13 +1785,9 @@ describe("Job Routes", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({});
-    expect(archiveTaskSpy).toHaveBeenCalledWith(
-      "octocat",
-      "hello-world",
-      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "GitHub-Bearer copilot-token"
-    );
+    const body = res.body as AgentTaskJobInfo[];
+    const ids = body.map((task) => task.id).sort();
+    expect(ids).toEqual(["a", "b"]);
   });
 
   it("POST /agents/repos/:owner/:repo/archive - should return not found", async () => {

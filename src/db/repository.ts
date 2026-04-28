@@ -42,6 +42,30 @@ function normalizeTaskDelayMs(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+function mapAgentTaskJobRow(row: Record<string, unknown>): AgentTaskJobInfo {
+  return {
+    id: row.id as string,
+    repo: row.repo as string,
+    status: row.status as AgentTaskJobStatus,
+    branch: (row.branch_name as string | null) ?? null,
+    baseRef: (row.base_ref as string | null) ?? undefined,
+    model: (row.model as AgentTaskModel | null) ?? undefined,
+    pullRequestUrl: (row.pull_request_url as string | null) ?? undefined,
+    pullRequestNumber:
+      row.pull_request_number === null || row.pull_request_number === undefined
+        ? undefined
+        : Number(row.pull_request_number),
+    taskId: (row.github_task_id as string | null) ?? undefined,
+    taskStatus: (row.task_status as string | null) ?? undefined,
+    taskDelayMs: normalizeTaskDelayMs(row.task_delay_ms),
+    scheduledAt: row.scheduled_at ? toIsoString(row.scheduled_at) : null,
+    error: (row.error as string | null) ?? undefined,
+    output: (row.output as string | null) ?? undefined,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
 export interface FileLookupRecord {
   jobId: string;
   fileName: string;
@@ -103,26 +127,7 @@ export class JobRepository {
       return undefined;
     }
 
-    return {
-      id: row.id as string,
-      repo: row.repo as string,
-      status: row.status as AgentTaskJobStatus,
-      branch: (row.branch_name as string | null) ?? null,
-      baseRef: (row.base_ref as string | null) ?? undefined,
-      model: (row.model as AgentTaskModel | null) ?? undefined,
-      pullRequestUrl: (row.pull_request_url as string | null) ?? undefined,
-      pullRequestNumber: row.pull_request_number === null || row.pull_request_number === undefined
-        ? undefined
-        : Number(row.pull_request_number),
-      taskId: (row.github_task_id as string | null) ?? undefined,
-      taskStatus: (row.task_status as string | null) ?? undefined,
-      taskDelayMs: normalizeTaskDelayMs(row.task_delay_ms),
-      scheduledAt: row.scheduled_at ? toIsoString(row.scheduled_at) : null,
-      error: (row.error as string | null) ?? undefined,
-      output: (row.output as string | null) ?? undefined,
-      createdAt: toIsoString(row.created_at),
-      updatedAt: toIsoString(row.updated_at),
-    };
+    return mapAgentTaskJobRow(row);
   }
 
   async updateAgentTaskJobStatus(
@@ -206,28 +211,30 @@ export class JobRepository {
        ORDER BY COALESCE(scheduled_at, created_at) ASC, created_at ASC`
     );
 
-    return result.rows.map((row) => {
-      const record = row as Record<string, unknown>;
-      return {
-        id: record.id as string,
-        repo: record.repo as string,
-        status: record.status as AgentTaskJobStatus,
-        branch: (record.branch_name as string | null) ?? null,
-        baseRef: (record.base_ref as string | null) ?? undefined,
-        model: (record.model as AgentTaskModel | null) ?? undefined,
-        pullRequestUrl: (record.pull_request_url as string | null) ?? undefined,
-        pullRequestNumber: record.pull_request_number === null || record.pull_request_number === undefined
-          ? undefined
-          : Number(record.pull_request_number),
-        taskId: (record.github_task_id as string | null) ?? undefined,
-        taskStatus: (record.task_status as string | null) ?? undefined,
-        taskDelayMs: normalizeTaskDelayMs(record.task_delay_ms),
-        scheduledAt: record.scheduled_at ? toIsoString(record.scheduled_at) : null,
-        error: (record.error as string | null) ?? undefined,
-        createdAt: toIsoString(record.created_at),
-        updatedAt: toIsoString(record.updated_at),
-      };
-    });
+    return result.rows.map((row) =>
+      mapAgentTaskJobRow(row as Record<string, unknown>)
+    );
+  }
+
+  async listActiveAgentTaskJobs(repo?: string): Promise<AgentTaskJobInfo[]> {
+    const params: unknown[] = [];
+    let whereClause = "status IN ('waiting', 'active')";
+    if (repo !== undefined) {
+      params.push(repo);
+      whereClause += ` AND repo = $${params.length}`;
+    }
+
+    const result = await this.db.query(
+      `SELECT *
+       FROM agent_task_jobs
+       WHERE ${whereClause}
+       ORDER BY COALESCE(scheduled_at, created_at) ASC, created_at ASC`,
+      params
+    );
+
+    return result.rows.map((row) =>
+      mapAgentTaskJobRow(row as Record<string, unknown>)
+    );
   }
 
   async createJob(id: string, repo: string, commit: string): Promise<void> {
