@@ -186,7 +186,6 @@ async function runOpencode(
     env: {
       ...process.env,
       DEEPSEEK_API_KEY: deepseekApiKey,
-      OPENCODE_MODEL: options.model,
     },
     maxBuffer: outputLimit,
     timeout,
