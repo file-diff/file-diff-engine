@@ -151,11 +151,19 @@ async function runOpencode(
   // Write prompt to .opencode/commands/command.md in the repository so the
   // opencode CLI can pick it up from the working directory instead of passing
   // it via the command line. Ensure the directory exists first.
-  const commandFile = path.join(cwd, ".opencode", "commands", "command.md");
+  const commandFile = path.join(cwd, ".opencode", "command", "command.md");
   fs.mkdirSync(path.dirname(commandFile), { recursive: true });
   fs.writeFileSync(commandFile, prompt, { encoding: "utf8" });
 
-  const args = ["run", "--model", options.model];
+  let model = options.model.toString();
+
+  if (model == "deepseek-v4-flash") {
+    model = "deepseek/deepseek-v4-flash";
+  } else if (model == "deepseek-v4-pro") {
+    model = "deepseek/deepseek-v4-pro";
+  }
+
+  const args = ["run", "--model", model];
   const timeout = parsePositiveInteger(
     process.env.OPENCODE_TIMEOUT_MS,
     DEFAULT_OPENCODE_TIMEOUT_MS
