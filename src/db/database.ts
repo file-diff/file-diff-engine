@@ -93,6 +93,22 @@ async function initSchema(db: DatabaseClient): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS opencode_task_jobs (
+        id TEXT PRIMARY KEY,
+        repo TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'waiting',
+        branch_name TEXT,
+        commit_hash TEXT,
+        prompt TEXT NOT NULL DEFAULT '',
+        base_ref TEXT NOT NULL DEFAULT 'main',
+        model TEXT,
+        create_pull_request BOOLEAN NOT NULL DEFAULT false,
+        error TEXT,
+        log TEXT[] NOT NULL DEFAULT '{}',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
       ALTER TABLE files
       ADD COLUMN IF NOT EXISTS file_disk_path TEXT NOT NULL DEFAULT '';
 
@@ -119,6 +135,7 @@ async function initSchema(db: DatabaseClient): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id);
       CREATE INDEX IF NOT EXISTS idx_files_job_id_hash ON files(job_id, file_git_hash);
       CREATE INDEX IF NOT EXISTS idx_agent_task_jobs_status ON agent_task_jobs(status);
+      CREATE INDEX IF NOT EXISTS idx_opencode_task_jobs_status ON opencode_task_jobs(status);
     `);
     await db.query("COMMIT");
   } catch (error) {

@@ -1230,6 +1230,68 @@ export function registerDiscoveryRoutes(
   });
 
   /**
+   * POST /api/jobs/create-opencode-task
+   * Body: { "repo": "owner/repo", "prompt": "prompt text", "baseRef": "main", "model"?: "...", "createPullRequest"?: boolean }
+   * Creates a new opencode agent task. The service will checkout the repo,
+   * switch to a new branch, create a plan, commit it, and run opencode
+   * as the agent tool to execute the plan.
+   */
+  app.post<{ Body: {
+    repo: string;
+    prompt: string;
+    baseRef: string;
+    model?: string;
+    createPullRequest?: boolean;
+  } }>(
+    "/create-opencode-task",
+    {
+      preHandler: requireAdminBearerToken,
+      config: {
+        rateLimit: {
+          max: CREATE_TASK_ROUTE_RATE_LIMIT_MAX,
+          timeWindow: CREATE_TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
+        },
+      },
+    },
+    async (request, reply) => {
+      let { repo } = request.body ?? {};
+      const { prompt, baseRef, model, createPullRequest } = request.body ?? {};
+
+      if (!repo || !baseRef || !prompt) {
+        const response: ErrorResponse = {
+          error: "'prompt', 'repo' and 'baseRef' are required.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      repo = normalizeRepo(repo);
+
+      if (!isValidRepo(repo)) {
+        const response: ErrorResponse = {
+          error: "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        };
+        return reply.code(400).send(response);
+      }
+
+      const [owner, repoName] = repo.split("/", 2);
+      const jobId = randomUUID();
+
+      try {
+        logger.info(`OpenCodeTask: Scheduling opencode task job=${jobId} repo=${repo}`);
+        await jobRepo.createAgentTaskJob(jobId, repo, undefined, undefined);
+        await enqueueOpenCodeTaskJob(queue, jobId, owner, repoName, prompt, baseRef, model, createPullRequest);
+        logger.info(`OpenCodeTask ${jobId}: Enqueued for repo=${repo}`);
+        return reply.code(201).send({ id: jobId } satisfies CreateTaskResponse);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to schedule opencode task.";
+        logger.warn(`OpenCodeTask: Failed to schedule task for repo=${repo}: ${message}`);
+        const response: ErrorResponse = { error: message };
+        return reply.code(500).send(response);
+      }
+    }
+  );
+
+  /**
    * POST /api/jobs/create-task
    * Body: { "repo": "owner/repo", "problem_statement": "prompt text", ... }
    * Creates a new GitHub Copilot coding agent task for a repository.
@@ -1446,6 +1508,33 @@ async function enqueueAgentTaskJob(
     {
       jobId,
       delay: delayMs,
+    }
+  );
+}
+
+async function enqueueOpenCodeTaskJob(
+  queue: Queue,
+  jobId: string,
+  owner: string,
+  repoName: string,
+  prompt: string,
+  baseRef: string,
+  model?: string,
+  createPullRequest?: boolean
+): Promise<void> {
+  await queue.add(
+    "create-opencode-task",
+    {
+      jobId,
+      owner,
+      repoName,
+      prompt,
+      baseRef,
+      model,
+      createPullRequest,
+    },
+    {
+      jobId,
     }
   );
 }

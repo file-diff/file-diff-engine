@@ -6,6 +6,7 @@ import { JobRepository } from "../db/repository";
 import type { PullRequestCompletionMode, TaskInfoResponse } from "../types";
 import { processRepository } from "../services/repoProcessor";
 import * as githubApi from "../services/githubApi";
+import { runOpenCodeAgent } from "../services/opencodeAgent";
 import { QUEUE_NAME } from "../services/queue";
 import { sendAgentTaskFinishedSlackNotification } from "../services/slack";
 import { createLogger } from "../utils/logger";
@@ -28,6 +29,11 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
     async (job: Job) => {
       if (job.name === "create-agent-task") {
         await handleAgentTaskJob(job, repo);
+        return;
+      }
+
+      if (job.name === "create-opencode-task") {
+        await handleOpenCodeTaskJob(job, repo);
         return;
       }
 
@@ -245,6 +251,45 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       [],
       message
     );
+    throw err;
+  }
+}
+
+async function handleOpenCodeTaskJob(job: Job, repo: JobRepository): Promise<void> {
+  const { jobId, owner, repoName, prompt, baseRef, model, createPullRequest } = job.data as {
+    jobId: string;
+    owner: string;
+    repoName: string;
+    prompt: string;
+    baseRef: string;
+    model?: string;
+    createPullRequest?: boolean;
+  };
+
+  const tag = `OpenCodeTask ${jobId}:`;
+  logger.info(`${tag} Starting processing repo=${owner}/${repoName}`);
+
+  try {
+    await repo.updateAgentTaskJobStatus(jobId, "active");
+
+    const workDir = path.join(process.env.TMP_DIR || "tmp", "opencode-tasks", jobId);
+    const result = await runOpenCodeAgent({
+      owner,
+      repoName,
+      baseRef,
+      prompt,
+      model,
+      createPullRequest,
+      workDir,
+    });
+
+    await repo.attachAgentTaskToJob(jobId, result.commitHash, "completed", result.branchName);
+    await repo.updateAgentTaskJobStatus(jobId, "completed");
+    logger.info(`${tag} Finished successfully branch=${result.branchName} commit=${result.commitShort}`);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    logger.error(`${tag} Job failed: ${message}`);
+    await repo.updateAgentTaskJobStatus(jobId, "failed", message);
     throw err;
   }
 }
