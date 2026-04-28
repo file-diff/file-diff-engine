@@ -64,6 +64,7 @@ ENV REQUEST_DELAY_MS=0
 ENV HOST=0.0.0.0
 ENV PORT=12986
 ENV TMP_DIR=/app/tmp
+ENV HOME=/home/docker
 ENV OPENCODE_BIN=opencode
 ENV OPENCODE_TIMEOUT_MS=7200000
 ENV OPENCODE_OUTPUT_LIMIT=1000000
@@ -72,10 +73,11 @@ ENV OPENCODE_OUTPUT_LIMIT=1000000
 RUN mkdir -p /app/tmp
 
 # Create a 'docker' group and user with UID 649, make sure /app and /app/tmp are owned by it.
-# Using -M to avoid creating a home directory and /bin/false as shell for safety.
+# Create a home directory at /home/docker for the user and give it a normal shell.
 RUN groupadd -g 649 docker \
-  && useradd -u 649 -g docker -M -s /bin/false docker \
-  && chown -R docker:docker /app || true
+  && useradd -u 649 -g docker -m -d /home/docker -s /bin/bash docker \
+  && mkdir -p /app/tmp /home/docker \
+  && chown -R docker:docker /app /app/tmp /home/docker || true
 
 EXPOSE 12986
 
