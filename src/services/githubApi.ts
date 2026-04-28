@@ -637,13 +637,15 @@ export interface BranchPullRequestSummary extends CommitPullRequestSummary {
 
 export async function findOpenPullRequestByHeadBranch(
   repo: string,
-  branch: string
+  branch: string,
+  token?: string
 ): Promise<BranchPullRequestSummary | null> {
   const [owner, repoName] = repo.split("/", 2);
   const response = await getJson<GitHubCommitPullRequestApiResponse[]>(
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/pulls?state=open&head=${encodeURIComponent(`${owner}:${branch}`)}`,
     {
       notFoundMessage: `GitHub repository '${repo}' was not found.`,
+      token,
     }
   );
   const pullRequest = response[0];

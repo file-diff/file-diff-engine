@@ -6,6 +6,7 @@ import {
   FileRecord,
   JobInfo,
   JobStatus,
+  PullRequestCompletionMode,
   StatsResponse,
 } from "../types";
 import {createLogger} from "../utils/logger";
@@ -50,6 +51,8 @@ function mapAgentTaskJobRow(row: Record<string, unknown>): AgentTaskJobInfo {
     branch: (row.branch_name as string | null) ?? null,
     baseRef: (row.base_ref as string | null) ?? undefined,
     model: (row.model as AgentTaskModel | null) ?? undefined,
+    pullRequestCompletionMode:
+      (row.pull_request_completion_mode as PullRequestCompletionMode | null) ?? undefined,
     pullRequestUrl: (row.pull_request_url as string | null) ?? undefined,
     pullRequestNumber:
       row.pull_request_number === null || row.pull_request_number === undefined
@@ -87,7 +90,8 @@ export class JobRepository {
     taskDelayMs = 0,
     scheduledAt?: Date | string | null,
     model?: AgentTaskModel,
-    baseRef?: string
+    baseRef?: string,
+    pullRequestCompletionMode?: PullRequestCompletionMode
   ): Promise<void> {
     await this.db.query(
       `INSERT INTO agent_task_jobs (
@@ -99,12 +103,13 @@ export class JobRepository {
          branch_name,
          model,
          base_ref,
+         pull_request_completion_mode,
          task_delay_ms,
          scheduled_at,
          created_at,
          updated_at
         )
-       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [
         id,
         repo,
@@ -113,6 +118,7 @@ export class JobRepository {
         branchName ?? null,
         model ?? null,
         baseRef ?? null,
+        pullRequestCompletionMode ?? null,
         taskDelayMs,
         scheduledAt ?? null,
       ]

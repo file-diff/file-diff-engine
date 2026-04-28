@@ -88,6 +88,7 @@ async function initSchema(db: DatabaseClient): Promise<void> {
         branch_name TEXT,
         base_ref TEXT,
         model TEXT,
+        pull_request_completion_mode TEXT,
         pull_request_url TEXT,
         pull_request_number INTEGER,
         output TEXT,
@@ -118,6 +119,9 @@ async function initSchema(db: DatabaseClient): Promise<void> {
 
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS model TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS pull_request_completion_mode TEXT;
 
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS pull_request_url TEXT;

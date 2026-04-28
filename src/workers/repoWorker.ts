@@ -9,6 +9,7 @@ import {
   executeOpencodeOnPreparedBranch,
   prepareOpencodeTaskBranch,
 } from "../services/opencodeTask";
+import { applyPullRequestCompletionMode } from "../services/pullRequestCompletion";
 import { QUEUE_NAME } from "../services/queue";
 import { sendAgentTaskFinishedSlackNotification } from "../services/slack";
 import { createLogger } from "../utils/logger";
@@ -121,6 +122,7 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
   const taskCreatedAt = typeof job.timestamp === "number" ? job.timestamp : startedAt;
   let lastKnownBranchName: string | null = null;
   let lastCapturedLogs: OpencodeCapturedLogs | null = null;
+  let pullRequestActions: string[] = [];
   const [owner, repoNameOnly] = splitRepoName(repoName);
 
   try {
@@ -169,6 +171,13 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
       { onLogsUpdated: persistLogs }
     );
     lastCapturedLogs = logs;
+    pullRequestActions = await applyPullRequestCompletionMode({
+      repo: repoName,
+      branch: prepared.branch,
+      pullNumber: prepared.pullRequest.number,
+      mode: existingJob?.pullRequestCompletionMode,
+      token: githubKey,
+    });
     await repo.updateAgentTaskStatus(jobId, "completed", prepared.branch);
     await repo.updateAgentTaskLogs(jobId, logs);
     await repo.updateAgentTaskJobStatus(jobId, "completed");
@@ -179,7 +188,9 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
       jobId,
       "completed",
       lastKnownBranchName,
-      Date.now() - taskCreatedAt
+      Date.now() - taskCreatedAt,
+      undefined,
+      pullRequestActions
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -199,7 +210,8 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
       "failed",
       lastKnownBranchName,
       Date.now() - taskCreatedAt,
-      message
+      message,
+      pullRequestActions
     );
     throw err;
   }
@@ -241,7 +253,8 @@ async function sendTerminalTaskNotification(
   status: string,
   branch: string | null,
   durationMs: number,
-  details?: string
+  details?: string,
+  pullRequestActions?: string[]
 ): Promise<void> {
   try {
     logger.info(`AgentTask ${taskId}: Sending Slack notification status=${status} branch=${branch ?? "none"} duration=${Math.round(durationMs / 1000)}s`);
@@ -252,7 +265,7 @@ async function sendTerminalTaskNotification(
       status,
       branch,
       durationMs,
-      pullRequestActions: [],
+      pullRequestActions,
       details,
     });
     logger.info(`AgentTask ${taskId}: Slack notification sent`);
