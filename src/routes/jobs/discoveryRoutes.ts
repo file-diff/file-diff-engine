@@ -1329,7 +1329,8 @@ export function registerDiscoveryRoutes(
 
       const [owner, repoName] = repo.split("/", 2);
       const taskDelayMs = task_delay_ms ?? 0;
-      const taskModel = isSupportedDeepSeekModel(model) ? model : DEFAULT_DEEPSEEK_MODEL;
+      const taskModel: SupportedDeepSeekModel =
+        model === undefined ? DEFAULT_DEEPSEEK_MODEL : model;
       const jobId = randomUUID();
       const scheduledAt = taskDelayMs > 0
         ? new Date(Date.now() + taskDelayMs)

@@ -8,7 +8,8 @@ import { createLogger } from "../utils/logger";
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger("opencode-task");
-const DEFAULT_OPENCODE_TIMEOUT_MS = 2 * 60 * 60 * 1_000;
+const TWO_HOURS_IN_SECONDS = 2 * 60 * 60;
+const DEFAULT_OPENCODE_TIMEOUT_MS = TWO_HOURS_IN_SECONDS * 1_000;
 const DEFAULT_OUTPUT_LIMIT = 1_000_000;
 const DEFAULT_GIT_AUTHOR_NAME = "file-diff-agent";
 const DEFAULT_GIT_AUTHOR_EMAIL = "file-diff-agent@users.noreply.github.com";
@@ -203,12 +204,16 @@ async function configureCommitAuthor(
   cwd: string,
   env: NodeJS.ProcessEnv
 ): Promise<void> {
-  await runGit(cwd, ["config", "user.name", process.env.GIT_AUTHOR_NAME || DEFAULT_GIT_AUTHOR_NAME], env);
-  await runGit(
-    cwd,
-    ["config", "user.email", process.env.GIT_AUTHOR_EMAIL || DEFAULT_GIT_AUTHOR_EMAIL],
-    env
-  );
+  const author = getGitAuthorConfig();
+  await runGit(cwd, ["config", "user.name", author.name], env);
+  await runGit(cwd, ["config", "user.email", author.email], env);
+}
+
+function getGitAuthorConfig(): { name: string; email: string } {
+  return {
+    name: process.env.GIT_AUTHOR_NAME || DEFAULT_GIT_AUTHOR_NAME,
+    email: process.env.GIT_AUTHOR_EMAIL || DEFAULT_GIT_AUTHOR_EMAIL,
+  };
 }
 
 async function runGit(
