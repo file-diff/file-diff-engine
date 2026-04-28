@@ -1442,31 +1442,6 @@ export function registerDiscoveryRoutes(
   );
 }
 
-async function enqueueAgentTaskJob(
-  queue: Queue,
-  jobId: string,
-  owner: string,
-  repoName: string,
-  createTaskBody: Record<string, unknown>,
-  delayMs = 0,
-  pullRequestCompletionMode?: PullRequestCompletionMode
-): Promise<void> {
-  await queue.add(
-    "create-agent-task",
-    {
-      jobId,
-      owner,
-      repoName,
-      createTaskBody,
-      pullRequestCompletionMode,
-    },
-    {
-      jobId,
-      delay: delayMs,
-    }
-  );
-}
-
 async function enqueueOpencodeTaskJob(
   queue: Queue,
   jobId: string,

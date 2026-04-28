@@ -1000,7 +1000,8 @@ Returns the updated job payload documented for `GET /api/jobs/create-task/:id`, 
 
 ### `GET /api/agents/repos/:owner/:repo/tasks/:task_id`
 
-Returns the full GitHub Copilot task payload for an existing task.
+Returns the details of a single locally-managed agent task job (DeepSeek/opencode based).
+The `:task_id` is the local agent task job id returned from `POST /api/jobs/create-task`.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -1008,20 +1009,19 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 
 Status: `200 OK`
 
-Returns the GitHub API response for the requested task, including task metadata, artifacts, and sessions when present.
+Returns the agent task job record from the local database, including its repo, status, model, branch, pull request information, output, and timestamps.
 
 #### Common statuses
 
 - `400 Bad Request` when the repository path or task id is invalid
 - `401 Unauthorized` when the bearer token is missing or invalid
-- `503 Service Unavailable` when the create-task bearer token or Copilot GitHub token is not configured
-- `404 Not Found` when the task is not found
-- `500 Internal Server Error` for GitHub API failures
+- `404 Not Found` when no agent task job with the given id exists for the specified repository
+- `500 Internal Server Error` for unexpected failures
 
 #### Example
 
 ```bash
-curl https://your-host.example.com/agents/repos/facebook/react/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+curl https://your-host.example.com/api/agents/repos/facebook/react/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -1029,7 +1029,7 @@ curl https://your-host.example.com/agents/repos/facebook/react/tasks/a1b2c3d4-e5
 
 ### `GET /api/agents/repos/:owner/:repo/tasks`
 
-Returns the GitHub Copilot task listing for a repository.
+Lists active (waiting or running) locally-managed agent task jobs for the repository.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -1037,28 +1037,26 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 
 Status: `200 OK`
 
-Returns the GitHub API response for the repository task listing.
+Returns an array of active agent task job records for the repository.
 
 #### Common statuses
 
 - `400 Bad Request` when the repository path is invalid
 - `401 Unauthorized` when the bearer token is missing or invalid
-- `503 Service Unavailable` when the create-task bearer token or Copilot GitHub token is not configured
-- `404 Not Found` when the repository is not found
-- `500 Internal Server Error` for GitHub API failures
+- `500 Internal Server Error` for unexpected failures
 
 #### Example
 
 ```bash
-curl https://your-host.example.com/agents/repos/facebook/react/tasks \
+curl https://your-host.example.com/api/agents/repos/facebook/react/tasks \
   -H "Authorization: Bearer <token>"
 ```
 
 ---
 
-### `POST /api/agents/repos/:owner/:repo/tasks/:task_id/archive`
+### `GET /api/agents/tasks`
 
-Archives a specific GitHub Copilot agent task for a repository.
+Lists active (waiting or running) locally-managed agent task jobs across all repositories.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -1066,20 +1064,17 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 
 Status: `200 OK`
 
-Returns an empty JSON object when the archive request succeeds.
+Returns an array of active agent task job records.
 
 #### Common statuses
 
-- `400 Bad Request` when the repository path or task id is invalid
 - `401 Unauthorized` when the bearer token is missing or invalid
-- `503 Service Unavailable` when the create-task bearer token or Copilot GitHub token is not configured
-- `404 Not Found` when the task is not found
-- `500 Internal Server Error` for GitHub API failures
+- `500 Internal Server Error` for unexpected failures
 
 #### Example
 
 ```bash
-curl -X POST https://your-host.example.com/api/agents/repos/facebook/react/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890/archive \
+curl https://your-host.example.com/api/agents/tasks \
   -H "Authorization: Bearer <token>"
 ```
 

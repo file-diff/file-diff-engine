@@ -357,7 +357,7 @@ export interface VersionResponse {
 /** Follow-up pull request action after a successful agent task run. */
 export type PullRequestCompletionMode = "None" | "AutoReady" | "AutoMerge";
 
-/** Payload sent when creating a new GitHub Copilot coding agent task. */
+/** Payload sent when creating a new local agent task (DeepSeek/opencode based). */
 export interface CreateTaskRequest {
   /** GitHub repository in owner/repo format */
   repo: string;
@@ -385,7 +385,7 @@ export interface CreateTaskRequest {
   githubKey?: string;
 }
 
-/** Response payload after creating a GitHub Copilot coding agent task. */
+/** Response payload after creating a local agent task job. */
 export interface CreateTaskResponse {
   /** Created task id */
   id: string;
@@ -414,31 +414,6 @@ export interface AgentTaskJobInfo extends AgentTaskJobSummary {
   createdAt: string;
   updatedAt: string;
 }
-
-/** Session information for a GitHub Copilot coding agent task. */
-export interface TaskSessionInfo {
-  id?: string;
-  task_id?: string;
-  state?: string;
-  base_ref?: string;
-  /** Head branch created for this session when available. */
-  head_ref?: string;
-  [key: string]: unknown;
-}
-
-/** Response payload for a GitHub Copilot coding agent task lookup. */
-export interface TaskInfoResponse {
-  /** Remote GitHub Copilot task state such as queued, in_progress, completed, or failed. */
-  state?: string;
-  /** Session details populated by GitHub once task execution has started. */
-  sessions?: TaskSessionInfo[];
-  [key: string]: unknown;
-}
-
-/** Response payload for listing GitHub Copilot coding agent tasks for a repository. */
-export type ListTasksResponse =
-  | Array<Record<string, unknown>>
-  | Record<string, unknown>;
 
 /** Payload sent when deleting a remote branch from a GitHub repository. */
 export interface DeleteRemoteBranchRequest {

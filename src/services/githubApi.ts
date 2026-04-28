@@ -2,13 +2,10 @@ import https from "https";
 import type { IncomingHttpHeaders } from "http";
 import type {
   CommitPullRequestSummary,
-  CreateTaskResponse,
-  ListTasksResponse,
   ListOrganizationRepositoriesResponse,
   OrganizationRepositorySummary,
   ResolvePullRequestResponse,
   TagSummary,
-  TaskInfoResponse,
   WorkflowRunSummary,
 } from "../types";
 import { getCommitShort } from "../utils/commit";
@@ -16,7 +13,6 @@ import { createLogger } from "../utils/logger";
 
 const GITHUB_HOSTNAME = "github.com";
 const GITHUB_API_HOSTNAME = "api.github.com";
-const GITHUB_COPILOT_API_HOSTNAME = "api.individual.githubcopilot.com";
 const GITHUB_REPOS_PAGE_SIZE = 100;
 const logger = createLogger("github-api");
 
@@ -103,100 +99,12 @@ interface GitHubRateLimitApiResponse {
   rate?: GitHubRateLimitApiBucket;
 }
 
-interface GitHubTaskApiResponse {
-  id?: string;
-  [key: string]: unknown;
-}
-
 export interface GitHubRateLimitSummary {
   limit: number;
   remaining: number;
   reset: number;
   used: number;
   resource: string;
-}
-
-interface BearerProviderResponse {
-  source?: string;
-  authorization_header?: string;
-  bearer_token?: string;
-}
-
-export async function fetchCopilotAuthorizationHeader(): Promise<string> {
-  logger.info("Fetching GitHub Copilot authorization header from bearer provider.");
-  const providerUrl = process.env.GITHUB_BEARER_PROVIDER_URL?.trim();
-  const providerBearer = process.env.GITHUB_BEARER_PROVIDER_BEARER?.trim();
-
-  if (!providerUrl) {
-    throw new GitHubApiError("GITHUB_BEARER_PROVIDER_URL is not configured.", 503);
-  }
-
-  if (!providerBearer) {
-    throw new GitHubApiError("GITHUB_BEARER_PROVIDER_BEARER is not configured.", 503);
-  }
-
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(providerUrl);
-  } catch {
-    throw new GitHubApiError("GITHUB_BEARER_PROVIDER_URL is not a valid URL.", 503);
-  }
-
-  logger.info("Sending request to GitHub Copilot bearer provider", {
-    providerUrl,
-  });
-
-  const requestUrl = new URL("/bearer", parsedUrl);
-
-  let fetchResponse: Response;
-  try {
-    fetchResponse = await fetch(providerUrl + "/bearer", {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${providerBearer}`,
-        "User-Agent": "file-diff-engine",
-      },
-    });
-  } catch (error) {
-    throw new GitHubApiError(
-      `Bearer provider request failed: ${error instanceof Error ? error.message : String(error)}`,
-      502
-    );
-  }
-
-  const response = {
-    statusCode: fetchResponse.status,
-    body: await fetchResponse.text(),
-    headers: normalizeFetchHeaders(fetchResponse.headers),
-  };
-
-  logger.info("GitHub Copilot bearer provider response", {
-    providerUrl,
-    statusCode: response.statusCode,
-    responseBody: getLoggableResponseBody(response.body),
-    ...summarizeHeaders(response.headers),
-  });
-
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new GitHubApiError(`Bearer provider returned status ${response.statusCode}.`, 502);
-  }
-
-  const parsed = safeParseJson<BearerProviderResponse>(response.body);
-  if (!parsed) {
-    throw new GitHubApiError("Bearer provider returned invalid JSON.", 502);
-  }
-
-  const authorizationHeader = parsed.authorization_header?.trim();
-  if (!authorizationHeader) {
-    throw new GitHubApiError("Bearer provider response did not contain an authorization_header.", 502);
-  }
-
-  logger.info("Resolved GitHub Copilot authorization header", {
-    authorizationHeader,
-  });
-
-  return authorizationHeader;
 }
 
 export async function resolvePullRequest(
@@ -780,91 +688,6 @@ export async function getGitHubRateLimit(): Promise<GitHubRateLimitSummary> {
   };
 }
 
-export async function createTask(
-  owner: string,
-  repo: string,
-  body: Record<string, unknown>,
-  authorizationHeader: string
-): Promise<CreateTaskResponse> {
-  const response = await getCopilotJson<GitHubTaskApiResponse>(
-    `/agents/repos/${owner}/${repo}/tasks`,
-    {
-      notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when creating tasks.`,
-      method: "POST",
-      body,
-      authorizationHeader,
-    }
-  );
-
-  const taskId = response.id?.trim();
-  if (!taskId) {
-    throw new GitHubApiError("GitHub task response was invalid.", 502);
-  }
-
-  return { id: taskId };
-}
-
-export async function getTask(
-  owner: string,
-  repo: string,
-  taskId: string,
-  authorizationHeader: string
-): Promise<TaskInfoResponse> {
-  return await getCopilotJson<TaskInfoResponse>(
-    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks/${encodeURIComponent(taskId)}`,
-    {
-      notFoundMessage: `GitHub task '${taskId}' was not found in repository '${owner}/${repo}'.`,
-      authorizationHeader,
-    }
-  );
-}
-
-export async function listAllTasks(
-  authorizationHeader: string
-): Promise<ListTasksResponse> {
-  logger.info("Get copilot json");
-
-  return await getCopilotJson<ListTasksResponse>(
-    `/agents/repos/tasks`,
-    {
-      notFoundMessage: `Listing tasks error.`,
-      authorizationHeader,
-    }
-  );
-}
-
-export async function listTasks(
-  owner: string,
-  repo: string,
-  authorizationHeader: string
-): Promise<ListTasksResponse> {
-  logger.info("Get copilot json");
-
-  return await getCopilotJson<ListTasksResponse>(
-    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks?archived=false`,
-    {
-      notFoundMessage: `GitHub repository '${owner}/${repo}' was not found when listing tasks.`,
-      authorizationHeader,
-    }
-  );
-}
-
-export async function archiveTask(
-  owner: string,
-  repo: string,
-  taskId: string,
-  authorizationHeader: string
-): Promise<Record<string, never>> {
-  return await getCopilotJson<Record<string, never>>(
-    `/agents/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tasks/${encodeURIComponent(taskId)}/archive`,
-    {
-      notFoundMessage: `GitHub task '${taskId}' was not found in repository '${owner}/${repo}' when archiving the task.`,
-      method: "POST",
-      authorizationHeader,
-    }
-  );
-}
-
 export function parsePullRequestUrl(
   pullRequestUrl: string
 ): { owner: string; repo: string; pullNumber: number } {
@@ -916,23 +739,6 @@ async function getJson<T>(
     body: options.body,
     token: options.token,
     allowEnvironmentFallback: options.allowEnvironmentFallback,
-  });
-  return parseJsonResponse(path, options, response);
-}
-
-async function getCopilotJson<T>(
-  path: string,
-  options: {
-    notFoundMessage: string;
-    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-    body?: unknown;
-    authorizationHeader: string;
-  }
-): Promise<T> {
-  const response = await requestCopilot(path, {
-    method: options.method,
-    body: options.body,
-    authorizationHeader: options.authorizationHeader,
   });
   return parseJsonResponse(path, options, response);
 }
@@ -1061,49 +867,6 @@ function requestGitHub(
   );
 }
 
-function requestCopilot(
-  path: string,
-  options: {
-    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-    body?: unknown;
-    authorizationHeader: string;
-  }
-): Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }> {
-  const method = options.method ?? "GET";
-  const requestMeta = {
-    method,
-    path,
-    ...summarizeAuthorizationHeader(options.authorizationHeader),
-    ...(options.body === undefined ? {} : { requestBody: options.body }),
-  };
-
-  logger.info("Sending GitHub Copilot API request", requestMeta);
-
-  return requestJson(
-    GITHUB_COPILOT_API_HOSTNAME,
-    path,
-    getCopilotRequestHeaders(options.authorizationHeader),
-    options
-  )
-    .then((response) => {
-      logger.info("Received GitHub Copilot API response", {
-        method,
-        path,
-        statusCode: response.statusCode,
-        responseBody: getLoggableResponseBody(response.body),
-        ...summarizeHeaders(response.headers),
-      });
-      return response;
-    })
-    .catch((error) => {
-      logger.warn("GitHub Copilot API request failed before a response was received", {
-        ...requestMeta,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    });
-}
-
 function requestJson(
   hostname: string,
   path: string,
@@ -1184,16 +947,6 @@ function getResponseHeader(headers: IncomingHttpHeaders, name: string): string |
   return undefined;
 }
 
-function normalizeFetchHeaders(headers: Headers): IncomingHttpHeaders {
-  const normalizedHeaders: IncomingHttpHeaders = {};
-
-  for (const [name, value] of headers.entries()) {
-    normalizedHeaders[name] = value;
-  }
-
-  return normalizedHeaders;
-}
-
 function getRequestHeaders(
   tokenOverride?: string | null,
   allowEnvironmentFallback = true
@@ -1219,39 +972,6 @@ function getRequestHeaders(
   return headers;
 }
 
-function getCopilotRequestHeaders(authorizationHeader: string): Record<string, string> {
-  return {
-    Accept: "application/json",
-    "User-Agent": "file-diff-engine",
-    Authorization: authorizationHeader,
-  };
-}
-
-function summarizeAuthorizationHeader(authorizationHeader: string): Record<string, unknown> {
-  const trimmedHeader = authorizationHeader.trim();
-  if (shouldLogCopilotAuthorizationHeader()) {
-    return { authorizationHeader: trimmedHeader };
-  }
-
-  const [scheme = "", ...credentials] = trimmedHeader.split(/\s+/);
-  const token = credentials.join(" ");
-
-  return {
-    authorizationScheme: scheme,
-    authorizationTokenLength: token.length,
-    ...(token
-      ? {
-          authorizationTokenPreview:
-            token.length <= 8 ? token : `${token.slice(0, 4)}…${token.slice(-4)}`,
-        }
-      : {}),
-  };
-}
-
-function shouldLogCopilotAuthorizationHeader(): boolean {
-  return process.env.LOG_COPILOT_API_AUTH_HEADER?.trim().toLowerCase() === "true";
-}
-
 function getJsonRequestHeaders(
   headers: Record<string, string>,
   requestBody?: string
@@ -1273,8 +993,4 @@ function safeParseJson<T>(body: string): T | null {
   } catch {
     return null;
   }
-}
-
-function getLoggableResponseBody(body: string): unknown {
-  return safeParseJson<unknown>(body) ?? body;
 }

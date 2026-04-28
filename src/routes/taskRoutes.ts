@@ -1,11 +1,11 @@
 import rateLimit from "@fastify/rate-limit";
 import type { FastifyPluginAsync } from "fastify";
-import type { ErrorResponse } from "../types";
-import * as githubApi from "../services/githubApi";
+import { JobRepository } from "../db/repository";
+import type { AgentTaskJobInfo, ErrorResponse } from "../types";
 import { createLogger } from "../utils/logger";
 import {
-  authorizeAdminBearerToken,
   isValidRepo,
+  requireAdminBearerToken,
 } from "./jobs/shared";
 
 const TASK_ROUTE_RATE_LIMIT_MAX = 60;
@@ -13,245 +13,146 @@ const TASK_ROUTE_RATE_LIMIT_WINDOW_MS = 60_000;
 
 const logger = createLogger("task-routes");
 
-async function validateTaskRepoAuthorization(
-  owner: string,
-  repo: string,
-  authorizationHeader: string | string[] | undefined
-): Promise<
-  | { ok: true; copilotAuthorizationHeader: string }
-  | { ok: false; statusCode: number; response: ErrorResponse }
-> {
-  const authorization = authorizeAdminBearerToken(authorizationHeader);
-  if (!authorization.ok) {
-    return authorization;
-  }
+/**
+ * Routes for inspecting locally-managed agent task jobs (DeepSeek/opencode based).
+ *
+ * The legacy GitHub Copilot remote-task endpoints have been removed; these routes
+ * now read from the local `agent_task_jobs` table via {@link JobRepository}.
+ */
+export function createTaskRoutes(jobRepo: JobRepository): FastifyPluginAsync {
+  return async function registerTaskRoutes(app) {
+    await app.register(rateLimit, { global: false });
 
-  if (!isValidRepo(`${owner}/${repo}`)) {
-    return {
-      ok: false,
-      statusCode: 400,
-      response: {
-        error:
-          "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+    /**
+     * GET /agents/repos/:owner/:repo/tasks
+     * Lists currently active (waiting or active) agent task jobs for a repository.
+     */
+    app.get<{
+      Params: {
+        owner: string;
+        repo: string;
+      };
+    }>(
+      "/agents/repos/:owner/:repo/tasks",
+      {
+        preHandler: [
+          requireAdminBearerToken,
+          app.rateLimit({
+            max: TASK_ROUTE_RATE_LIMIT_MAX,
+            timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
+          }),
+        ],
       },
-    };
-  }
+      async (request, reply) => {
+        const { owner, repo } = request.params;
+        const fullRepo = `${owner}/${repo}`;
 
-  try {
-    return {
-      ok: true,
-      copilotAuthorizationHeader:
-        await githubApi.fetchCopilotAuthorizationHeader(),
-    };
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unable to fetch Copilot authorization header.";
-    return {
-      ok: false,
-      statusCode:
-        error instanceof githubApi.GitHubApiError ? error.statusCode : 503,
-      response: { error: message },
-    };
-  }
+        if (!isValidRepo(fullRepo)) {
+          const response: ErrorResponse = {
+            error:
+              "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+          };
+          return reply.code(400).send(response);
+        }
+
+        logger.info("Listing active agent task jobs for repo", { owner, repo });
+
+        try {
+          const tasks = await jobRepo.listActiveAgentTaskJobs(fullRepo);
+          return reply.code(200).send(tasks satisfies AgentTaskJobInfo[]);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unable to list tasks.";
+          const response: ErrorResponse = { error: message };
+          return reply.code(500).send(response);
+        }
+      }
+    );
+
+    /**
+     * GET /agents/tasks
+     * Lists currently active (waiting or active) agent task jobs across all repositories.
+     */
+    app.get(
+      "/agents/tasks",
+      {
+        preHandler: [
+          requireAdminBearerToken,
+          app.rateLimit({
+            max: TASK_ROUTE_RATE_LIMIT_MAX,
+            timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
+          }),
+        ],
+      },
+      async (_request, reply) => {
+        logger.info("Listing all active agent task jobs");
+
+        try {
+          const tasks = await jobRepo.listActiveAgentTaskJobs();
+          return reply.code(200).send(tasks satisfies AgentTaskJobInfo[]);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unable to list tasks.";
+          const response: ErrorResponse = { error: message };
+          return reply.code(500).send(response);
+        }
+      }
+    );
+
+    /**
+     * GET /agents/repos/:owner/:repo/tasks/:task_id
+     * Returns the details of a single agent task job (looked up by job id).
+     */
+    app.get<{
+      Params: {
+        owner: string;
+        repo: string;
+        task_id: string;
+      };
+    }>(
+      "/agents/repos/:owner/:repo/tasks/:task_id",
+      {
+        preHandler: [
+          requireAdminBearerToken,
+          app.rateLimit({
+            max: TASK_ROUTE_RATE_LIMIT_MAX,
+            timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
+          }),
+        ],
+      },
+      async (request, reply) => {
+        const { owner, repo, task_id: rawTaskId } = request.params;
+        const taskId = rawTaskId.trim();
+        if (!taskId) {
+          const response: ErrorResponse = { error: "Task id is required." };
+          return reply.code(400).send(response);
+        }
+
+        const fullRepo = `${owner}/${repo}`;
+        if (!isValidRepo(fullRepo)) {
+          const response: ErrorResponse = {
+            error:
+              "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+          };
+          return reply.code(400).send(response);
+        }
+
+        try {
+          const job = await jobRepo.getAgentTaskJob(taskId);
+          if (!job || job.repo !== fullRepo) {
+            const response: ErrorResponse = {
+              error: `Agent task job '${taskId}' was not found in repository '${fullRepo}'.`,
+            };
+            return reply.code(404).send(response);
+          }
+          return reply.code(200).send(job satisfies AgentTaskJobInfo);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unable to get task info.";
+          const response: ErrorResponse = { error: message };
+          return reply.code(500).send(response);
+        }
+      }
+    );
+  };
 }
-
-export const registerTaskRoutes: FastifyPluginAsync = async (app) => {
-  await app.register(rateLimit, { global: false });
-
-  app.get<{
-    Params: {
-      owner: string;
-      repo: string;
-    };
-  }>(
-    "/agents/repos/:owner/:repo/tasks",
-    {
-      preHandler: app.rateLimit({
-        max: TASK_ROUTE_RATE_LIMIT_MAX,
-        timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
-      }),
-    },
-    async (request, reply) => {
-      const { owner, repo } = request.params;
-      logger.info("Received request to list tasks for repo", { owner, repo });
-      const authorizedRequest = await validateTaskRepoAuthorization(
-        owner,
-        repo,
-        request.headers.authorization
-      );
-      logger.info("Request authorized", { owner, repo, authorizedRequest });
-      if (!authorizedRequest.ok) {
-        return reply.code(authorizedRequest.statusCode).send(authorizedRequest.response);
-      }
-      logger.info("Request authorized2", { owner, repo });
-
-      try {
-        const result = await githubApi.listTasks(
-          owner,
-          repo,
-          authorizedRequest.copilotAuthorizationHeader
-        );
-        return reply.code(200).send(result);
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Unable to list tasks.";
-        const response: ErrorResponse = { error: message };
-        const statusCode =
-          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
-        return reply.code(statusCode).send(response);
-      }
-    }
-  );
-
-  app.get<{
-    Params: {
-      owner: string;
-      repo: string;
-    };
-  }>(
-    "/api/agents/tasks",
-    {
-      preHandler: app.rateLimit({
-        max: TASK_ROUTE_RATE_LIMIT_MAX,
-        timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
-      }),
-    },
-    async (request, reply) => {
-      const { owner, repo } = request.params;
-      logger.info("Received request to list tasks for repo", { owner, repo });
-      const authorizedRequest = await validateTaskRepoAuthorization(
-        owner,
-        repo,
-        request.headers.authorization
-      );
-      logger.info("Request authorized", { owner, repo, authorizedRequest });
-      if (!authorizedRequest.ok) {
-        return reply.code(authorizedRequest.statusCode).send(authorizedRequest.response);
-      }
-      logger.info("Request authorized2", { owner, repo });
-
-      try {
-        const result = await githubApi.listAllTasks(
-          authorizedRequest.copilotAuthorizationHeader
-        );
-        return reply.code(200).send(result);
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Unable to list tasks.";
-        const response: ErrorResponse = { error: message };
-        const statusCode =
-          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
-        return reply.code(statusCode).send(response);
-      }
-    }
-  );
-
-  app.post<{
-    Params: {
-      owner: string;
-      repo: string;
-      task_id: string;
-    };
-  }>(
-    "/agents/repos/:owner/:repo/tasks/:task_id/archive",
-    {
-      config: {
-        rateLimit: {
-          max: TASK_ROUTE_RATE_LIMIT_MAX,
-          timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
-        },
-      },
-    },
-    async (request, reply) => {
-      const { owner, repo, task_id: rawTaskId } = request.params;
-      const taskId = rawTaskId.trim();
-      if (!taskId) {
-        const response: ErrorResponse = {
-          error: "Task id is required.",
-        };
-        return reply.code(400).send(response);
-      }
-
-      const authorizedRequest = await validateTaskRepoAuthorization(
-        owner,
-        repo,
-        request.headers.authorization
-      );
-      if (!authorizedRequest.ok) {
-        return reply.code(authorizedRequest.statusCode).send(authorizedRequest.response);
-      }
-
-      try {
-        const result = await githubApi.archiveTask(
-          owner,
-          repo,
-          taskId,
-          authorizedRequest.copilotAuthorizationHeader
-        );
-        return reply.code(200).send(result);
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Unable to archive task.";
-        const response: ErrorResponse = { error: message };
-        const statusCode =
-          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
-        return reply.code(statusCode).send(response);
-      }
-    }
-  );
-
-
-  app.get<{
-    Params: {
-      owner: string;
-      repo: string;
-      task_id: string;
-    }
-  }>(
-    "/agents/repos/:owner/:repo/tasks/:task_id",
-    {
-      preHandler: app.rateLimit({
-        max: TASK_ROUTE_RATE_LIMIT_MAX,
-        timeWindow: TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
-      }),
-    },
-    async (request, reply) => {
-      const { owner, repo, task_id: rawTaskId } = request.params;
-      const taskId = rawTaskId.trim();
-      if (!taskId) {
-        const response: ErrorResponse = {
-          error: "Task id is required.",
-        };
-        return reply.code(400).send(response);
-      }
-
-      const authorizedRequest = await validateTaskRepoAuthorization(
-        owner,
-        repo,
-        request.headers.authorization
-      );
-      if (!authorizedRequest.ok) {
-        return reply.code(authorizedRequest.statusCode).send(authorizedRequest.response);
-      }
-
-      try {
-        const result = await githubApi.getTask(
-          owner,
-          repo,
-          taskId,
-          authorizedRequest.copilotAuthorizationHeader
-        );
-        return reply.code(200).send(result);
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Unable to get task info.";
-        const response: ErrorResponse = { error: message };
-        const statusCode =
-          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
-        return reply.code(statusCode).send(response);
-      }
-    }
-  );
-};
