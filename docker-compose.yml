@@ -28,6 +28,12 @@ services:
       VIEWER_BEARER_TOKEN: ${VIEWER_BEARER_TOKEN:-}
       LOG_COPILOT_API_AUTH_HEADER: ${LOG_COPILOT_API_AUTH_HEADER:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENCODE_BIN: ${OPENCODE_BIN:-opencode}
+      OPENCODE_TIMEOUT_MS: ${OPENCODE_TIMEOUT_MS:-7200000}
+      OPENCODE_OUTPUT_LIMIT: ${OPENCODE_OUTPUT_LIMIT:-1000000}
+      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-file-diff-agent}
+      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-file-diff-agent@users.noreply.github.com}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
