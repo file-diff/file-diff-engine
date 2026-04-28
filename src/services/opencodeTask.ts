@@ -10,6 +10,8 @@ const execFileAsync = promisify(execFile);
 const logger = createLogger("opencode-task");
 const DEFAULT_OPENCODE_TIMEOUT_MS = 2 * 60 * 60 * 1_000;
 const DEFAULT_OUTPUT_LIMIT = 1_000_000;
+const DEFAULT_GIT_AUTHOR_NAME = "file-diff-agent";
+const DEFAULT_GIT_AUTHOR_EMAIL = "file-diff-agent@users.noreply.github.com";
 
 export interface OpencodeTaskOptions {
   jobId: string;
@@ -201,10 +203,10 @@ async function configureCommitAuthor(
   cwd: string,
   env: NodeJS.ProcessEnv
 ): Promise<void> {
-  await runGit(cwd, ["config", "user.name", process.env.GIT_AUTHOR_NAME || "file-diff-agent"], env);
+  await runGit(cwd, ["config", "user.name", process.env.GIT_AUTHOR_NAME || DEFAULT_GIT_AUTHOR_NAME], env);
   await runGit(
     cwd,
-    ["config", "user.email", process.env.GIT_AUTHOR_EMAIL || "file-diff-agent@users.noreply.github.com"],
+    ["config", "user.email", process.env.GIT_AUTHOR_EMAIL || DEFAULT_GIT_AUTHOR_EMAIL],
     env
   );
 }
