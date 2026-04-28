@@ -148,13 +148,14 @@ async function runOpencode(
   }
 
   const prompt = buildOpencodePrompt(options.problemStatement, branch);
-  const args = [
-    "run",
-    "--model",
-    options.model,
-    "--print",
-    prompt,
-  ];
+  // Write prompt to .opencode/commands/command.md in the repository so the
+  // opencode CLI can pick it up from the working directory instead of passing
+  // it via the command line. Ensure the directory exists first.
+  const commandFile = path.join(cwd, ".opencode", "commands", "command.md");
+  fs.mkdirSync(path.dirname(commandFile), { recursive: true });
+  fs.writeFileSync(commandFile, prompt, { encoding: "utf8" });
+
+  const args = ["run", "--model", options.model];
   const timeout = parsePositiveInteger(
     process.env.OPENCODE_TIMEOUT_MS,
     DEFAULT_OPENCODE_TIMEOUT_MS
