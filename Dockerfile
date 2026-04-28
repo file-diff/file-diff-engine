@@ -10,7 +10,7 @@ COPY src ./src
 
 RUN npm run build && npm prune --omit=dev
 
-FROM node:24-bookworm-slim
+FROM ubuntu:26.04
 
 WORKDIR /app
 
@@ -24,11 +24,33 @@ ADD https://github.com/file-diff/difftastic/releases/download/${DIFFT_TAG_NAME}/
 RUN apt-get update \
   && apt-get install -y git ca-certificates xz-utils \
   && tar -xJf /tmp/difft.tar.xz -C /tmp \
-  && install -m 0755 /tmp/difft /usr/local/bin/difft \
-  && rm -f /tmp/difft /tmp/difft.tar.xz \
-  && rm -rf /var/lib/apt/lists/*
+  && install -m 0755 /tmp/difft /usr/local/bin/difft
+
+# Install Node.js (LTS) and npm
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g opencode-ai@${OPENCODE_VERSION}
+
+# Install node modules and build the application in the build stage
+# Install essential system tools
+RUN apt-get update && apt-get install -y \
+    curl wget git build-essential sudo jq unzip zip nano vim \
+    software-properties-common apt-transport-https ca-certificates gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python 3 and pip
+RUN apt-get update && apt-get install -y \
+    python3 python3-pip python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+
+# Install Go
+RUN wget https://go.dev/dl/go1.22.1.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go1.22.1.linux-amd64.tar.gz \
+    && rm go1.22.1.linux-amd64.tar.gz
+ENV PATH=$PATH:/usr/local/go/bin
 
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
