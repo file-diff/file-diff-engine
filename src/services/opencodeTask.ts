@@ -201,7 +201,7 @@ async function runOpencode(
     model = "deepseek/deepseek-v4-pro";
   }
 
-  const args = ["run", "--model", model, "--dangerously-skip-permissions"];
+  const args = ["run", "--model", model, "--dangerously-skip-permissions", "--command", "command"];
   const timeout = parsePositiveInteger(
     process.env.OPENCODE_TIMEOUT_MS,
     DEFAULT_OPENCODE_TIMEOUT_MS
