@@ -12,6 +12,8 @@ const mergePullRequestMock = vi.fn();
 const deleteRemoteBranchMock = vi.fn();
 const archiveTaskMock = vi.fn();
 const sendAgentTaskFinishedSlackNotificationMock = vi.fn();
+const prepareOpencodeTaskBranchMock = vi.fn();
+const executeOpencodeOnPreparedBranchMock = vi.fn();
 
 const repoMethods = {
   updateJobStatus: vi.fn(),
@@ -22,6 +24,8 @@ const repoMethods = {
   updateAgentTaskJobStatus: vi.fn(),
   attachAgentTaskToJob: vi.fn(),
   updateAgentTaskStatus: vi.fn(),
+  updateAgentTaskBootstrap: vi.fn(),
+  updateAgentTaskOutput: vi.fn(),
 };
 
 vi.mock("../services/repoProcessor", () => ({
@@ -57,6 +61,11 @@ vi.mock("../services/slack", () => ({
   sendAgentTaskFinishedSlackNotification: sendAgentTaskFinishedSlackNotificationMock,
 }));
 
+vi.mock("../services/opencodeTask", () => ({
+  prepareOpencodeTaskBranch: prepareOpencodeTaskBranchMock,
+  executeOpencodeOnPreparedBranch: executeOpencodeOnPreparedBranchMock,
+}));
+
 vi.mock("bullmq", () => ({
   Worker: workerConstructorMock.mockImplementation(function MockWorker(
     _queueName: string,
@@ -83,6 +92,8 @@ describe("repoWorker", () => {
     repoMethods.updateAgentTaskJobStatus.mockReset();
     repoMethods.attachAgentTaskToJob.mockReset();
     repoMethods.updateAgentTaskStatus.mockReset();
+    repoMethods.updateAgentTaskBootstrap.mockReset();
+    repoMethods.updateAgentTaskOutput.mockReset();
     fetchCopilotAuthorizationHeaderMock.mockReset();
     createTaskMock.mockReset();
     getTaskMock.mockReset();
@@ -92,7 +103,85 @@ describe("repoWorker", () => {
     deleteRemoteBranchMock.mockReset();
     archiveTaskMock.mockReset();
     sendAgentTaskFinishedSlackNotificationMock.mockReset();
+    prepareOpencodeTaskBranchMock.mockReset();
+    executeOpencodeOnPreparedBranchMock.mockReset();
     repoMethods.getAgentTaskJob.mockResolvedValue(undefined);
+  });
+
+  it("should prepare a branch, run opencode, and store output for opencode task jobs", async () => {
+    repoMethods.updateAgentTaskJobStatus.mockResolvedValue(undefined);
+    repoMethods.updateAgentTaskStatus.mockResolvedValue(undefined);
+    repoMethods.updateAgentTaskBootstrap.mockResolvedValue(undefined);
+    repoMethods.updateAgentTaskOutput.mockResolvedValue(undefined);
+    prepareOpencodeTaskBranchMock.mockResolvedValue({
+      branch: "fde-agent/20260428-abc12345",
+      pullRequest: {
+        number: 42,
+        title: "Agent task",
+        url: "https://github.com/owner/repo/pull/42",
+      },
+    });
+    executeOpencodeOnPreparedBranchMock.mockResolvedValue("opencode output");
+
+    const { createWorker } = await import("../workers/repoWorker");
+    const worker = (await createWorker({} as never)) as unknown as {
+      handler: (job: unknown) => Promise<void>;
+    };
+
+    await worker.handler({
+      id: "queue-job-opencode",
+      name: "create-opencode-task",
+      data: {
+        jobId: "task-job-opencode",
+        repoName: "owner/repo",
+        baseRef: "main",
+        problemStatement: "Build the feature",
+        model: "deepseek-v4-flash",
+        githubKey: "github-token",
+        deepseekApiKey: "deepseek-token",
+      },
+    });
+
+    expect(prepareOpencodeTaskBranchMock).toHaveBeenCalledWith({
+      jobId: "task-job-opencode",
+      repo: "owner/repo",
+      baseRef: "main",
+      problemStatement: "Build the feature",
+      model: "deepseek-v4-flash",
+      githubKey: "github-token",
+      deepseekApiKey: "deepseek-token",
+    });
+    expect(repoMethods.updateAgentTaskBootstrap).toHaveBeenCalledWith(
+      "task-job-opencode",
+      "fde-agent/20260428-abc12345",
+      "https://github.com/owner/repo/pull/42",
+      42
+    );
+    expect(repoMethods.updateAgentTaskStatus).toHaveBeenCalledWith(
+      "task-job-opencode",
+      "working",
+      "fde-agent/20260428-abc12345"
+    );
+    expect(executeOpencodeOnPreparedBranchMock).toHaveBeenCalledWith(
+      {
+        jobId: "task-job-opencode",
+        repo: "owner/repo",
+        baseRef: "main",
+        problemStatement: "Build the feature",
+        model: "deepseek-v4-flash",
+        githubKey: "github-token",
+        deepseekApiKey: "deepseek-token",
+      },
+      "fde-agent/20260428-abc12345"
+    );
+    expect(repoMethods.updateAgentTaskOutput).toHaveBeenCalledWith(
+      "task-job-opencode",
+      "opencode output"
+    );
+    expect(repoMethods.updateAgentTaskJobStatus).toHaveBeenLastCalledWith(
+      "task-job-opencode",
+      "completed"
+    );
   });
 
   it("should insert discovered files before updating processed metadata", async () => {

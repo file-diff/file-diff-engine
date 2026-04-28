@@ -1369,7 +1369,7 @@ describe("Job Routes", () => {
         repo: "https://github.com/octocat/hello-world.git",
         problem_statement: "Investigate and fix the login button issue",
         base_ref: "main",
-        model: "claude-sonnet-4.6",
+        model: "deepseek-v4-flash",
         create_pull_request: true,
         pull_request_completion_mode: "AutoMerge",
       },
@@ -1384,18 +1384,13 @@ describe("Job Routes", () => {
     });
     const jobId = (res.body as CreateTaskResponse).id;
     expect(mockQueue.add).toHaveBeenCalledWith(
-      "create-agent-task",
+      "create-opencode-task",
       {
         jobId,
-        owner: "octocat",
-        repoName: "hello-world",
-        createTaskBody: {
-          problem_statement: "Investigate and fix the login button issue",
-          model: "claude-sonnet-4.6",
-          create_pull_request: true,
-          base_ref: "main",
-        },
-        pullRequestCompletionMode: "AutoMerge",
+        repoName: "octocat/hello-world",
+        baseRef: "main",
+        problemStatement: "Investigate and fix the login button issue",
+        model: "deepseek-v4-flash",
       },
       {
         jobId,
@@ -1410,6 +1405,8 @@ describe("Job Routes", () => {
       status: "waiting",
       taskDelayMs: 0,
       scheduledAt: null,
+      model: "deepseek-v4-flash",
+      baseRef: "main",
     });
   });
 
@@ -1478,7 +1475,7 @@ describe("Job Routes", () => {
         repo: "octocat/hello-world",
         problem_statement: "Investigate repository lookup",
         base_ref: "main",
-        model: "claude-sonnet-4.6",
+        model: "deepseek-v4-flash",
         create_pull_request: true,
         task_delay_ms: -1,
       },
@@ -1515,15 +1512,13 @@ describe("Job Routes", () => {
     expect(res.status).toBe(201);
     const jobId = (res.body as CreateTaskResponse).id;
     expect(mockQueue.add).toHaveBeenCalledWith(
-      "create-agent-task",
+      "create-opencode-task",
       {
         jobId,
-        owner: "octocat",
-        repoName: "hello-world",
-        createTaskBody: {
-          problem_statement: "Investigate repository lookup",
-          base_ref: "main",
-        },
+        repoName: "octocat/hello-world",
+        baseRef: "main",
+        problemStatement: "Investigate repository lookup",
+        model: "deepseek-v4-flash",
       },
       {
         jobId,
@@ -1537,6 +1532,8 @@ describe("Job Routes", () => {
       status: "waiting",
       taskDelayMs: 60_000,
       scheduledAt: expect.any(String),
+      model: "deepseek-v4-flash",
+      baseRef: "main",
     });
   });
 
@@ -1557,10 +1554,15 @@ describe("Job Routes", () => {
       repo: "octocat/hello-world",
       status: "active",
       branch: null,
+      baseRef: undefined,
+      model: undefined,
+      pullRequestUrl: undefined,
+      pullRequestNumber: undefined,
       taskId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       taskStatus: "in_progress",
       taskDelayMs: 0,
       scheduledAt: null,
+      output: undefined,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
     });

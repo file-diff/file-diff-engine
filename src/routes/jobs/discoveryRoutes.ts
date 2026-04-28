@@ -71,6 +71,13 @@ const PULL_REQUEST_COMPLETION_MODES: readonly PullRequestCompletionMode[] = [
   "AutoReady",
   "AutoMerge",
 ];
+const SUPPORTED_DEEPSEEK_MODELS = ["deepseek-v4-flash", "deepseek-v4-pro"] as const;
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+type SupportedDeepSeekModel = (typeof SUPPORTED_DEEPSEEK_MODELS)[number];
+
+function isSupportedDeepSeekModel(model: unknown): model is SupportedDeepSeekModel {
+  return typeof model === "string" && SUPPORTED_DEEPSEEK_MODELS.includes(model as SupportedDeepSeekModel);
+}
 
 export function registerDiscoveryRoutes(
   app: FastifyInstance,
@@ -1256,6 +1263,8 @@ export function registerDiscoveryRoutes(
         pull_request_completion_mode,
         base_ref,
         task_delay_ms,
+        deepseek_api_key,
+        githubKey,
       } = request.body ?? {};
 
       if (!repo || !base_ref || !problem_statement) {
@@ -1271,6 +1280,16 @@ export function registerDiscoveryRoutes(
         const response: ErrorResponse = {
           error:
             "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        model !== undefined &&
+        !isSupportedDeepSeekModel(model)
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'model' must be one of: deepseek-v4-flash, deepseek-v4-pro.",
         };
         return reply.code(400).send(response);
       }
@@ -1310,21 +1329,15 @@ export function registerDiscoveryRoutes(
 
       const [owner, repoName] = repo.split("/", 2);
       const taskDelayMs = task_delay_ms ?? 0;
+      const taskModel: SupportedDeepSeekModel =
+        model === undefined ? DEFAULT_DEEPSEEK_MODEL : model;
       const jobId = randomUUID();
       const scheduledAt = taskDelayMs > 0
         ? new Date(Date.now() + taskDelayMs)
         : null;
 
-      const body: Record<string, unknown> = {};
-      if (agent_id !== undefined) body.agent_id = agent_id;
-      if (problem_statement !== undefined) body.problem_statement = problem_statement;
-      if (model !== undefined) body.model = model;
-      if (custom_agent !== undefined) body.custom_agent = custom_agent;
-      if (create_pull_request !== undefined) body.create_pull_request = create_pull_request;
-      if (base_ref !== undefined) body.base_ref = base_ref;
-
       try {
-        logger.info(`AgentTask: Scheduling task job=${jobId} repo=${repo} model=${model ?? "default"} pr_mode=${pull_request_completion_mode ?? "None"} delay_ms=${taskDelayMs}`);
+        logger.info(`AgentTask: Scheduling opencode task job=${jobId} repo=${repo} model=${taskModel} delay_ms=${taskDelayMs}`);
         await jobRepo.createAgentTaskJob(
           jobId,
           repo,
@@ -1332,16 +1345,20 @@ export function registerDiscoveryRoutes(
           undefined,
           undefined,
           taskDelayMs,
-          scheduledAt
+          scheduledAt,
+          taskModel,
+          base_ref
         );
-        await enqueueAgentTaskJob(
+        await enqueueOpencodeTaskJob(
           queue,
           jobId,
-          owner,
-          repoName,
-          body,
+          `${owner}/${repoName}`,
+          base_ref,
+          problem_statement,
+          taskModel,
           taskDelayMs,
-          pull_request_completion_mode
+          githubKey?.trim() || undefined,
+          deepseek_api_key?.trim() || undefined
         );
         logger.info(`AgentTask ${jobId}: Enqueued for repo=${repo}`);
         return reply.code(201).send({ id: jobId } satisfies CreateTaskResponse);
@@ -1442,6 +1459,35 @@ async function enqueueAgentTaskJob(
       repoName,
       createTaskBody,
       pullRequestCompletionMode,
+    },
+    {
+      jobId,
+      delay: delayMs,
+    }
+  );
+}
+
+async function enqueueOpencodeTaskJob(
+  queue: Queue,
+  jobId: string,
+  repoName: string,
+  baseRef: string,
+  problemStatement: string,
+  model: (typeof SUPPORTED_DEEPSEEK_MODELS)[number],
+  delayMs = 0,
+  githubKey?: string,
+  deepseekApiKey?: string
+): Promise<void> {
+  await queue.add(
+    "create-opencode-task",
+    {
+      jobId,
+      repoName,
+      baseRef,
+      problemStatement,
+      model,
+      ...(githubKey ? { githubKey } : {}),
+      ...(deepseekApiKey ? { deepseekApiKey } : {}),
     },
     {
       jobId,

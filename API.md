@@ -2179,3 +2179,90 @@ Example response:
 1. Call `POST /api/jobs/pull-request/resolve`.
 2. Use `sourceCommit` and `targetCommit` in your client workflow.
 3. Create jobs with `POST /api/jobs` for either or both commits if you want processed file metadata from this service.
+
+---
+
+### `POST /api/jobs/create-task`
+
+Starts an opencode-backed agent task for a repository. The worker checks out the requested base branch, creates and pushes a new task branch, creates an initialization commit containing the task, opens a draft pull request, then runs opencode with DeepSeek.
+
+Admin bearer auth is required.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `base_ref` | `string` | Yes | Branch or ref to check out before creating the task branch. |
+| `problem_statement` | `string` | Yes | Task instructions passed to opencode and included in the initialization commit/PR body. |
+| `model` | `"deepseek-v4-flash" \| "deepseek-v4-pro"` | No | DeepSeek model. Defaults to `deepseek-v4-flash`. |
+| `task_delay_ms` | `number` | No | Non-negative delay before the queued worker starts. |
+| `githubKey` | `string` | No | Per-request GitHub token override. Prefer `PRIVATE_GITHUB_TOKEN` in production. |
+| `deepseek_api_key` | `string` | No | Per-request DeepSeek API key override. Prefer `DEEPSEEK_API_KEY` in production. |
+
+#### Success response
+
+Status: `201 Created`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Local task job id used for status/output lookups. |
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/create-task \
+  -H "Authorization: Bearer $ADMIN_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "file-diff/file-diff-engine",
+    "base_ref": "main",
+    "problem_statement": "Implement the requested change",
+    "model": "deepseek-v4-flash"
+  }'
+```
+
+Example response:
+
+```json
+{
+  "id": "7eb718f7-5c92-42d4-a6f8-1caaedfb29dc"
+}
+```
+
+---
+
+### `GET /api/jobs/create-task/:id`
+
+Returns local progress and captured output for an opencode-backed agent task.
+
+Viewer bearer auth is required.
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Local task job id. |
+| `repo` | `string` | Repository in `owner/repo` format. |
+| `status` | `string` | Local status: `waiting`, `active`, `completed`, `failed`, or `canceled`. |
+| `taskStatus` | `string` | Task phase such as `preparing`, `working`, or `completed`. |
+| `branch` | `string \| null` | Generated task branch when available. |
+| `baseRef` | `string` | Requested base ref. |
+| `model` | `string` | Selected DeepSeek model. |
+| `pullRequestUrl` | `string` | Draft pull request URL when available. |
+| `pullRequestNumber` | `number` | Draft pull request number when available. |
+| `output` | `string` | Captured opencode stdout/stderr or failure message. |
+| `error` | `string` | Present when the job failed. |
+| `taskDelayMs` | `number` | Delay configured when the task was queued. |
+| `scheduledAt` | `string \| null` | Scheduled start timestamp for delayed tasks. |
+| `createdAt` | `string` | Creation timestamp. |
+| `updatedAt` | `string` | Last update timestamp. |
+
+#### Example
+
+```bash
+curl https://your-host.example.com/api/jobs/create-task/7eb718f7-5c92-42d4-a6f8-1caaedfb29dc \
+  -H "Authorization: Bearer $VIEWER_BEARER_TOKEN"
+```
