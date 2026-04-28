@@ -91,6 +91,8 @@ async function initSchema(db: DatabaseClient): Promise<void> {
         pull_request_url TEXT,
         pull_request_number INTEGER,
         output TEXT,
+        stdout TEXT,
+        stderr TEXT,
         task_delay_ms INTEGER NOT NULL DEFAULT 0,
         scheduled_at TIMESTAMPTZ,
         error TEXT,
@@ -125,6 +127,12 @@ async function initSchema(db: DatabaseClient): Promise<void> {
 
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS output TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS stdout TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS stderr TEXT;
 
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS task_delay_ms INTEGER NOT NULL DEFAULT 0;

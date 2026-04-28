@@ -19,6 +19,12 @@ const REDIS_PORT = parseInt(process.env.REDIS_PORT || "6379", 10);
 const TMP_DIR = process.env.TMP_DIR || "tmp";
 const logger = createLogger("repo-worker");
 
+interface OpencodeCapturedLogs {
+  output: string;
+  stdout: string;
+  stderr: string;
+}
+
 export async function createWorker(db?: DatabaseClient): Promise<Worker> {
   const database = db ?? (await getDatabase());
   const repo = new JobRepository(database);
@@ -114,6 +120,7 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
   const startedAt = Date.now();
   const taskCreatedAt = typeof job.timestamp === "number" ? job.timestamp : startedAt;
   let lastKnownBranchName: string | null = null;
+  let lastCapturedLogs: OpencodeCapturedLogs | null = null;
   const [owner, repoNameOnly] = splitRepoName(repoName);
 
   try {
@@ -145,9 +152,25 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
       prepared.pullRequest.number
     );
     await repo.updateAgentTaskStatus(jobId, "working", prepared.branch);
-    const output = await executeOpencodeOnPreparedBranch(taskOptions, prepared.branch);
+    const persistLogs = async (logs: OpencodeCapturedLogs): Promise<void> => {
+      lastCapturedLogs = logs;
+      await repo.updateAgentTaskLogs(jobId, logs);
+    };
+    const runPreparedBranch = executeOpencodeOnPreparedBranch as unknown as ((
+      options: typeof taskOptions,
+      branch: string,
+      callbacks?: {
+        onLogsUpdated?: (logs: OpencodeCapturedLogs) => Promise<void> | void;
+      }
+    ) => Promise<OpencodeCapturedLogs>);
+    const logs = await runPreparedBranch(
+      taskOptions,
+      prepared.branch,
+      { onLogsUpdated: persistLogs }
+    );
+    lastCapturedLogs = logs;
     await repo.updateAgentTaskStatus(jobId, "completed", prepared.branch);
-    await repo.updateAgentTaskOutput(jobId, output);
+    await repo.updateAgentTaskLogs(jobId, logs);
     await repo.updateAgentTaskJobStatus(jobId, "completed");
     logger.info(`${tag} Completed branch=${prepared.branch} pr=${prepared.pullRequest.url}`);
     await sendTerminalTaskNotification(
@@ -160,9 +183,15 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    const logs = isOpencodeExecutionError(err) ? err.logs : lastCapturedLogs;
     logger.error(`${tag} Job failed for repo=${repoName}: ${message}`);
     await repo.updateAgentTaskJobStatus(jobId, "failed", message);
-    await repo.updateAgentTaskOutput(jobId, message);
+    if (logs) {
+      lastCapturedLogs = logs;
+      await repo.updateAgentTaskLogs(jobId, logs);
+    } else {
+      await repo.updateAgentTaskOutput(jobId, message);
+    }
     await sendTerminalTaskNotification(
       owner,
       repoNameOnly,
@@ -174,6 +203,30 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
     );
     throw err;
   }
+}
+
+function isOpencodeExecutionError(
+  error: unknown
+): error is Error & { logs: OpencodeCapturedLogs } {
+  if (!(error instanceof Error) || !("logs" in error)) {
+    return false;
+  }
+
+  const logs = (error as { logs?: unknown }).logs;
+  return isOpencodeCapturedLogs(logs);
+}
+
+function isOpencodeCapturedLogs(value: unknown): value is OpencodeCapturedLogs {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const logs = value as Record<string, unknown>;
+  return (
+    typeof logs.output === "string" &&
+    typeof logs.stdout === "string" &&
+    typeof logs.stderr === "string"
+  );
 }
 
 function splitRepoName(repoName: string): [string, string] {

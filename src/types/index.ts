@@ -411,6 +411,8 @@ export interface AgentTaskJobSummary {
 export interface AgentTaskJobInfo extends AgentTaskJobSummary {
   error?: string;
   output?: string;
+  stdout?: string;
+  stderr?: string;
   createdAt: string;
   updatedAt: string;
 }

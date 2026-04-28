@@ -61,6 +61,8 @@ function mapAgentTaskJobRow(row: Record<string, unknown>): AgentTaskJobInfo {
     scheduledAt: row.scheduled_at ? toIsoString(row.scheduled_at) : null,
     error: (row.error as string | null) ?? undefined,
     output: (row.output as string | null) ?? undefined,
+    stdout: (row.stdout as string | null) ?? undefined,
+    stderr: (row.stderr as string | null) ?? undefined,
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
   };
@@ -199,6 +201,25 @@ export class JobRepository {
             updated_at = CURRENT_TIMESTAMP
         WHERE id = $2`,
       [output, id]
+    );
+  }
+
+  async updateAgentTaskLogs(
+    id: string,
+    logs: {
+      output: string;
+      stdout: string;
+      stderr: string;
+    }
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE agent_task_jobs
+        SET output = $1,
+            stdout = $2,
+            stderr = $3,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4`,
+      [logs.output, logs.stdout, logs.stderr, id]
     );
   }
 

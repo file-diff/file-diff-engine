@@ -1009,7 +1009,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 
 Status: `200 OK`
 
-Returns the agent task job record from the local database, including its repo, status, model, branch, pull request information, output, and timestamps.
+Returns the agent task job record from the local database, including its repo, status, model, branch, pull request information, combined `output`, split `stdout`/`stderr`, and timestamps. While opencode is running, logs are flushed into the database about every 15 seconds.
 
 #### Common statuses
 
@@ -2248,7 +2248,9 @@ Status: `200 OK`
 | `model` | `string` | Selected DeepSeek model. |
 | `pullRequestUrl` | `string` | Draft pull request URL when available. |
 | `pullRequestNumber` | `number` | Draft pull request number when available. |
-| `output` | `string` | Captured opencode stdout/stderr or failure message. |
+| `output` | `string` | Combined captured opencode stdout/stderr, updated roughly every 15 seconds while the task is running. |
+| `stdout` | `string` | Captured opencode stdout collected so far. |
+| `stderr` | `string` | Captured opencode stderr collected so far. |
 | `error` | `string` | Present when the job failed. |
 | `taskDelayMs` | `number` | Delay configured when the task was queued. |
 | `scheduledAt` | `string \| null` | Scheduled start timestamp for delayed tasks. |

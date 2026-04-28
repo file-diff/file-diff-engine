@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import { createPullRequest } from "./githubApi";
 import type { AgentTaskModel } from "../types";
@@ -11,8 +11,19 @@ const logger = createLogger("opencode-task");
 const TWO_HOURS_IN_SECONDS = 2 * 60 * 60;
 const DEFAULT_OPENCODE_TIMEOUT_MS = TWO_HOURS_IN_SECONDS * 1_000;
 const DEFAULT_OUTPUT_LIMIT = 1_000_000;
+const DEFAULT_LOG_FLUSH_INTERVAL_MS = 15_000;
 const DEFAULT_GIT_AUTHOR_NAME = "file-diff-agent";
 const DEFAULT_GIT_AUTHOR_EMAIL = "file-diff-agent@users.noreply.github.com";
+
+export interface OpencodeCapturedLogs {
+  output: string;
+  stdout: string;
+  stderr: string;
+}
+
+export interface OpencodeExecutionCallbacks {
+  onLogsUpdated?: (logs: OpencodeCapturedLogs) => Promise<void> | void;
+}
 
 export interface OpencodeTaskOptions {
   jobId: string;
@@ -36,24 +47,50 @@ export interface OpencodePreparedTask {
 
 export interface OpencodeTaskResult extends OpencodePreparedTask {
   output: string;
+  stdout: string;
+  stderr: string;
+}
+
+export class OpencodeExecutionError extends Error {
+  constructor(
+    message: string,
+    public readonly logs: OpencodeCapturedLogs
+  ) {
+    super(message);
+    this.name = "OpencodeExecutionError";
+  }
 }
 
 export async function runOpencodeTask(
-  options: OpencodeTaskOptions
+  options: OpencodeTaskOptions,
+  callbacks?: OpencodeExecutionCallbacks
 ): Promise<OpencodeTaskResult> {
   const prepared = await prepareOpencodeTaskBranch(options);
-  const output = await executeOpencodeOnPreparedBranch(options, prepared.branch);
-  return { ...prepared, output };
+  const logs = await executeOpencodeOnPreparedBranch(
+    options,
+    prepared.branch,
+    callbacks
+  );
+  return { ...prepared, ...logs };
 }
 
 export async function executeOpencodeOnPreparedBranch(
   options: OpencodeTaskOptions,
-  branch: string
-): Promise<string> {
+  branch: string,
+  callbacks?: OpencodeExecutionCallbacks
+): Promise<OpencodeCapturedLogs> {
   const cloneDir = getCloneDir(options);
-  const output = await runOpencode(options, branch, cloneDir);
-  await commitAndPushFinalChanges(cloneDir, options, branch);
-  return output;
+  const logs = await runOpencode(options, branch, cloneDir, callbacks);
+
+  try {
+    await commitAndPushFinalChanges(cloneDir, options, branch);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to commit and push final agent changes.";
+    throw new OpencodeExecutionError(message, logs);
+  }
+
+  return logs;
 }
 
 export async function prepareOpencodeTaskBranch(
@@ -139,8 +176,9 @@ function getCloneDir(options: OpencodeTaskOptions): string {
 async function runOpencode(
   options: OpencodeTaskOptions,
   branch: string,
-  cwd: string
-): Promise<string> {
+  cwd: string,
+  callbacks?: OpencodeExecutionCallbacks
+): Promise<OpencodeCapturedLogs> {
   const deepseekApiKey =
     options.deepseekApiKey?.trim() || process.env.DEEPSEEK_API_KEY?.trim();
   if (!deepseekApiKey) {
@@ -172,6 +210,10 @@ async function runOpencode(
     process.env.OPENCODE_OUTPUT_LIMIT,
     DEFAULT_OUTPUT_LIMIT
   );
+  const logFlushIntervalMs = parsePositiveInteger(
+    process.env.OPENCODE_LOG_FLUSH_INTERVAL_MS,
+    DEFAULT_LOG_FLUSH_INTERVAL_MS
+  );
 
   logger.info("Starting opencode task", {
     jobId: options.jobId,
@@ -179,19 +221,167 @@ async function runOpencode(
     branch,
     model: options.model,
     timeout,
+    logFlushIntervalMs,
   });
 
-  const result = await execFileAsync(getOpencodeBin(), args, {
+  const child = spawn(getOpencodeBin(), args, {
     cwd,
     env: {
       ...process.env,
       DEEPSEEK_API_KEY: deepseekApiKey,
     },
-    maxBuffer: outputLimit,
-    timeout,
+    stdio: ["ignore", "pipe", "pipe"],
   });
 
-  return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+  const stdoutChunks: string[] = [];
+  const stderrChunks: string[] = [];
+  const outputChunks: string[] = [];
+  let capturedBytes = 0;
+  let outputTruncated = false;
+  let dirty = false;
+  let timedOut = false;
+  let spawnError: Error | undefined;
+  let flushError: Error | undefined;
+  let intervalFlushPending = false;
+  let flushChain = Promise.resolve();
+
+  const buildLogs = (): OpencodeCapturedLogs => ({
+    output: outputChunks.join(""),
+    stdout: stdoutChunks.join(""),
+    stderr: stderrChunks.join(""),
+  });
+
+  const queueFlush = (force = false): Promise<void> => {
+    flushChain = flushChain
+      .catch(() => undefined)
+      .then(async () => {
+        if (flushError || !callbacks?.onLogsUpdated || (!force && !dirty)) {
+          return;
+        }
+
+        dirty = false;
+        await callbacks.onLogsUpdated(buildLogs());
+      })
+      .catch((error) => {
+        flushError = error instanceof Error ? error : new Error(String(error));
+        if (!child.killed) {
+          child.kill();
+        }
+      });
+
+    return flushChain;
+  };
+
+  const flushInterval = setInterval(() => {
+    if (intervalFlushPending || flushError) {
+      return;
+    }
+
+    intervalFlushPending = true;
+    void queueFlush().finally(() => {
+      intervalFlushPending = false;
+    });
+  }, logFlushIntervalMs);
+  flushInterval.unref?.();
+
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    if (!child.killed) {
+      child.kill();
+    }
+  }, timeout);
+  timeoutHandle.unref?.();
+
+  const appendChunk = (target: "stdout" | "stderr", chunk: string): void => {
+    if (!chunk || flushError) {
+      return;
+    }
+
+    const remaining = outputLimit - capturedBytes;
+    if (remaining <= 0) {
+      outputTruncated = true;
+      return;
+    }
+
+    const limitedChunk = truncateUtf8(chunk, remaining);
+    if (!limitedChunk) {
+      outputTruncated = true;
+      return;
+    }
+
+    capturedBytes += Buffer.byteLength(limitedChunk, "utf8");
+    if (target === "stdout") {
+      stdoutChunks.push(limitedChunk);
+    } else {
+      stderrChunks.push(limitedChunk);
+    }
+    outputChunks.push(limitedChunk);
+    dirty = true;
+
+    if (limitedChunk.length < chunk.length) {
+      outputTruncated = true;
+    }
+  };
+
+  child.stdout?.setEncoding("utf8");
+  child.stdout?.on("data", (chunk: string) => {
+    appendChunk("stdout", chunk);
+  });
+
+  child.stderr?.setEncoding("utf8");
+  child.stderr?.on("data", (chunk: string) => {
+    appendChunk("stderr", chunk);
+  });
+
+  child.on("error", (error) => {
+    spawnError = error;
+  });
+
+  const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+    (resolve) => {
+      child.once("close", (code, signal) => {
+        resolve({ code, signal });
+      });
+    }
+  );
+
+  clearInterval(flushInterval);
+  clearTimeout(timeoutHandle);
+  await queueFlush(true);
+
+  const logs = buildLogs();
+  if (flushError) {
+    throw new OpencodeExecutionError(flushError.message, logs);
+  }
+
+  if (spawnError) {
+    throw new OpencodeExecutionError(spawnError.message, logs);
+  }
+
+  if (timedOut) {
+    throw new OpencodeExecutionError(
+      `opencode timed out after ${timeout}ms.`,
+      logs
+    );
+  }
+
+  if (exit.code !== 0) {
+    throw new OpencodeExecutionError(
+      buildOpencodeExitMessage(exit.code, exit.signal, logs),
+      logs
+    );
+  }
+
+  if (outputTruncated) {
+    logger.warn("Opencode output truncated", {
+      jobId: options.jobId,
+      repo: options.repo,
+      branch,
+      outputLimit,
+    });
+  }
+
+  return logs;
 }
 
 async function commitAndPushFinalChanges(
@@ -325,6 +515,36 @@ function buildOpencodePrompt(problemStatement: string, branch: string): string {
     "",
     problemStatement,
   ].join("\n");
+}
+
+function buildOpencodeExitMessage(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  logs: OpencodeCapturedLogs
+): string {
+  const details = logs.stderr.trim() || logs.output.trim();
+  if (details) {
+    return details;
+  }
+
+  if (signal) {
+    return `opencode exited due to signal ${signal}.`;
+  }
+
+  return `opencode exited with code ${code ?? "unknown"}.`;
+}
+
+function truncateUtf8(value: string, maxBytes: number): string {
+  if (maxBytes <= 0) {
+    return "";
+  }
+
+  const buffer = Buffer.from(value, "utf8");
+  if (buffer.length <= maxBytes) {
+    return value;
+  }
+
+  return buffer.subarray(0, maxBytes).toString("utf8");
 }
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
