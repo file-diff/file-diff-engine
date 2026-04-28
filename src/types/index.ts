@@ -106,6 +106,9 @@ export type JobStatus = "waiting" | "active" | "completed" | "failed";
 /** Status of a locally tracked GitHub agent task job. */
 export type AgentTaskJobStatus = JobStatus | "canceled";
 
+/** Supported DeepSeek models for opencode-backed agent tasks. */
+export type AgentTaskModel = "deepseek-v4-flash" | "deepseek-v4-pro";
+
 /** Minimal job payload returned after creating or reusing a job. */
 export interface JobSummary {
   id: string;
@@ -365,7 +368,7 @@ export interface CreateTaskRequest {
   /** Additional prompting for the agent */
   problem_statement?: string;
   /** The model to use for this task */
-  model?: string;
+  model?: AgentTaskModel;
   /** Custom agent identifier */
   custom_agent?: string;
   /** Whether to create a PR */
@@ -376,6 +379,10 @@ export interface CreateTaskRequest {
   base_ref?: string;
   /** Optional delay in milliseconds before starting the remote task */
   task_delay_ms?: number;
+  /** Optional DeepSeek API key override for this task. Prefer DEEPSEEK_API_KEY in production. */
+  deepseek_api_key?: string;
+  /** Optional GitHub token override used for branch, commit, push, and PR creation. */
+  githubKey?: string;
 }
 
 /** Response payload after creating a GitHub Copilot coding agent task. */
@@ -390,6 +397,10 @@ export interface AgentTaskJobSummary {
   repo: string;
   status: AgentTaskJobStatus;
   branch: string | null;
+  baseRef?: string;
+  model?: AgentTaskModel;
+  pullRequestUrl?: string;
+  pullRequestNumber?: number;
   taskId?: string;
   taskStatus?: string;
   taskDelayMs: number;
@@ -399,6 +410,7 @@ export interface AgentTaskJobSummary {
 /** Response payload when querying a queued or monitored agent task job. */
 export interface AgentTaskJobInfo extends AgentTaskJobSummary {
   error?: string;
+  output?: string;
   createdAt: string;
   updatedAt: string;
 }

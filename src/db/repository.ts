@@ -1,6 +1,7 @@
 import type { DatabaseClient } from "./database";
 import {
   AgentTaskJobStatus,
+  AgentTaskModel,
   AgentTaskJobInfo,
   FileRecord,
   JobInfo,
@@ -58,7 +59,9 @@ export class JobRepository {
     taskStatus?: string,
     branchName?: string | null,
     taskDelayMs = 0,
-    scheduledAt?: Date | string | null
+    scheduledAt?: Date | string | null,
+    model?: AgentTaskModel,
+    baseRef?: string
   ): Promise<void> {
     await this.db.query(
       `INSERT INTO agent_task_jobs (
@@ -68,18 +71,22 @@ export class JobRepository {
          github_task_id,
          task_status,
          branch_name,
+         model,
+         base_ref,
          task_delay_ms,
          scheduled_at,
          created_at,
          updated_at
         )
-       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [
         id,
         repo,
         taskId ?? null,
         taskStatus ?? null,
         branchName ?? null,
+        model ?? null,
+        baseRef ?? null,
         taskDelayMs,
         scheduledAt ?? null,
       ]
@@ -101,11 +108,18 @@ export class JobRepository {
       repo: row.repo as string,
       status: row.status as AgentTaskJobStatus,
       branch: (row.branch_name as string | null) ?? null,
+      baseRef: (row.base_ref as string | null) ?? undefined,
+      model: (row.model as AgentTaskModel | null) ?? undefined,
+      pullRequestUrl: (row.pull_request_url as string | null) ?? undefined,
+      pullRequestNumber: row.pull_request_number === null || row.pull_request_number === undefined
+        ? undefined
+        : Number(row.pull_request_number),
       taskId: (row.github_task_id as string | null) ?? undefined,
       taskStatus: (row.task_status as string | null) ?? undefined,
       taskDelayMs: normalizeTaskDelayMs(row.task_delay_ms),
       scheduledAt: row.scheduled_at ? toIsoString(row.scheduled_at) : null,
       error: (row.error as string | null) ?? undefined,
+      output: (row.output as string | null) ?? undefined,
       createdAt: toIsoString(row.created_at),
       updatedAt: toIsoString(row.updated_at),
     };
@@ -156,6 +170,33 @@ export class JobRepository {
     );
   }
 
+  async updateAgentTaskBootstrap(
+    id: string,
+    branchName: string,
+    pullRequestUrl: string,
+    pullRequestNumber: number
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE agent_task_jobs
+        SET branch_name = $1,
+            pull_request_url = $2,
+            pull_request_number = $3,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4`,
+      [branchName, pullRequestUrl, pullRequestNumber, id]
+    );
+  }
+
+  async updateAgentTaskOutput(id: string, output: string): Promise<void> {
+    await this.db.query(
+      `UPDATE agent_task_jobs
+        SET output = $1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2`,
+      [output, id]
+    );
+  }
+
   async listPendingAgentTaskJobs(): Promise<AgentTaskJobInfo[]> {
     const result = await this.db.query(
       `SELECT *
@@ -172,6 +213,12 @@ export class JobRepository {
         repo: record.repo as string,
         status: record.status as AgentTaskJobStatus,
         branch: (record.branch_name as string | null) ?? null,
+        baseRef: (record.base_ref as string | null) ?? undefined,
+        model: (record.model as AgentTaskModel | null) ?? undefined,
+        pullRequestUrl: (record.pull_request_url as string | null) ?? undefined,
+        pullRequestNumber: record.pull_request_number === null || record.pull_request_number === undefined
+          ? undefined
+          : Number(record.pull_request_number),
         taskId: (record.github_task_id as string | null) ?? undefined,
         taskStatus: (record.task_status as string | null) ?? undefined,
         taskDelayMs: normalizeTaskDelayMs(record.task_delay_ms),

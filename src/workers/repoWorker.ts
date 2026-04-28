@@ -3,9 +3,13 @@ import path from "path";
 import fs from "fs";
 import { getDatabase, type DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
-import type { PullRequestCompletionMode, TaskInfoResponse } from "../types";
+import type { AgentTaskModel, PullRequestCompletionMode, TaskInfoResponse } from "../types";
 import { processRepository } from "../services/repoProcessor";
 import * as githubApi from "../services/githubApi";
+import {
+  executeOpencodeOnPreparedBranch,
+  prepareOpencodeTaskBranch,
+} from "../services/opencodeTask";
 import { QUEUE_NAME } from "../services/queue";
 import { sendAgentTaskFinishedSlackNotification } from "../services/slack";
 import { createLogger } from "../utils/logger";
@@ -28,6 +32,11 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
     async (job: Job) => {
       if (job.name === "create-agent-task") {
         await handleAgentTaskJob(job, repo);
+        return;
+      }
+
+      if (job.name === "create-opencode-task") {
+        await handleOpencodeTaskJob(job, repo);
         return;
       }
 
@@ -87,6 +96,70 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
   );
 
   return worker;
+}
+
+async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<void> {
+  const {
+    jobId,
+    repoName,
+    baseRef,
+    problemStatement,
+    model,
+    githubKey,
+    deepseekApiKey,
+  } = job.data as {
+    jobId: string;
+    repoName: string;
+    baseRef: string;
+    problemStatement: string;
+    model: AgentTaskModel;
+    githubKey?: string;
+    deepseekApiKey?: string;
+  };
+
+  const tag = `OpencodeTask ${jobId}:`;
+  logger.info(`${tag} Started processing repo=${repoName} base=${baseRef} model=${model}`);
+
+  try {
+    const existingJob = await repo.getAgentTaskJob(jobId);
+    if (existingJob?.status === "canceled") {
+      logger.info(`${tag} Skipping canceled task job`);
+      return;
+    }
+
+    await repo.updateAgentTaskJobStatus(jobId, "active");
+    await repo.updateAgentTaskStatus(jobId, "preparing");
+
+    const taskOptions = {
+      jobId,
+      repo: repoName,
+      baseRef,
+      problemStatement,
+      model,
+      githubKey,
+      deepseekApiKey,
+    };
+    const prepared = await prepareOpencodeTaskBranch(taskOptions);
+
+    await repo.updateAgentTaskBootstrap(
+      jobId,
+      prepared.branch,
+      prepared.pullRequest.url,
+      prepared.pullRequest.number
+    );
+    await repo.updateAgentTaskStatus(jobId, "working", prepared.branch);
+    const output = await executeOpencodeOnPreparedBranch(taskOptions, prepared.branch);
+    await repo.updateAgentTaskStatus(jobId, "completed", prepared.branch);
+    await repo.updateAgentTaskOutput(jobId, output);
+    await repo.updateAgentTaskJobStatus(jobId, "completed");
+    logger.info(`${tag} Completed branch=${prepared.branch} pr=${prepared.pullRequest.url}`);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    logger.error(`${tag} Job failed for repo=${repoName}: ${message}`);
+    await repo.updateAgentTaskJobStatus(jobId, "failed", message);
+    await repo.updateAgentTaskOutput(jobId, message);
+    throw err;
+  }
 }
 
 async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> {
