@@ -399,6 +399,7 @@ export interface AgentTaskJobSummary {
   branch: string | null;
   baseRef?: string;
   model?: AgentTaskModel;
+  pullRequestCompletionMode?: PullRequestCompletionMode;
   pullRequestUrl?: string;
   pullRequestNumber?: number;
   taskId?: string;

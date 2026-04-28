@@ -967,6 +967,7 @@ Status: `200 OK`
 | `branch` | `string \| null` | Created branch name once known, otherwise `null` |
 | `taskId` | `string` | Created GitHub Copilot task id when available |
 | `taskStatus` | `string` | Last observed GitHub task state when available |
+| `pullRequestCompletionMode` | `string` | Requested follow-up PR action: `None`, `AutoReady`, or `AutoMerge` when set |
 | `taskDelayMs` | `integer` | Configured startup delay in milliseconds |
 | `scheduledAt` | `string \| null` | Scheduled start time for delayed jobs, otherwise `null` |
 | `error` | `string` | Error message when the job fails |
@@ -2246,6 +2247,7 @@ Status: `200 OK`
 | `branch` | `string \| null` | Generated task branch when available. |
 | `baseRef` | `string` | Requested base ref. |
 | `model` | `string` | Selected DeepSeek model. |
+| `pullRequestCompletionMode` | `string` | Requested follow-up PR action: `None`, `AutoReady`, or `AutoMerge` when set. |
 | `pullRequestUrl` | `string` | Draft pull request URL when available. |
 | `pullRequestNumber` | `number` | Draft pull request number when available. |
 | `output` | `string` | Combined captured opencode stdout/stderr, updated roughly every 15 seconds while the task is running. |

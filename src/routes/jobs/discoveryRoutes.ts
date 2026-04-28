@@ -1347,7 +1347,8 @@ export function registerDiscoveryRoutes(
           taskDelayMs,
           scheduledAt,
           taskModel,
-          base_ref
+          base_ref,
+          pull_request_completion_mode
         );
         await enqueueOpencodeTaskJob(
           queue,
