@@ -74,8 +74,21 @@ export async function prepareOpencodeTaskBranch(
   fs.rmSync(workDir, { recursive: true, force: true });
   fs.mkdirSync(workDir, { recursive: true });
 
-  await runGit(workDir, ["clone", "--no-checkout", "--", repoUrl, cloneDir], gitEnv);
-  await runGit(cloneDir, ["fetch", "origin", baseRef], gitEnv);
+  await runGit(
+    workDir,
+    [
+      "clone",
+      "--no-checkout",
+      "--depth=1",
+      "--single-branch",
+      "--branch",
+      baseRef,
+      "--",
+      repoUrl,
+      cloneDir,
+    ],
+    gitEnv
+  );
   await runGit(cloneDir, ["checkout", "-B", branch, `origin/${baseRef}`], gitEnv);
   await configureCommitAuthor(cloneDir, gitEnv);
   await runGit(
@@ -156,7 +169,7 @@ async function runOpencode(
     timeout,
   });
 
-  const result = await execFileAsync(process.env.OPENCODE_BIN || "opencode", args, {
+  const result = await execFileAsync(getOpencodeBin(), args, {
     cwd,
     env: {
       ...process.env,
@@ -211,12 +224,32 @@ async function runGit(
 
 function normalizeGitRef(value: string, fieldName: string): string {
   const ref = value.trim();
-  if (!ref || ref.startsWith("-") || /[\u0000-\u001F\u007F]/.test(ref)) {
+  if (
+    !ref ||
+    ref.startsWith("-") ||
+    ref.startsWith("/") ||
+    ref.includes("..") ||
+    ref.includes("@{") ||
+    /[\u0000-\u001F\u007F\\]/.test(ref)
+  ) {
     throw new Error(
-      `Field '${fieldName}' must be a non-empty git ref, cannot start with '-', and cannot contain control characters.`
+      `Field '${fieldName}' must be a non-empty git ref, cannot start with '-' or '/', cannot contain '..', '@{', backslashes, or control characters.`
     );
   }
   return ref;
+}
+
+function getOpencodeBin(): string {
+  const bin = (process.env.OPENCODE_BIN || "opencode").trim();
+  if (
+    !bin ||
+    bin.startsWith("-") ||
+    path.basename(bin) !== "opencode" ||
+    /[\u0000-\u001F\u007F]/.test(bin)
+  ) {
+    throw new Error("OPENCODE_BIN must point to an executable named 'opencode'.");
+  }
+  return bin;
 }
 
 function resolveGitHubToken(githubKey?: string): string | undefined {
