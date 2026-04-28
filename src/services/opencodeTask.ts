@@ -163,7 +163,7 @@ async function runOpencode(
     model = "deepseek/deepseek-v4-pro";
   }
 
-  const args = ["run", "--model", model];
+  const args = ["run", "--model", model, "--dangerously-skip-permissions"];
   const timeout = parsePositiveInteger(
     process.env.OPENCODE_TIMEOUT_MS,
     DEFAULT_OPENCODE_TIMEOUT_MS
@@ -255,16 +255,7 @@ function normalizeGitRef(value: string, fieldName: string): string {
 }
 
 function getOpencodeBin(): string {
-  const bin = (process.env.OPENCODE_BIN || "opencode").trim();
-  if (
-    !bin ||
-    bin.startsWith("-") ||
-    path.basename(bin) !== "opencode" ||
-    /[\u0000-\u001F\u007F]/.test(bin)
-  ) {
-    throw new Error("OPENCODE_BIN must point to an executable named 'opencode'.");
-  }
-  return bin;
+  return (process.env.OPENCODE_BIN || "opencode").trim();
 }
 
 function resolveGitHubToken(githubKey?: string): string | undefined {
