@@ -73,6 +73,11 @@ const PULL_REQUEST_COMPLETION_MODES: readonly PullRequestCompletionMode[] = [
 ];
 const SUPPORTED_DEEPSEEK_MODELS = ["deepseek-v4-flash", "deepseek-v4-pro"] as const;
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+type SupportedDeepSeekModel = (typeof SUPPORTED_DEEPSEEK_MODELS)[number];
+
+function isSupportedDeepSeekModel(model: unknown): model is SupportedDeepSeekModel {
+  return typeof model === "string" && SUPPORTED_DEEPSEEK_MODELS.includes(model as SupportedDeepSeekModel);
+}
 
 export function registerDiscoveryRoutes(
   app: FastifyInstance,
@@ -1281,7 +1286,7 @@ export function registerDiscoveryRoutes(
 
       if (
         model !== undefined &&
-        !SUPPORTED_DEEPSEEK_MODELS.includes(model)
+        !isSupportedDeepSeekModel(model)
       ) {
         const response: ErrorResponse = {
           error: "Field 'model' must be one of: deepseek-v4-flash, deepseek-v4-pro.",
@@ -1324,7 +1329,7 @@ export function registerDiscoveryRoutes(
 
       const [owner, repoName] = repo.split("/", 2);
       const taskDelayMs = task_delay_ms ?? 0;
-      const taskModel = model ?? DEFAULT_DEEPSEEK_MODEL;
+      const taskModel = isSupportedDeepSeekModel(model) ? model : DEFAULT_DEEPSEEK_MODEL;
       const jobId = randomUUID();
       const scheduledAt = taskDelayMs > 0
         ? new Date(Date.now() + taskDelayMs)
