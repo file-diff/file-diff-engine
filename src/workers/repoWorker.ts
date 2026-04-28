@@ -10,6 +10,7 @@ import {
   prepareOpencodeTaskBranch,
 } from "../services/opencodeTask";
 import { applyPullRequestCompletionMode } from "../services/pullRequestCompletion";
+import { createPullRequestComment } from "../services/githubApi";
 import { QUEUE_NAME } from "../services/queue";
 import { sendAgentTaskFinishedSlackNotification } from "../services/slack";
 import { createLogger } from "../utils/logger";
@@ -171,6 +172,18 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
       { onLogsUpdated: persistLogs }
     );
     lastCapturedLogs = logs;
+    try {
+      const commentBody = logs.output ? `## Agent Task Output\n\n\`\`\`\n${logs.output.slice(0, 65000)}\n\`\`\`` : "Agent task completed with no output.";
+      await createPullRequestComment(
+        repoName,
+        prepared.pullRequest.number,
+        commentBody,
+        githubKey
+      );
+      logger.info(`${tag} Posted agent task output as pull request comment`);
+    } catch (error) {
+      logger.warn(`${tag} Failed to post pull request comment: ${error instanceof Error ? error.message : String(error)}`);
+    }
     pullRequestActions = await applyPullRequestCompletionMode({
       repo: repoName,
       branch: prepared.branch,

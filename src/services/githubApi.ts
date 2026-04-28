@@ -591,6 +591,24 @@ export async function markPullRequestReady(
   );
 }
 
+export async function createPullRequestComment(
+  repo: string,
+  pullNumber: number,
+  body: string,
+  token?: string
+): Promise<void> {
+  const [owner, repoName] = repo.split("/", 2);
+  await getJson<Record<string, unknown>>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/issues/${pullNumber}/comments`,
+    {
+      notFoundMessage: `Pull request #${pullNumber} was not found in repository '${repo}'.`,
+      method: "POST",
+      body: { body },
+      token,
+    }
+  );
+}
+
 export async function mergePullRequest(
   repo: string,
   pullNumber: number,
