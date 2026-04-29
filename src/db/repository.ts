@@ -61,7 +61,10 @@ function mapAgentTaskJobRow(row: Record<string, unknown>): AgentTaskJobInfo {
     taskId: (row.github_task_id as string | null) ?? undefined,
     taskStatus: (row.task_status as string | null) ?? undefined,
     opencodeSessionId: (row.opencode_session_id as string | null) ?? undefined,
-    opencodeSessionExport: parseStoredJsonValue(row.opencode_session_export),
+    opencodeSessionExport: parseStoredJsonValue(
+      row.opencode_session_export,
+      "opencode_session_export"
+    ),
     taskDelayMs: normalizeTaskDelayMs(row.task_delay_ms),
     scheduledAt: row.scheduled_at ? toIsoString(row.scheduled_at) : null,
     error: (row.error as string | null) ?? undefined,
@@ -616,7 +619,7 @@ function toIsoString(value: unknown): string {
   return String(value);
 }
 
-function parseStoredJsonValue(value: unknown): unknown {
+function parseStoredJsonValue(value: unknown, fieldName: string): unknown {
   if (value === null || value === undefined) {
     return undefined;
   }
@@ -630,6 +633,7 @@ function parseStoredJsonValue(value: unknown): unknown {
     return JSON.parse(text) as unknown;
   } catch {
     logger.warn("Failed to parse stored JSON value from agent task job row.", {
+      fieldName,
       valuePreview: text.slice(0, 200),
     });
     return undefined;

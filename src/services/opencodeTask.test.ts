@@ -25,4 +25,22 @@ ses_227113e87ffe85L4H52wmCHwGg  New session - 2026-04-29T11:10:19.000Z  1:10 PM`
       )
     ).toBe("ses_new");
   });
+
+  it("returns the first newly detected session id when several are present", () => {
+    expect(
+      findNewOpencodeSessionId(
+        ["ses_existing"],
+        ["ses_new_1", "ses_new_2", "ses_existing"]
+      )
+    ).toBe("ses_new_1");
+  });
+
+  it("returns null when no new session id is detected", () => {
+    expect(
+      findNewOpencodeSessionId(
+        ["ses_existing"],
+        ["ses_existing"]
+      )
+    ).toBeNull();
+  });
 });
