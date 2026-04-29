@@ -69,4 +69,24 @@ describe("task messaging helpers", () => {
       "Pull request: https://github.com/file-diff/file-diff-engine/pull/42"
     );
   });
+
+  it("includes pending auto-merge context in Slack pull request actions", () => {
+    expect(
+      buildAgentTaskFinishedSlackMessage({
+        owner: "file-diff",
+        repoName: "file-diff-engine",
+        taskId: "task-123",
+        status: "completed",
+        branch: "fde-agent/test",
+        durationMs: 12_000,
+        pullRequestUrl: "https://github.com/file-diff/file-diff-engine/pull/42",
+        pullRequestActions: [
+          "Marked pull request #42 as ready for review.",
+          "Requested auto-merge for pull request #42; GitHub has not merged it yet because required checks, approvals, or branch protection requirements may still be pending.",
+        ],
+      })
+    ).toContain(
+      "- Requested auto-merge for pull request #42; GitHub has not merged it yet because required checks, approvals, or branch protection requirements may still be pending."
+    );
+  });
 });

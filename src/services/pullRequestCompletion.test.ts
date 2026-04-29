@@ -71,7 +71,7 @@ describe("applyPullRequestCompletionMode", () => {
       })
     ).resolves.toEqual([
       "Marked pull request #99 as ready for review.",
-      "Enabled auto-merge for pull request #99.",
+      "Requested auto-merge for pull request #99; GitHub has not merged it yet because required checks, approvals, or branch protection requirements may still be pending.",
     ]);
   });
 
