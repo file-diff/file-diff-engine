@@ -80,6 +80,8 @@ const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
 const SUPPORTED_AGENT_TASK_RUNNERS = ["codex", "opencode"] as const;
 const DEFAULT_AGENT_TASK_RUNNER: AgentTaskRunner = "codex";
 const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
+const DEFAULT_CODEX_REASONING_EFFORT: CodexReasoningEffort = "medium";
+const DEFAULT_CODEX_REASONING_SUMMARY: CodexReasoningSummary = "auto";
 const SUPPORTED_CODEX_REASONING_EFFORTS: readonly CodexReasoningEffort[] = [
   "low",
   "medium",
@@ -1433,6 +1435,15 @@ export function registerDiscoveryRoutes(
         return reply.code(400).send(response);
       }
 
+      const reasoningEffort =
+        taskRunner === "codex"
+          ? reasoning_effort ?? DEFAULT_CODEX_REASONING_EFFORT
+          : undefined;
+      const reasoningSummary =
+        taskRunner === "codex"
+          ? reasoning_summary ?? DEFAULT_CODEX_REASONING_SUMMARY
+          : undefined;
+
       if (
         pull_request_completion_mode !== undefined &&
         !PULL_REQUEST_COMPLETION_MODES.includes(pull_request_completion_mode)
@@ -1476,8 +1487,8 @@ export function registerDiscoveryRoutes(
             scheduledAt,
             taskRunner,
             model: taskModel,
-            reasoningEffort: reasoning_effort,
-            reasoningSummary: reasoning_summary,
+            reasoningEffort,
+            reasoningSummary,
             verbosity,
             codexWebSearch: codex_web_search,
             baseRef: base_ref,
@@ -1492,8 +1503,8 @@ export function registerDiscoveryRoutes(
           problem_statement,
           taskRunner,
           taskModel,
-          reasoning_effort,
-          reasoning_summary,
+          reasoningEffort,
+          reasoningSummary,
           verbosity,
           codex_web_search,
           taskDelayMs,

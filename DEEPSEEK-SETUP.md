@@ -64,8 +64,8 @@ Optional request fields:
 - `model`: model for the selected runner. opencode accepts `deepseek-v4-flash` or `deepseek-v4-pro`.
 - `create_pull_request`: compatibility field; if provided it must be `true` because agent tasks always create a draft pull request.
 - `pull_request_completion_mode`: `None`, `AutoReady`, or `AutoMerge`. `AutoMerge` enables GitHub auto-merge on the created pull request.
-- `reasoning_effort`: Codex-only override: `low`, `medium`, `high`, or `xhigh`.
-- `reasoning_summary`: Codex-only override: `none`, `auto`, `concise`, or `detailed`.
+- `reasoning_effort`: Codex-only override: `low`, `medium`, `high`, or `xhigh` (defaults to `medium`).
+- `reasoning_summary`: Codex-only override: `none`, `auto`, `concise`, or `detailed` (defaults to `auto`).
 - `verbosity`: Codex-only override: `low`, `medium`, or `high`.
 - `codex_web_search`: Codex-only boolean to enable the Codex web search tool.
 - `task_delay_ms`: delay before the worker starts.
