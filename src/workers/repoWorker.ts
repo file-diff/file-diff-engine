@@ -3,7 +3,8 @@ import path from "path";
 import fs from "fs";
 import { getDatabase, type DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
-import type { AgentTaskModel } from "../types";
+import type { AgentTaskModel, AgentTaskRunner } from "../types";
+import { executeCodexOnPreparedBranch } from "../services/codexTask";
 import { processRepository } from "../services/repoProcessor";
 import {
   executeOpencodeOnPreparedBranch,
@@ -29,8 +30,8 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
   const worker = new Worker(
     QUEUE_NAME,
     async (job: Job) => {
-      if (job.name === "create-opencode-task") {
-        await handleOpencodeTaskJob(job, repo);
+      if (job.name === "create-opencode-task" || job.name === "create-codex-task") {
+        await handleAgentTaskJob(job, repo);
         return;
       }
 
@@ -92,13 +93,14 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
   return worker;
 }
 
-async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<void> {
+async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> {
   const {
     jobId,
     repoName,
     baseRef,
     problemStatement,
     model,
+    task = job.name === "create-opencode-task" ? "opencode" : "codex",
     githubKey,
     deepseekApiKey,
   } = job.data as {
@@ -107,12 +109,13 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
     baseRef: string;
     problemStatement: string;
     model: AgentTaskModel;
+    task?: AgentTaskRunner;
     githubKey?: string;
     deepseekApiKey?: string;
   };
 
-  const tag = `OpencodeTask ${jobId}:`;
-  logger.info(`${tag} Started processing repo=${repoName} base=${baseRef} model=${model}`);
+  const tag = `AgentTask ${jobId}:`;
+  logger.info(`${tag} Started ${task} processing repo=${repoName} base=${baseRef} model=${model}`);
   const startedAt = Date.now();
   const taskCreatedAt = typeof job.timestamp === "number" ? job.timestamp : startedAt;
   let lastKnownBranchName: string | null = null;
@@ -136,6 +139,7 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
       baseRef,
       problemStatement,
       model,
+      taskRunner: task,
       githubKey,
       deepseekApiKey,
     };
@@ -153,11 +157,13 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
       lastCapturedLogs = logs;
       await repo.updateAgentTaskLogs(jobId, logs);
     };
-    const logs = await executeOpencodeOnPreparedBranch(
-      taskOptions,
-      prepared.branch,
-      { onLogsUpdated: persistLogs }
-    );
+    const logs = task === "opencode"
+      ? await executeOpencodeOnPreparedBranch(taskOptions, prepared.branch, {
+          onLogsUpdated: persistLogs,
+        })
+      : await executeCodexOnPreparedBranch(taskOptions, prepared.branch, {
+          onLogsUpdated: persistLogs,
+        });
     lastCapturedLogs = logs;
     pullRequestActions = await applyPullRequestCompletionMode({
       repo: repoName,

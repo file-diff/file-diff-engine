@@ -3,7 +3,7 @@ import path from "path";
 import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import { createPullRequest } from "./githubApi";
-import type { AgentTaskModel } from "../types";
+import type { AgentTaskModel, AgentTaskRunner } from "../types";
 import { createLogger } from "../utils/logger";
 
 const execFileAsync = promisify(execFile);
@@ -34,6 +34,7 @@ export interface OpencodeTaskOptions {
   baseRef: string;
   problemStatement: string;
   model: AgentTaskModel;
+  taskRunner?: AgentTaskRunner;
   githubKey?: string;
   deepseekApiKey?: string;
   workDir?: string;
@@ -82,7 +83,7 @@ export async function executeOpencodeOnPreparedBranch(
   branch: string,
   callbacks?: OpencodeExecutionCallbacks
 ): Promise<OpencodeCapturedLogs> {
-  const cloneDir = getCloneDir(options);
+  const cloneDir = getOpencodeTaskCloneDir(options);
   const logs = await runOpencode(options, branch, cloneDir, callbacks);
 
   try {
@@ -108,8 +109,8 @@ export async function prepareOpencodeTaskBranch(
     );
   }
 
-  const workDir = getWorkDir(options);
-  const cloneDir = getCloneDir(options);
+  const workDir = getOpencodeTaskWorkDir(options);
+  const cloneDir = getOpencodeTaskCloneDir(options);
   const repoUrl = getRepositoryUrl(repo);
   const branch = buildTaskBranchName(options.jobId);
   const gitEnv = getGitCommandEnv(githubKey);
@@ -151,7 +152,12 @@ export async function prepareOpencodeTaskBranch(
   const pullRequest = await createPullRequest(repo, branch, baseRef, {
     token: githubKey,
     title: buildPullRequestTitle(options.problemStatement),
-    body: buildPullRequestBody(options.problemStatement, branch, options.model),
+    body: buildPullRequestBody(
+      options.problemStatement,
+      branch,
+      options.model,
+      options.taskRunner ?? "opencode"
+    ),
     draft: true,
   });
 
@@ -165,15 +171,16 @@ export async function prepareOpencodeTaskBranch(
   };
 }
 
-function getWorkDir(options: OpencodeTaskOptions): string {
+export function getOpencodeTaskWorkDir(options: OpencodeTaskOptions): string {
+  const taskRunner = options.taskRunner ?? "opencode";
   return path.resolve(
     options.workDir ||
-      path.join(process.env.TMP_DIR || "tmp", "opencode-tasks", options.jobId)
+      path.join(process.env.TMP_DIR || "tmp", `${taskRunner}-tasks`, options.jobId)
   );
 }
 
-function getCloneDir(options: OpencodeTaskOptions): string {
-  return path.join(getWorkDir(options), "repo");
+export function getOpencodeTaskCloneDir(options: OpencodeTaskOptions): string {
+  return path.join(getOpencodeTaskWorkDir(options), "repo");
 }
 
 async function runOpencode(
@@ -506,7 +513,7 @@ async function runOpencode(
   return logs;
 }
 
-async function commitAndPushFinalChanges(
+export async function commitAndPushFinalChanges(
   cwd: string,
   options: OpencodeTaskOptions,
   branch: string
@@ -687,12 +694,14 @@ function buildPullRequestTitle(problemStatement: string): string {
 function buildPullRequestBody(
   problemStatement: string,
   branch: string,
-  model: AgentTaskModel
+  model: AgentTaskModel,
+  taskRunner: AgentTaskRunner
 ): string {
   return [
-    "This pull request was initialized by file-diff-engine for an opencode-backed agent task.",
+    `This pull request was initialized by file-diff-engine for a ${taskRunner}-backed agent task.`,
     "",
     `Branch: \`${branch}\``,
+    `Task runner: \`${taskRunner}\``,
     `Model: \`${model}\``,
     "",
     "Task:",

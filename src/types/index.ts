@@ -106,8 +106,11 @@ export type JobStatus = "waiting" | "active" | "completed" | "failed";
 /** Status of a locally tracked GitHub agent task job. */
 export type AgentTaskJobStatus = JobStatus | "canceled";
 
+/** Local agent implementation used to execute task instructions. */
+export type AgentTaskRunner = "codex" | "opencode";
+
 /** Supported DeepSeek models for opencode-backed agent tasks. */
-export type AgentTaskModel = "deepseek-v4-flash" | "deepseek-v4-pro";
+export type AgentTaskModel = string;
 
 /** Minimal job payload returned after creating or reusing a job. */
 export interface JobSummary {
@@ -369,6 +372,8 @@ export interface CreateTaskRequest {
   problem_statement?: string;
   /** The model to use for this task */
   model?: AgentTaskModel;
+  /** Local agent implementation to run. Defaults to codex. */
+  task?: AgentTaskRunner;
   /** Custom agent identifier */
   custom_agent?: string;
   /** Whether to create a PR */

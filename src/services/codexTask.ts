@@ -1,0 +1,288 @@
+import { spawn } from "child_process";
+import {
+  commitAndPushFinalChanges,
+  getOpencodeTaskCloneDir,
+  type OpencodeCapturedLogs,
+  type OpencodeExecutionCallbacks,
+  type OpencodeTaskOptions,
+} from "./opencodeTask";
+import { createLogger } from "../utils/logger";
+
+const logger = createLogger("codex-task");
+const TWO_HOURS_IN_SECONDS = 2 * 60 * 60;
+const DEFAULT_CODEX_TIMEOUT_MS = TWO_HOURS_IN_SECONDS * 1_000;
+const DEFAULT_OUTPUT_LIMIT = 1_000_000;
+const DEFAULT_LOG_FLUSH_INTERVAL_MS = 15_000;
+
+export class CodexExecutionError extends Error {
+  constructor(
+    message: string,
+    public readonly logs: OpencodeCapturedLogs
+  ) {
+    super(message);
+    this.name = "CodexExecutionError";
+  }
+}
+
+export async function executeCodexOnPreparedBranch(
+  options: OpencodeTaskOptions,
+  branch: string,
+  callbacks?: OpencodeExecutionCallbacks
+): Promise<OpencodeCapturedLogs> {
+  const cloneDir = getOpencodeTaskCloneDir(options);
+  const logs = await runCodex(options, branch, cloneDir, callbacks);
+
+  try {
+    await commitAndPushFinalChanges(cloneDir, options, branch);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to commit and push final agent changes.";
+    throw new CodexExecutionError(message, logs);
+  }
+
+  return logs;
+}
+
+async function runCodex(
+  options: OpencodeTaskOptions,
+  branch: string,
+  cwd: string,
+  callbacks?: OpencodeExecutionCallbacks
+): Promise<OpencodeCapturedLogs> {
+  const prompt = buildCodexPrompt(options.problemStatement, branch);
+  const timeout = parsePositiveInteger(
+    process.env.CODEX_TIMEOUT_MS,
+    DEFAULT_CODEX_TIMEOUT_MS
+  );
+  const outputLimit = parsePositiveInteger(
+    process.env.CODEX_OUTPUT_LIMIT,
+    DEFAULT_OUTPUT_LIMIT
+  );
+  const logFlushIntervalMs = parsePositiveInteger(
+    process.env.CODEX_LOG_FLUSH_INTERVAL_MS,
+    DEFAULT_LOG_FLUSH_INTERVAL_MS
+  );
+  const args = [
+    "exec",
+    "--model",
+    options.model,
+    "--cd",
+    cwd,
+    "--dangerously-bypass-approvals-and-sandbox",
+    "-",
+  ];
+
+  logger.info("Starting codex task", {
+    jobId: options.jobId,
+    repo: options.repo,
+    branch,
+    model: options.model,
+    timeout,
+    logFlushIntervalMs,
+  });
+
+  const child = spawn(getCodexBin(), args, {
+    cwd,
+    env: { ...process.env },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  child.stdin?.end(prompt);
+
+  const stdoutChunks: string[] = [];
+  const stderrChunks: string[] = [];
+  const outputChunks: string[] = [];
+  let capturedBytes = 0;
+  let outputTruncated = false;
+  let dirty = false;
+  let timedOut = false;
+  let spawnError: Error | undefined;
+  let flushError: Error | undefined;
+  let intervalFlushPending = false;
+  let flushChain = Promise.resolve();
+
+  const buildLogs = (): OpencodeCapturedLogs => ({
+    output: outputChunks.join(""),
+    stdout: stdoutChunks.join(""),
+    stderr: stderrChunks.join(""),
+  });
+
+  const queueFlush = (force = false): Promise<void> => {
+    flushChain = flushChain
+      .catch(() => undefined)
+      .then(async () => {
+        if (flushError || !callbacks?.onLogsUpdated || (!force && !dirty)) {
+          return;
+        }
+
+        dirty = false;
+        await callbacks.onLogsUpdated(buildLogs());
+      })
+      .catch((error) => {
+        flushError = error instanceof Error ? error : new Error(String(error));
+        if (!child.killed) {
+          child.kill();
+        }
+      });
+
+    return flushChain;
+  };
+
+  const flushInterval = setInterval(() => {
+    if (intervalFlushPending || flushError) {
+      return;
+    }
+
+    intervalFlushPending = true;
+    void queueFlush().finally(() => {
+      intervalFlushPending = false;
+    });
+  }, logFlushIntervalMs);
+  flushInterval.unref?.();
+
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    if (!child.killed) {
+      child.kill();
+    }
+  }, timeout);
+  timeoutHandle.unref?.();
+
+  const appendChunk = (target: "stdout" | "stderr", chunk: string): void => {
+    if (!chunk || flushError) {
+      return;
+    }
+
+    const remaining = outputLimit - capturedBytes;
+    if (remaining <= 0) {
+      outputTruncated = true;
+      return;
+    }
+
+    const limitedChunk = truncateUtf8(chunk, remaining);
+    if (!limitedChunk) {
+      outputTruncated = true;
+      return;
+    }
+
+    capturedBytes += Buffer.byteLength(limitedChunk, "utf8");
+    if (target === "stdout") {
+      stdoutChunks.push(limitedChunk);
+    } else {
+      stderrChunks.push(limitedChunk);
+    }
+    outputChunks.push(limitedChunk);
+    dirty = true;
+
+    if (limitedChunk.length < chunk.length) {
+      outputTruncated = true;
+    }
+  };
+
+  child.stdout?.setEncoding("utf8");
+  child.stdout?.on("data", (chunk: string) => {
+    appendChunk("stdout", chunk);
+  });
+
+  child.stderr?.setEncoding("utf8");
+  child.stderr?.on("data", (chunk: string) => {
+    appendChunk("stderr", chunk);
+  });
+
+  child.on("error", (error) => {
+    spawnError = error;
+  });
+
+  const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+    (resolve) => {
+      child.once("close", (code, signal) => {
+        resolve({ code, signal });
+      });
+    }
+  );
+
+  clearInterval(flushInterval);
+  clearTimeout(timeoutHandle);
+  await queueFlush(true);
+
+  const logs = buildLogs();
+  if (flushError) {
+    throw new CodexExecutionError(flushError.message, logs);
+  }
+
+  if (spawnError) {
+    throw new CodexExecutionError(spawnError.message, logs);
+  }
+
+  if (timedOut) {
+    throw new CodexExecutionError(`codex timed out after ${timeout}ms.`, logs);
+  }
+
+  if (exit.code !== 0) {
+    throw new CodexExecutionError(buildCodexExitMessage(exit.code, exit.signal, logs), logs);
+  }
+
+  if (outputTruncated) {
+    logger.warn("Codex output truncated", {
+      jobId: options.jobId,
+      repo: options.repo,
+      branch,
+      outputLimit,
+    });
+  }
+
+  return logs;
+}
+
+function getCodexBin(): string {
+  return (process.env.CODEX_BIN || "codex").trim();
+}
+
+function buildCodexPrompt(problemStatement: string, branch: string): string {
+  return [
+    `You are already on branch '${branch}'.`,
+    "Implement the requested changes in this repository.",
+    "Commit coherent changes and push the branch as you make progress.",
+    "Do not create another branch or pull request; the pull request already exists.",
+    "",
+    problemStatement,
+  ].join("\n");
+}
+
+function buildCodexExitMessage(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  logs: OpencodeCapturedLogs
+): string {
+  const details = logs.stderr.trim() || logs.output.trim();
+  if (details) {
+    return details;
+  }
+
+  if (signal) {
+    return `codex exited due to signal ${signal}.`;
+  }
+
+  return `codex exited with code ${code ?? "unknown"}.`;
+}
+
+function truncateUtf8(value: string, maxBytes: number): string {
+  if (maxBytes <= 0) {
+    return "";
+  }
+
+  const buffer = Buffer.from(value, "utf8");
+  if (buffer.length <= maxBytes) {
+    return value;
+  }
+
+  return buffer.subarray(0, maxBytes).toString("utf8");
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}

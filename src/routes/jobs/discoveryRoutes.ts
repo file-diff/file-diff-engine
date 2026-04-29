@@ -49,6 +49,7 @@ import type {
   MergePullRequestResponse,
   OpenPullRequestRequest,
   OpenPullRequestResponse,
+  AgentTaskRunner,
   PullRequestCompletionMode,
 } from "../../types";
 import { revertToCommit, mergeBranch } from "../../github/operations";
@@ -73,10 +74,17 @@ const PULL_REQUEST_COMPLETION_MODES: readonly PullRequestCompletionMode[] = [
 ];
 const SUPPORTED_DEEPSEEK_MODELS = ["deepseek-v4-flash", "deepseek-v4-pro"] as const;
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+const SUPPORTED_AGENT_TASK_RUNNERS = ["codex", "opencode"] as const;
+const DEFAULT_AGENT_TASK_RUNNER: AgentTaskRunner = "codex";
+const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
 type SupportedDeepSeekModel = (typeof SUPPORTED_DEEPSEEK_MODELS)[number];
 
 function isSupportedDeepSeekModel(model: unknown): model is SupportedDeepSeekModel {
   return typeof model === "string" && SUPPORTED_DEEPSEEK_MODELS.includes(model as SupportedDeepSeekModel);
+}
+
+function isSupportedAgentTaskRunner(task: unknown): task is AgentTaskRunner {
+  return typeof task === "string" && SUPPORTED_AGENT_TASK_RUNNERS.includes(task as AgentTaskRunner);
 }
 
 export function registerDiscoveryRoutes(
@@ -1258,6 +1266,7 @@ export function registerDiscoveryRoutes(
         agent_id,
         problem_statement,
         model,
+        task,
         custom_agent,
         create_pull_request,
         pull_request_completion_mode,
@@ -1284,12 +1293,32 @@ export function registerDiscoveryRoutes(
         return reply.code(400).send(response);
       }
 
+      const taskRunner = task === undefined ? DEFAULT_AGENT_TASK_RUNNER : task;
+      if (!isSupportedAgentTaskRunner(taskRunner)) {
+        const response: ErrorResponse = {
+          error: "Field 'task' must be one of: codex, opencode.",
+        };
+        return reply.code(400).send(response);
+      }
+
       if (
+        taskRunner === "opencode" &&
         model !== undefined &&
         !isSupportedDeepSeekModel(model)
       ) {
         const response: ErrorResponse = {
           error: "Field 'model' must be one of: deepseek-v4-flash, deepseek-v4-pro.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        taskRunner === "codex" &&
+        model !== undefined &&
+        (typeof model !== "string" || !model.trim())
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'model' must be a non-empty string.",
         };
         return reply.code(400).send(response);
       }
@@ -1329,15 +1358,18 @@ export function registerDiscoveryRoutes(
 
       const [owner, repoName] = repo.split("/", 2);
       const taskDelayMs = task_delay_ms ?? 0;
-      const taskModel: SupportedDeepSeekModel =
-        model === undefined ? DEFAULT_DEEPSEEK_MODEL : model;
+      const taskModel =
+        model?.trim() ||
+        (taskRunner === "opencode"
+          ? DEFAULT_DEEPSEEK_MODEL
+          : process.env.CODEX_MODEL?.trim() || DEFAULT_CODEX_MODEL);
       const jobId = randomUUID();
       const scheduledAt = taskDelayMs > 0
         ? new Date(Date.now() + taskDelayMs)
         : null;
 
       try {
-        logger.info(`AgentTask: Scheduling opencode task job=${jobId} repo=${repo} model=${taskModel} delay_ms=${taskDelayMs}`);
+        logger.info(`AgentTask: Scheduling ${taskRunner} task job=${jobId} repo=${repo} model=${taskModel} delay_ms=${taskDelayMs}`);
         await jobRepo.createAgentTaskJob(
           jobId,
           repo,
@@ -1350,12 +1382,13 @@ export function registerDiscoveryRoutes(
           base_ref,
           pull_request_completion_mode
         );
-        await enqueueOpencodeTaskJob(
+        await enqueueAgentTaskJob(
           queue,
           jobId,
           `${owner}/${repoName}`,
           base_ref,
           problem_statement,
+          taskRunner,
           taskModel,
           taskDelayMs,
           githubKey?.trim() || undefined,
@@ -1443,27 +1476,29 @@ export function registerDiscoveryRoutes(
   );
 }
 
-async function enqueueOpencodeTaskJob(
+async function enqueueAgentTaskJob(
   queue: Queue,
   jobId: string,
   repoName: string,
   baseRef: string,
   problemStatement: string,
-  model: (typeof SUPPORTED_DEEPSEEK_MODELS)[number],
+  task: AgentTaskRunner,
+  model: string,
   delayMs = 0,
   githubKey?: string,
   deepseekApiKey?: string
 ): Promise<void> {
   await queue.add(
-    "create-opencode-task",
+    task === "opencode" ? "create-opencode-task" : "create-codex-task",
     {
       jobId,
       repoName,
       baseRef,
       problemStatement,
+      task,
       model,
       ...(githubKey ? { githubKey } : {}),
-      ...(deepseekApiKey ? { deepseekApiKey } : {}),
+      ...(task === "opencode" && deepseekApiKey ? { deepseekApiKey } : {}),
     },
     {
       jobId,

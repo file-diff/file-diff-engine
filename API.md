@@ -2180,7 +2180,7 @@ Example response:
 
 ### `POST /api/jobs/create-task`
 
-Starts an opencode-backed agent task for a repository. The worker checks out the requested base branch, creates and pushes a new task branch, creates an initialization commit containing the task, opens a draft pull request, then runs opencode with DeepSeek.
+Starts a Codex-backed agent task for a repository by default, or an opencode-backed task when requested. The worker checks out the requested base branch, creates and pushes a new task branch, creates an initialization commit containing the task, opens a draft pull request, then runs the selected local agent.
 
 Admin bearer auth is required.
 
@@ -2190,11 +2190,12 @@ Admin bearer auth is required.
 | --- | --- | --- | --- |
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
 | `base_ref` | `string` | Yes | Branch or ref to check out before creating the task branch. |
-| `problem_statement` | `string` | Yes | Task instructions passed to opencode and included in the initialization commit/PR body. |
-| `model` | `"deepseek-v4-flash" \| "deepseek-v4-pro"` | No | DeepSeek model. Defaults to `deepseek-v4-flash`. |
+| `problem_statement` | `string` | Yes | Task instructions passed to the selected local agent and included in the initialization commit/PR body. |
+| `task` | `"codex" \| "opencode"` | No | Local agent implementation. Defaults to `codex`. |
+| `model` | `string` | No | Model for the selected task runner. Codex defaults to `CODEX_MODEL` or `gpt-5.2-codex`; opencode defaults to `deepseek-v4-flash` and only accepts `deepseek-v4-flash` or `deepseek-v4-pro`. |
 | `task_delay_ms` | `number` | No | Non-negative delay before the queued worker starts. |
 | `githubKey` | `string` | No | Per-request GitHub token override. Prefer `PRIVATE_GITHUB_TOKEN` in production. |
-| `deepseek_api_key` | `string` | No | Per-request DeepSeek API key override. Prefer `DEEPSEEK_API_KEY` in production. |
+| `deepseek_api_key` | `string` | No | Per-request DeepSeek API key override for opencode tasks. Prefer `DEEPSEEK_API_KEY` in production. |
 
 #### Success response
 
@@ -2214,7 +2215,8 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
     "repo": "file-diff/file-diff-engine",
     "base_ref": "main",
     "problem_statement": "Implement the requested change",
-    "model": "deepseek-v4-flash"
+    "task": "codex",
+    "model": "gpt-5.2-codex"
   }'
 ```
 
@@ -2230,7 +2232,7 @@ Example response:
 
 ### `GET /api/jobs/create-task/:id`
 
-Returns local progress and captured output for an opencode-backed agent task.
+Returns local progress and captured output for a locally-managed agent task.
 
 Viewer bearer auth is required.
 
@@ -2246,13 +2248,13 @@ Status: `200 OK`
 | `taskStatus` | `string` | Task phase such as `preparing`, `working`, or `completed`. |
 | `branch` | `string \| null` | Generated task branch when available. |
 | `baseRef` | `string` | Requested base ref. |
-| `model` | `string` | Selected DeepSeek model. |
+| `model` | `string` | Selected task model. |
 | `pullRequestCompletionMode` | `string` | Requested follow-up PR action: `None`, `AutoReady`, or `AutoMerge` when set. |
 | `pullRequestUrl` | `string` | Draft pull request URL when available. |
 | `pullRequestNumber` | `number` | Draft pull request number when available. |
-| `output` | `string` | Combined captured opencode stdout/stderr, updated roughly every 15 seconds while the task is running. |
-| `stdout` | `string` | Captured opencode stdout collected so far. |
-| `stderr` | `string` | Captured opencode stderr collected so far. |
+| `output` | `string` | Combined captured agent stdout/stderr, updated roughly every 15 seconds while the task is running. |
+| `stdout` | `string` | Captured agent stdout collected so far. |
+| `stderr` | `string` | Captured agent stderr collected so far. |
 | `opencodeSessionId` | `string` | Detected opencode session id when available. |
 | `opencodeSessionExport` | `object` | Latest JSON returned by `opencode export <sessionId>` when available. |
 | `error` | `string` | Present when the job failed. |
