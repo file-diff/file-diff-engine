@@ -404,6 +404,8 @@ export interface AgentTaskJobSummary {
   pullRequestNumber?: number;
   taskId?: string;
   taskStatus?: string;
+  opencodeSessionId?: string;
+  opencodeSessionExport?: unknown;
   taskDelayMs: number;
   scheduledAt: string | null;
 }

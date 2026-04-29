@@ -60,6 +60,8 @@ function mapAgentTaskJobRow(row: Record<string, unknown>): AgentTaskJobInfo {
         : Number(row.pull_request_number),
     taskId: (row.github_task_id as string | null) ?? undefined,
     taskStatus: (row.task_status as string | null) ?? undefined,
+    opencodeSessionId: (row.opencode_session_id as string | null) ?? undefined,
+    opencodeSessionExport: parseStoredJsonValue(row.opencode_session_export),
     taskDelayMs: normalizeTaskDelayMs(row.task_delay_ms),
     scheduledAt: row.scheduled_at ? toIsoString(row.scheduled_at) : null,
     error: (row.error as string | null) ?? undefined,
@@ -216,16 +218,27 @@ export class JobRepository {
       output: string;
       stdout: string;
       stderr: string;
+      opencodeSessionId?: string;
+      opencodeSessionExport?: unknown;
     }
   ): Promise<void> {
     await this.db.query(
       `UPDATE agent_task_jobs
-        SET output = $1,
-            stdout = $2,
-            stderr = $3,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = $4`,
-      [logs.output, logs.stdout, logs.stderr, id]
+         SET output = $1,
+             stdout = $2,
+             stderr = $3,
+             opencode_session_id = $4,
+             opencode_session_export = $5,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $6`,
+      [
+        logs.output,
+        logs.stdout,
+        logs.stderr,
+        logs.opencodeSessionId ?? null,
+        serializeStoredJsonValue(logs.opencodeSessionExport),
+        id,
+      ]
     );
   }
 
@@ -601,4 +614,29 @@ function toIsoString(value: unknown): string {
   }
 
   return String(value);
+}
+
+function parseStoredJsonValue(value: unknown): unknown {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+function serializeStoredJsonValue(value: unknown): string | null {
+  if (value === undefined) {
+    return null;
+  }
+
+  return JSON.stringify(value);
 }
