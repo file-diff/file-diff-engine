@@ -9,6 +9,7 @@ import type {
   CodexReasoningEffort,
   CodexReasoningSummary,
   CodexVerbosity,
+  PullRequestCompletionMode,
 } from "../types";
 import { executeCodexOnPreparedBranch } from "../services/codexTask";
 import { processRepository } from "../services/repoProcessor";
@@ -112,6 +113,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     reasoningSummary,
     verbosity,
     codexWebSearch,
+    pullRequestCompletionMode,
     githubKey,
     deepseekApiKey,
   } = job.data as {
@@ -125,6 +127,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     reasoningSummary?: CodexReasoningSummary;
     verbosity?: CodexVerbosity;
     codexWebSearch?: boolean;
+    pullRequestCompletionMode?: PullRequestCompletionMode;
     githubKey?: string;
     deepseekApiKey?: string;
   };
@@ -200,7 +203,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       repo: repoName,
       branch: prepared.branch,
       pullNumber: prepared.pullRequest.number,
-      mode: existingJob?.pullRequestCompletionMode,
+      mode: pullRequestCompletionMode ?? existingJob?.pullRequestCompletionMode,
       token: githubKey,
     });
     await repo.updateAgentTaskStatus(jobId, "completed", prepared.branch);
