@@ -316,7 +316,13 @@ function isOpencodeCapturedLogs(value: unknown): value is OpencodeCapturedLogs {
     typeof logs.stderr === "string" &&
     (logs.opencodeSessionId === undefined ||
       logs.opencodeSessionId === null ||
-      typeof logs.opencodeSessionId === "string")
+      typeof logs.opencodeSessionId === "string") &&
+    (logs.codexSessionId === undefined ||
+      logs.codexSessionId === null ||
+      typeof logs.codexSessionId === "string") &&
+    (logs.codexSessionFilePath === undefined ||
+      logs.codexSessionFilePath === null ||
+      typeof logs.codexSessionFilePath === "string")
   );
 }
 

@@ -1,3 +1,6 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { spawn } from "child_process";
 import {
   AgentTaskCanceledError,
@@ -18,8 +21,12 @@ const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
 const DEFAULT_CODEX_TIMEOUT_MS = TWO_HOURS_IN_SECONDS * 1_000;
 const DEFAULT_OUTPUT_LIMIT = 1_000_000;
 const DEFAULT_LOG_FLUSH_INTERVAL_MS = 15_000;
+const DEFAULT_CODEX_SESSION_SYNC_INTERVAL_MS = 15_000;
+const DEFAULT_CODEX_SESSION_TEST_DETAIL_LIMIT = 200;
 const DEFAULT_CANCELLATION_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
+const CODEX_SESSION_TEST_PATTERN =
+  /\b(test|tests|testing|vitest|jest|mocha|npm test|pnpm test|yarn test|passed|failed|failures?)\b/i;
 
 export class CodexExecutionError extends Error {
   constructor(
@@ -75,6 +82,10 @@ async function runCodex(
     process.env.CODEX_LOG_FLUSH_INTERVAL_MS,
     DEFAULT_LOG_FLUSH_INTERVAL_MS
   );
+  const sessionSyncIntervalMs = parsePositiveInteger(
+    process.env.CODEX_SESSION_SYNC_INTERVAL_MS,
+    DEFAULT_CODEX_SESSION_SYNC_INTERVAL_MS
+  );
   const cancellationPollIntervalMs = parsePositiveInteger(
     process.env.AGENT_TASK_CANCELLATION_POLL_INTERVAL_MS,
     DEFAULT_CANCELLATION_POLL_INTERVAL_MS
@@ -93,6 +104,7 @@ async function runCodex(
     codexWebSearch: options.codexWebSearch === true,
     timeout,
     logFlushIntervalMs,
+    sessionSyncIntervalMs,
   });
 
   const child = spawn(getCodexBin(), args, {
@@ -116,12 +128,21 @@ async function runCodex(
   let spawnError: Error | undefined;
   let flushError: Error | undefined;
   let intervalFlushPending = false;
+  let sessionSyncPending = false;
   let flushChain = Promise.resolve();
+  let sessionSyncChain = Promise.resolve();
+  let codexSessionId: string | null = null;
+  let codexSessionFilePath: string | null = null;
+  let codexSessionExport: unknown = undefined;
+  let lastSerializedSessionExport: string | undefined;
 
   const buildLogs = (): OpencodeCapturedLogs => ({
     output: outputChunks.join(""),
     stdout: stdoutChunks.join(""),
     stderr: stderrChunks.join(""),
+    codexSessionId: codexSessionId ?? undefined,
+    codexSessionFilePath: codexSessionFilePath ?? undefined,
+    codexSessionExport,
   });
 
   const requestTermination = (reason: "cancel" | "timeout" | "flush-error"): void => {
@@ -183,6 +204,75 @@ async function runCodex(
     return flushChain;
   };
 
+  const detectSessionIdFromOutput = (): void => {
+    if (codexSessionId) {
+      return;
+    }
+
+    const detectedSessionId = parseCodexSessionId(outputChunks.join(""));
+    if (!detectedSessionId) {
+      return;
+    }
+
+    codexSessionId = detectedSessionId;
+    dirty = true;
+    logger.info("Detected codex session", {
+      jobId: options.jobId,
+      repo: options.repo,
+      branch,
+      codexSessionId,
+    });
+  };
+
+  const syncSessionState = async (): Promise<void> => {
+    if (flushError) {
+      return;
+    }
+
+    detectSessionIdFromOutput();
+    if (!codexSessionId) {
+      return;
+    }
+
+    try {
+      const sessionFilePath =
+        codexSessionFilePath ?? await findCodexSessionJsonlPath(codexSessionId);
+      if (sessionFilePath && sessionFilePath !== codexSessionFilePath) {
+        codexSessionFilePath = sessionFilePath;
+        dirty = true;
+      }
+
+      const exportedSession = await exportCodexSessionDetails(
+        codexSessionId,
+        sessionFilePath ?? codexSessionFilePath
+      );
+      const serializedSession = JSON.stringify(exportedSession);
+      if (serializedSession !== lastSerializedSessionExport) {
+        codexSessionExport = exportedSession;
+        lastSerializedSessionExport = serializedSession;
+        dirty = true;
+      }
+    } catch (error) {
+      logger.warn("Failed to export codex session details", {
+        jobId: options.jobId,
+        repo: options.repo,
+        branch,
+        codexSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  const queueSessionSync = (): Promise<void> => {
+    sessionSyncChain = sessionSyncChain
+      .catch(() => undefined)
+      .then(async () => {
+        await syncSessionState();
+      });
+
+    return sessionSyncChain;
+  };
+
   const flushInterval = setInterval(() => {
     if (intervalFlushPending || flushError) {
       return;
@@ -194,6 +284,18 @@ async function runCodex(
     });
   }, logFlushIntervalMs);
   flushInterval.unref?.();
+
+  const sessionSyncInterval = setInterval(() => {
+    if (sessionSyncPending || flushError) {
+      return;
+    }
+
+    sessionSyncPending = true;
+    void queueSessionSync().finally(() => {
+      sessionSyncPending = false;
+    });
+  }, sessionSyncIntervalMs);
+  sessionSyncInterval.unref?.();
 
   const timeoutHandle = setTimeout(() => {
     timedOut = true;
@@ -247,6 +349,7 @@ async function runCodex(
     }
     outputChunks.push(limitedChunk);
     dirty = true;
+    detectSessionIdFromOutput();
 
     if (limitedChunk.length < chunk.length) {
       outputTruncated = true;
@@ -276,8 +379,10 @@ async function runCodex(
   );
 
   clearInterval(flushInterval);
+  clearInterval(sessionSyncInterval);
   clearInterval(cancellationInterval);
   clearTimeout(timeoutHandle);
+  await queueSessionSync();
   await queueFlush(true);
 
   const logs = buildLogs();
@@ -379,6 +484,121 @@ export function buildCodexPrompt(
     "User instructions starts here:",
     problemStatement,
   ].join("\n");
+}
+
+export function parseCodexSessionId(output: string): string | null {
+  const match = output.match(/^session id:\s*([^\s]+)\s*$/im);
+  return match?.[1] ?? null;
+}
+
+export async function findCodexSessionJsonlPath(
+  sessionId: string,
+  rootDir = getCodexSessionsRoot()
+): Promise<string | null> {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) {
+    return null;
+  }
+
+  const candidates = await listCodexRolloutFiles(rootDir);
+  for (const filePath of candidates) {
+    if (await fileContains(filePath, normalizedSessionId)) {
+      return filePath;
+    }
+  }
+
+  return null;
+}
+
+async function exportCodexSessionDetails(
+  sessionId: string,
+  sessionFilePath: string | null
+): Promise<unknown> {
+  if (!sessionFilePath) {
+    return {
+      sessionId,
+      sessionFilePath: null,
+      testDetails: [],
+    };
+  }
+
+  return {
+    sessionId,
+    sessionFilePath,
+    testDetails: await grepCodexSessionTestDetails(sessionFilePath),
+  };
+}
+
+async function grepCodexSessionTestDetails(
+  sessionFilePath: string
+): Promise<string[]> {
+  const contents = await fs.promises.readFile(sessionFilePath, "utf8");
+  const limit = parsePositiveInteger(
+    process.env.CODEX_SESSION_TEST_DETAIL_LIMIT,
+    DEFAULT_CODEX_SESSION_TEST_DETAIL_LIMIT
+  );
+
+  const matches: string[] = [];
+  for (const line of contents.split(/\r?\n/)) {
+    if (!line || !CODEX_SESSION_TEST_PATTERN.test(line)) {
+      continue;
+    }
+
+    matches.push(line);
+    if (matches.length >= limit) {
+      break;
+    }
+  }
+
+  return matches;
+}
+
+async function listCodexRolloutFiles(rootDir: string): Promise<string[]> {
+  try {
+    const stats = await fs.promises.stat(rootDir);
+    if (!stats.isDirectory()) {
+      return [];
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+
+  const files: string[] = [];
+  await collectCodexRolloutFiles(rootDir, files);
+  return files.sort((a, b) => b.localeCompare(a));
+}
+
+async function collectCodexRolloutFiles(
+  dirPath: string,
+  files: string[]
+): Promise<void> {
+  const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      await collectCodexRolloutFiles(entryPath, files);
+      continue;
+    }
+
+    if (entry.isFile() && /^rollout-.+\.jsonl$/.test(entry.name)) {
+      files.push(entryPath);
+    }
+  }
+}
+
+async function fileContains(filePath: string, value: string): Promise<boolean> {
+  const contents = await fs.promises.readFile(filePath, "utf8");
+  return contents.includes(value);
+}
+
+function getCodexSessionsRoot(): string {
+  return (
+    process.env.CODEX_SESSIONS_DIR?.trim() ||
+    path.join(os.homedir(), ".codex", "sessions")
+  );
 }
 
 function buildCodexExitMessage(

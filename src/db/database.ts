@@ -101,6 +101,9 @@ async function initSchema(db: DatabaseClient): Promise<void> {
         stderr TEXT,
         opencode_session_id TEXT,
         opencode_session_export TEXT,
+        codex_session_id TEXT,
+        codex_session_file_path TEXT,
+        codex_session_export TEXT,
         task_delay_ms INTEGER NOT NULL DEFAULT 0,
         scheduled_at TIMESTAMPTZ,
         cancel_requested_at TIMESTAMPTZ,
@@ -169,6 +172,15 @@ async function initSchema(db: DatabaseClient): Promise<void> {
       ADD COLUMN IF NOT EXISTS opencode_session_export TEXT;
 
       ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS codex_session_id TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS codex_session_file_path TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS codex_session_export TEXT;
+
+      ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS task_delay_ms INTEGER NOT NULL DEFAULT 0;
 
       ALTER TABLE agent_task_jobs
@@ -187,6 +199,7 @@ async function initSchema(db: DatabaseClient): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_files_job_id ON files(job_id);
       CREATE INDEX IF NOT EXISTS idx_files_job_id_hash ON files(job_id, file_git_hash);
       CREATE INDEX IF NOT EXISTS idx_agent_task_jobs_status ON agent_task_jobs(status);
+      CREATE INDEX IF NOT EXISTS idx_agent_task_jobs_codex_session_id ON agent_task_jobs(codex_session_id);
     `);
     await db.query("COMMIT");
   } catch (error) {
