@@ -64,31 +64,7 @@ async function runCodex(
     process.env.CODEX_LOG_FLUSH_INTERVAL_MS,
     DEFAULT_LOG_FLUSH_INTERVAL_MS
   );
-  const args = [
-    "exec",
-    "--model",
-    model,
-    "--cd",
-    cwd,
-    "--dangerously-bypass-approvals-and-sandbox",
-    "-",
-  ];
-
-  if (options.reasoningEffort) {
-    args.splice(2, 0, "--config", `model_reasoning_effort=${options.reasoningEffort}`);
-  }
-
-  if (options.reasoningSummary) {
-    args.splice(2, 0, "--config", `model_reasoning_summary=${options.reasoningSummary}`);
-  }
-
-  if (options.verbosity) {
-    args.splice(2, 0, "--config", `model_verbosity=${options.verbosity}`);
-  }
-
-  if (options.codexWebSearch) {
-    args.splice(args.length - 1, 0, "--search");
-  }
+  const args = buildCodexArgs(options, model, cwd);
 
   logger.info("Starting codex task", {
     args,
@@ -273,6 +249,39 @@ export function resolveCodexModel(model: string | null | undefined): string {
   }
 
   return DEFAULT_CODEX_MODEL;
+}
+
+export function buildCodexArgs(
+  options: Pick<
+    OpencodeTaskOptions,
+    "reasoningEffort" | "reasoningSummary" | "verbosity" | "codexWebSearch"
+  >,
+  model: string,
+  cwd: string
+): string[] {
+  const args = ["exec", "--model", model];
+
+  if (options.reasoningEffort) {
+    args.push("--config", `model_reasoning_effort=${options.reasoningEffort}`);
+  }
+
+  if (options.reasoningSummary) {
+    args.push("--config", `model_reasoning_summary=${options.reasoningSummary}`);
+  }
+
+  if (options.verbosity) {
+    args.push("--config", `model_verbosity=${options.verbosity}`);
+  }
+
+  args.push("--cd", cwd, "--dangerously-bypass-approvals-and-sandbox");
+
+  if (options.codexWebSearch) {
+    args.push("--search");
+  }
+
+  args.push("-");
+
+  return args;
 }
 
 function buildCodexPrompt(problemStatement: string, branch: string): string {
