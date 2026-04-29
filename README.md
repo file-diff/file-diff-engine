@@ -12,6 +12,8 @@ API reference: [API.md](./API.md)
 - `AGENT_TASK_POLL_INTERVAL_MS`: Polling delay for monitoring queued GitHub Copilot agent tasks after they are created. Defaults to `5000`.
 - `AGENT_TASK_MAX_POLL_DURATION_MS`: Maximum time to keep polling a GitHub Copilot agent task before marking the local job as failed. Defaults to `1800000` (30 minutes).
 - `SLACK_WEBHOOK_URL`: Optional incoming Slack webhook used to send agent-task terminal-state notifications with the task status, link, duration, branch name, failure details, and any pull request actions taken when available.
+- `DEEPSEEK_API_KEY`: Optional DeepSeek API key used by opencode tasks and the prompt-title endpoint. The prompt-title endpoint returns a fallback title when this is not configured.
+- `DEEPSEEK_API_BASE_URL`: Optional DeepSeek-compatible API base URL for prompt-title generation. Defaults to `https://api.deepseek.com`.
 - `ADMIN_BEARER_TOKEN`: Required bearer token for every admin endpoint listed in [`SECURITY.md`](./SECURITY.md). It is also accepted on viewer endpoints.
 - `VIEWER_BEARER_TOKEN`: Required bearer token for every viewer endpoint listed in [`SECURITY.md`](./SECURITY.md).
 

@@ -16,6 +16,7 @@ This document lists every HTTP endpoint currently implemented by the service and
 | GET | `/api/health` | Viewer | Health check plus backend GitHub rate-limit status |
 | GET | `/api/version` | Viewer | Returns build version |
 | GET | `/api/stats` | Viewer | Returns stored job/file statistics |
+| POST | `/api/shorten-prompt` | Viewer | Generates a short hyphenated prompt title with DeepSeek, or returns the fallback title |
 | POST | `/api/jobs` | Viewer | Creates or reuses a repository-processing job |
 | GET | `/api/jobs/:id` | Viewer | Returns job status |
 | GET | `/api/jobs/:id/files` | Viewer | Returns processed file metadata for a job |
@@ -65,6 +66,7 @@ This list was verified against the currently implemented routes in:
 - `src/routes/jobs/discoveryRoutes.ts`
 - `src/routes/jobs/jobManagementRoutes.ts`
 - `src/routes/jobs/downloadRoutes.ts`
+- `src/routes/promptRoutes.ts`
 - `src/routes/taskRoutes.ts`
 
 It is implementation-based and therefore includes endpoints that are not yet listed in `API.md`.

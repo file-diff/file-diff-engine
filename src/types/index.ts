@@ -366,6 +366,16 @@ export interface VersionResponse {
   version: string;
 }
 
+/** Payload sent to generate a concise title from a long prompt. */
+export interface ShortenPromptRequest {
+  prompt?: string;
+}
+
+/** Response payload for prompt title generation. */
+export interface ShortenPromptResponse {
+  title: string;
+}
+
 /** Follow-up pull request action after a successful agent task run. */
 export type PullRequestCompletionMode = "None" | "AutoReady" | "AutoMerge";
 

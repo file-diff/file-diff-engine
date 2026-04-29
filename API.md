@@ -161,6 +161,46 @@ Example response:
 
 ---
 
+### `POST /api/shorten-prompt`
+
+Generates a concise lowercase hyphenated title from a long prompt using DeepSeek `deepseek-v4-flash`.
+
+This endpoint always returns `200 OK`. If DeepSeek is not configured, unavailable, or returns a title that is not two to ten lowercase words separated by hyphens, the response title is `failed-to-generate-prompt-title`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `prompt` | `string` | Yes | Long prompt text to shorten into a title |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `title` | `string` | Generated title, or `failed-to-generate-prompt-title` fallback |
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/shorten-prompt \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Create a new endpoint that turns a long user prompt into a short concise title"
+  }'
+```
+
+Example response:
+
+```json
+{
+  "title": "shorten-prompt-title"
+}
+```
+
+---
+
 ### `POST /api/jobs/resolve`
 
 Resolves a branch, tag, or other Git ref to a full commit SHA for a repository.

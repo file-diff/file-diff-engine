@@ -11,6 +11,7 @@ import {
 } from "./db/database";
 import { JobRepository, AmbiguousHashError } from "./db/repository";
 import { createJobRoutes } from "./routes/jobs";
+import { registerPromptRoutes } from "./routes/promptRoutes";
 import { createTaskRoutes } from "./routes/taskRoutes";
 import { getGitHubRateLimit } from "./services/githubApi";
 import { createQueue } from "./services/queue";
@@ -165,6 +166,7 @@ export async function createApp(
 
   await app.register(rateLimit, { global: false });
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
+  registerPromptRoutes(app);
   await app.register(createTaskRoutes(jobRepo, queue), { prefix: "/api" });
 
   app.get<{
