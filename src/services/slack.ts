@@ -89,6 +89,10 @@ function buildAgentTaskHeadline(repo: string, status: string): string {
     return `GitHub agent task failed for ${repo}`;
   }
 
+  if (normalizedStatus === "canceled") {
+    return `GitHub agent task canceled for ${repo}`;
+  }
+
   return `GitHub agent task ended for ${repo}`;
 }
 

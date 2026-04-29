@@ -435,6 +435,8 @@ export interface AgentTaskJobSummary {
   opencodeSessionExport?: unknown;
   taskDelayMs: number;
   scheduledAt: string | null;
+  cancelRequestedAt: string | null;
+  deletedAt: string | null;
 }
 
 /** Response payload when querying a queued or monitored agent task job. */

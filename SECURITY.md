@@ -48,9 +48,11 @@ This document lists every HTTP endpoint currently implemented by the service and
 | POST | `/api/jobs/pull-request/merge` | Admin | `ADMIN_BEARER_TOKEN` |
 | POST | `/api/jobs/pull-request/open` | Admin | `ADMIN_BEARER_TOKEN` |
 | POST | `/api/jobs/create-task` | Admin | `ADMIN_BEARER_TOKEN` |
+| POST | `/api/jobs/create-task/:id/cancel` | Admin | `ADMIN_BEARER_TOKEN` |
+| DELETE | `/api/jobs/create-task/:id` | Admin | `ADMIN_BEARER_TOKEN` |
 | GET | `/api/agents/repos/:owner/:repo/tasks` | Admin | `ADMIN_BEARER_TOKEN` |
 | GET | `/api/agents/repos/:owner/:repo/tasks/:task_id` | Admin | `ADMIN_BEARER_TOKEN` |
-| POST | `/api/agents/repos/:owner/:repo/tasks/:task_id/archive` | Admin | `ADMIN_BEARER_TOKEN` |
+| DELETE | `/api/agents/repos/:owner/:repo/tasks/:task_id` | Admin | `ADMIN_BEARER_TOKEN` |
 | GET | `/api/api/agents/tasks` | Admin | `ADMIN_BEARER_TOKEN` |
 
 `/api/api/agents/tasks` is included exactly as implemented today because the route is currently registered with a double `/api` prefix in code.

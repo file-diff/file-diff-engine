@@ -2,6 +2,10 @@ import fs from "fs";
 import path from "path";
 import { execFile, spawn } from "child_process";
 import { promisify } from "util";
+import {
+  AgentTaskCanceledError,
+  signalChildProcessTree,
+} from "./agentTaskControl";
 import { createPullRequest } from "./githubApi";
 import type {
   AgentTaskModel,
@@ -19,6 +23,8 @@ const DEFAULT_OPENCODE_TIMEOUT_MS = TWO_HOURS_IN_SECONDS * 1_000;
 const DEFAULT_OUTPUT_LIMIT = 1_000_000;
 const DEFAULT_LOG_FLUSH_INTERVAL_MS = 15_000;
 const DEFAULT_SESSION_EXPORT_POLL_INTERVAL_MS = 15_000;
+const DEFAULT_CANCELLATION_POLL_INTERVAL_MS = 2_000;
+const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 const DEFAULT_GIT_AUTHOR_NAME = "file-diff-agent";
 const DEFAULT_GIT_AUTHOR_EMAIL = "file-diff-agent@users.noreply.github.com";
 
@@ -32,6 +38,7 @@ export interface OpencodeCapturedLogs {
 
 export interface OpencodeExecutionCallbacks {
   onLogsUpdated?: (logs: OpencodeCapturedLogs) => Promise<void> | void;
+  isCancellationRequested?: () => Promise<boolean> | boolean;
 }
 
 export interface OpencodeTaskOptions {
@@ -95,6 +102,9 @@ export async function executeOpencodeOnPreparedBranch(
 ): Promise<OpencodeCapturedLogs> {
   const cloneDir = getOpencodeTaskCloneDir(options);
   const logs = await runOpencode(options, branch, cloneDir, callbacks);
+  if (await callbacks?.isCancellationRequested?.()) {
+    throw new AgentTaskCanceledError("Task canceled by request.", logs);
+  }
 
   try {
     await commitAndPushFinalChanges(cloneDir, options, branch);
@@ -238,6 +248,10 @@ async function runOpencode(
     process.env.OPENCODE_SESSION_EXPORT_POLL_INTERVAL_MS,
     DEFAULT_SESSION_EXPORT_POLL_INTERVAL_MS
   );
+  const cancellationPollIntervalMs = parsePositiveInteger(
+    process.env.AGENT_TASK_CANCELLATION_POLL_INTERVAL_MS,
+    DEFAULT_CANCELLATION_POLL_INTERVAL_MS
+  );
   const opencodeEnv: NodeJS.ProcessEnv = {
     ...process.env,
     DEEPSEEK_API_KEY: deepseekApiKey,
@@ -268,6 +282,7 @@ async function runOpencode(
     cwd,
     env: opencodeEnv,
     stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
   });
 
   const stdoutChunks: string[] = [];
@@ -277,6 +292,8 @@ async function runOpencode(
   let outputTruncated = false;
   let dirty = false;
   let timedOut = false;
+  let cancellationRequested = false;
+  let terminationStarted = false;
   let opencodeSessionId: string | null = null;
   let opencodeSessionExport: unknown = undefined;
   let lastSerializedSessionExport: string | null = null;
@@ -296,6 +313,46 @@ async function runOpencode(
     opencodeSessionExport,
   });
 
+  const requestTermination = (reason: "cancel" | "timeout" | "flush-error"): void => {
+    if (terminationStarted) {
+      return;
+    }
+
+    terminationStarted = true;
+    logger.info("Terminating opencode process", {
+      jobId: options.jobId,
+      repo: options.repo,
+      branch,
+      reason,
+      pid: child.pid,
+    });
+
+    try {
+      signalChildProcessTree(child, "SIGTERM");
+    } catch (error) {
+      logger.warn("Failed to send SIGTERM to opencode process", {
+        jobId: options.jobId,
+        repo: options.repo,
+        branch,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const killHandle = setTimeout(() => {
+      try {
+        signalChildProcessTree(child, "SIGKILL");
+      } catch (error) {
+        logger.warn("Failed to send SIGKILL to opencode process", {
+          jobId: options.jobId,
+          repo: options.repo,
+          branch,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }, DEFAULT_TERMINATION_GRACE_MS);
+    killHandle.unref?.();
+  };
+
   const queueFlush = (force = false): Promise<void> => {
     flushChain = flushChain
       .catch(() => undefined)
@@ -309,9 +366,7 @@ async function runOpencode(
       })
       .catch((error) => {
         flushError = error instanceof Error ? error : new Error(String(error));
-        if (!child.killed) {
-          child.kill();
-        }
+        requestTermination("flush-error");
       });
 
     return flushChain;
@@ -414,11 +469,30 @@ async function runOpencode(
 
   const timeoutHandle = setTimeout(() => {
     timedOut = true;
-    if (!child.killed) {
-      child.kill();
-    }
+    requestTermination("timeout");
   }, timeout);
   timeoutHandle.unref?.();
+
+  const cancellationInterval = setInterval(() => {
+    if (!callbacks?.isCancellationRequested || cancellationRequested) {
+      return;
+    }
+
+    void Promise.resolve(callbacks.isCancellationRequested())
+      .then((requested) => {
+        if (!requested || cancellationRequested) {
+          return;
+        }
+
+        cancellationRequested = true;
+        requestTermination("cancel");
+      })
+      .catch((error) => {
+        flushError = error instanceof Error ? error : new Error(String(error));
+        requestTermination("flush-error");
+      });
+  }, cancellationPollIntervalMs);
+  cancellationInterval.unref?.();
 
   const appendChunk = (target: "stdout" | "stderr", chunk: string): void => {
     if (!chunk || flushError) {
@@ -477,6 +551,7 @@ async function runOpencode(
 
   clearInterval(flushInterval);
   clearInterval(sessionExportInterval);
+  clearInterval(cancellationInterval);
   clearTimeout(timeoutHandle);
   await queueSessionSync();
   await queueFlush(true);
@@ -488,6 +563,10 @@ async function runOpencode(
 
   if (spawnError) {
     throw new OpencodeExecutionError(spawnError.message, logs);
+  }
+
+  if (cancellationRequested) {
+    throw new AgentTaskCanceledError("Task canceled by request.", logs);
   }
 
   if (timedOut) {

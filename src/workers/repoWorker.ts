@@ -20,6 +20,7 @@ import {
 import { applyPullRequestCompletionMode } from "../services/pullRequestCompletion";
 import { QUEUE_NAME } from "../services/queue";
 import { sendAgentTaskFinishedSlackNotification } from "../services/slack";
+import { isAgentTaskCanceledError } from "../services/agentTaskControl";
 import { createLogger } from "../utils/logger";
 
 const REDIS_HOST = process.env.REDIS_HOST || "127.0.0.1";
@@ -139,8 +140,10 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
 
   try {
     const existingJob = await repo.getAgentTaskJob(jobId);
-    if (existingJob?.status === "canceled") {
+    if (existingJob?.status === "canceled" || existingJob?.cancelRequestedAt) {
       logger.info(`${tag} Skipping canceled task job`);
+      await repo.updateAgentTaskStatus(jobId, "canceled");
+      await repo.updateAgentTaskJobStatus(jobId, "canceled", "Task canceled by request.");
       return;
     }
 
@@ -163,6 +166,9 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     };
     const prepared = await prepareOpencodeTaskBranch(taskOptions);
     lastKnownBranchName = prepared.branch;
+    if (await repo.isAgentTaskCancellationRequested(jobId)) {
+      throw new Error("Task canceled by request.");
+    }
 
     await repo.updateAgentTaskBootstrap(
       jobId,
@@ -175,14 +181,21 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       lastCapturedLogs = logs;
       await repo.updateAgentTaskLogs(jobId, logs);
     };
+    const isCancellationRequested = async (): Promise<boolean> =>
+      repo.isAgentTaskCancellationRequested(jobId);
     const logs = task === "opencode"
       ? await executeOpencodeOnPreparedBranch(taskOptions, prepared.branch, {
           onLogsUpdated: persistLogs,
+          isCancellationRequested,
         })
       : await executeCodexOnPreparedBranch(taskOptions, prepared.branch, {
           onLogsUpdated: persistLogs,
+          isCancellationRequested,
         });
     lastCapturedLogs = logs;
+    if (await repo.isAgentTaskCancellationRequested(jobId)) {
+      throw new Error("Task canceled by request.");
+    }
     pullRequestActions = await applyPullRequestCompletionMode({
       repo: repoName,
       branch: prepared.branch,
@@ -207,6 +220,34 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     const logs = isOpencodeExecutionError(err) ? err.logs : lastCapturedLogs;
+    const cancellationRequested =
+      isAgentTaskCanceledError(err) ||
+      message === "Task canceled by request." ||
+      await repo.isAgentTaskCancellationRequested(jobId);
+    if (cancellationRequested) {
+      const cancelMessage = "Task canceled by request.";
+      logger.warn(`${tag} Job canceled for repo=${repoName}: ${cancelMessage}`);
+      await repo.updateAgentTaskStatus(jobId, "canceled", lastKnownBranchName ?? undefined);
+      await repo.updateAgentTaskJobStatus(jobId, "canceled", cancelMessage);
+      if (logs) {
+        lastCapturedLogs = logs;
+        await repo.updateAgentTaskLogs(jobId, logs);
+      } else {
+        await repo.updateAgentTaskOutput(jobId, cancelMessage);
+      }
+      await sendTerminalTaskNotification(
+        owner,
+        repoNameOnly,
+        jobId,
+        "canceled",
+        lastKnownBranchName,
+        Date.now() - taskCreatedAt,
+        cancelMessage,
+        pullRequestActions
+      );
+      return;
+    }
+
     logger.error(`${tag} Job failed for repo=${repoName}: ${message}`);
     await repo.updateAgentTaskJobStatus(jobId, "failed", message);
     if (logs) {

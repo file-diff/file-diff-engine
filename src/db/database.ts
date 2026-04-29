@@ -103,6 +103,8 @@ async function initSchema(db: DatabaseClient): Promise<void> {
         opencode_session_export TEXT,
         task_delay_ms INTEGER NOT NULL DEFAULT 0,
         scheduled_at TIMESTAMPTZ,
+        cancel_requested_at TIMESTAMPTZ,
+        deleted_at TIMESTAMPTZ,
         error TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -171,6 +173,12 @@ async function initSchema(db: DatabaseClient): Promise<void> {
 
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS cancel_requested_at TIMESTAMPTZ;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
       UPDATE files
       SET file_disk_path = file_name

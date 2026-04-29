@@ -57,6 +57,11 @@ import type {
 } from "../../types";
 import { revertToCommit, mergeBranch } from "../../github/operations";
 import * as githubApi from "../../services/githubApi";
+import {
+  AgentTaskActionConflictError,
+  cancelAgentTaskJob,
+  deleteAgentTaskJob,
+} from "../../services/agentTaskActions";
 import * as repoProcessor from "../../services/repoProcessor";
 import { getCommitShort } from "../../utils/commit";
 import {
@@ -1544,39 +1549,37 @@ export function registerDiscoveryRoutes(
     "/create-task/:id/cancel",
     { preHandler: requireAdminBearerToken },
     async (request, reply) => {
-      const job = await jobRepo.getAgentTaskJob(request.params.id);
-      if (!job) {
+      try {
+        const updatedJob = await cancelAgentTaskJob(jobRepo, queue, request.params.id);
+        if (!updatedJob) {
+          const response: ErrorResponse = { error: "Task job not found." };
+          return reply.code(404).send(response);
+        }
+
+        const response: AgentTaskJobInfo = updatedJob;
+        return reply.code(200).send(response);
+      } catch (error) {
+        if (error instanceof AgentTaskActionConflictError) {
+          const response: ErrorResponse = { error: error.message };
+          return reply.code(409).send(response);
+        }
+
+        throw error;
+      }
+    }
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    "/create-task/:id",
+    { preHandler: requireAdminBearerToken },
+    async (request, reply) => {
+      const updatedJob = await deleteAgentTaskJob(jobRepo, queue, request.params.id);
+      if (!updatedJob) {
         const response: ErrorResponse = { error: "Task job not found." };
         return reply.code(404).send(response);
       }
 
-      if (job.status !== "waiting") {
-        const response: ErrorResponse = {
-          error: "Task job is no longer waiting and cannot be canceled.",
-        };
-        return reply.code(409).send(response);
-      }
-
-      if (job.taskId) {
-        const response: ErrorResponse = {
-          error: "Task job has already created a remote task and cannot be canceled.",
-        };
-        return reply.code(409).send(response);
-      }
-
-      const queuedJob = await queue.getJob(request.params.id);
-      if (!queuedJob) {
-        const response: ErrorResponse = {
-          error: "Task job can only be canceled before it starts.",
-        };
-        return reply.code(409).send(response);
-      }
-
-      await queuedJob.remove();
-      await jobRepo.updateAgentTaskJobStatus(request.params.id, "canceled");
-
-      const updatedJob = await jobRepo.getAgentTaskJob(request.params.id);
-      const response: AgentTaskJobInfo = updatedJob!;
+      const response: AgentTaskJobInfo = updatedJob;
       return reply.code(200).send(response);
     }
   );
