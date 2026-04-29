@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   findNewOpencodeSessionId,
+  incrementBranchName,
   parseOpencodeSessionIds,
 } from "./opencodeTask";
 
@@ -42,5 +43,17 @@ ses_227113e87ffe85L4H52wmCHwGg  New session - 2026-04-29T11:10:19.000Z  1:10 PM`
         ["ses_existing"]
       )
     ).toBeNull();
+  });
+
+  it("adds a -1 suffix when a branch has no trailing number", () => {
+    expect(incrementBranchName("branch")).toBe("branch-1");
+  });
+
+  it("increments an existing numeric suffix", () => {
+    expect(incrementBranchName("branch-1")).toBe("branch-2");
+  });
+
+  it("preserves suffix width when incrementing", () => {
+    expect(incrementBranchName("branch-03")).toBe("branch-04");
   });
 });

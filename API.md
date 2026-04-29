@@ -2277,6 +2277,7 @@ Admin bearer auth is required.
 | --- | --- | --- | --- |
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
 | `base_ref` | `string` | Yes | Branch or ref to check out before creating the task branch. |
+| `branch` | `string` | No | Optional task branch name override. When omitted, the service keeps generating the default `fde-agent/...` branch name. When provided and the branch already exists on origin, the service increments the trailing numeric suffix until it finds a free branch name, for example `branch` -> `branch-1`, `branch-1` -> `branch-2`, and `branch-03` -> `branch-04`. |
 | `problem_statement` | `string` | Yes | Task instructions passed to the selected local agent and included in the initialization commit/PR body. |
 | `task` | `"codex" \| "opencode"` | No | Local agent implementation. Defaults to `codex`. |
 | `model` | `string` | No | Model for the selected task runner. Codex defaults to `CODEX_MODEL` or `gpt-5.2-codex`; opencode defaults to `deepseek-v4-flash` and only accepts `deepseek-v4-flash` or `deepseek-v4-pro`. |
@@ -2307,6 +2308,7 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
   -d '{
     "repo": "file-diff/file-diff-engine",
     "base_ref": "main",
+    "branch": "feature-01",
     "problem_statement": "Implement the requested change",
     "task": "codex",
     "model": "gpt-5.2-codex",
