@@ -5,14 +5,23 @@ import { buildOpencodePrompt, buildPullRequestBody } from "./opencodeTask";
 
 describe("task messaging helpers", () => {
   it("includes the pull request report instruction in codex prompts", () => {
-    expect(buildCodexPrompt("Fix the bug", "fde-agent/test")).toContain(
-      "After done comment report about task to current pull request."
+    expect(buildCodexPrompt("Fix the bug", "fde-agent/test", 42)).toContain(
+      "After done comment on pull request with detailed summary report"
     );
   });
 
-  it("includes the pull request report instruction in opencode prompts", () => {
-    expect(buildOpencodePrompt("Fix the bug", "fde-agent/test")).toContain(
-      "After done comment report about task to current pull request."
+  it("includes the pull request number in both prompts", () => {
+    expect(buildCodexPrompt("Fix the bug", "fde-agent/test", 42)).toContain(
+      "pull request #42"
+    );
+    expect(buildOpencodePrompt("Fix the bug", "fde-agent/test", 42)).toContain(
+      "pull request #42"
+    );
+  });
+
+  it("keeps the opencode prompt aligned with the codex prompt", () => {
+    expect(buildOpencodePrompt("Fix the bug", "fde-agent/test", 42)).toBe(
+      buildCodexPrompt("Fix the bug", "fde-agent/test", 42)
     );
   });
 

@@ -191,14 +191,24 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     const isCancellationRequested = async (): Promise<boolean> =>
       repo.isAgentTaskCancellationRequested(jobId);
     const logs = task === "opencode"
-      ? await executeOpencodeOnPreparedBranch(taskOptions, prepared.branch, {
-          onLogsUpdated: persistLogs,
-          isCancellationRequested,
-        })
-      : await executeCodexOnPreparedBranch(taskOptions, prepared.branch, {
-          onLogsUpdated: persistLogs,
-          isCancellationRequested,
-        });
+      ? await executeOpencodeOnPreparedBranch(
+          taskOptions,
+          prepared.branch,
+          prepared.pullRequest.number,
+          {
+            onLogsUpdated: persistLogs,
+            isCancellationRequested,
+          }
+        )
+      : await executeCodexOnPreparedBranch(
+          taskOptions,
+          prepared.branch,
+          prepared.pullRequest.number,
+          {
+            onLogsUpdated: persistLogs,
+            isCancellationRequested,
+          }
+        );
     lastCapturedLogs = logs;
     if (await repo.isAgentTaskCancellationRequested(jobId)) {
       throw new Error("Task canceled by request.");

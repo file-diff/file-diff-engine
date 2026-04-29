@@ -34,10 +34,11 @@ export class CodexExecutionError extends Error {
 export async function executeCodexOnPreparedBranch(
   options: OpencodeTaskOptions,
   branch: string,
+  pullRequestNumber: number,
   callbacks?: OpencodeExecutionCallbacks
 ): Promise<OpencodeCapturedLogs> {
   const cloneDir = getOpencodeTaskCloneDir(options);
-  const logs = await runCodex(options, branch, cloneDir, callbacks);
+  const logs = await runCodex(options, branch, pullRequestNumber, cloneDir, callbacks);
   if (await callbacks?.isCancellationRequested?.()) {
     throw new AgentTaskCanceledError("Task canceled by request.", logs);
   }
@@ -56,10 +57,11 @@ export async function executeCodexOnPreparedBranch(
 async function runCodex(
   options: OpencodeTaskOptions,
   branch: string,
+  pullRequestNumber: number,
   cwd: string,
   callbacks?: OpencodeExecutionCallbacks
 ): Promise<OpencodeCapturedLogs> {
-  const prompt = buildCodexPrompt(options.problemStatement, branch);
+  const prompt = buildCodexPrompt(options.problemStatement, branch, pullRequestNumber);
   const model = resolveCodexModel(options.model);
   const timeout = parsePositiveInteger(
     process.env.CODEX_TIMEOUT_MS,
@@ -362,9 +364,13 @@ export function buildCodexArgs(
   return args;
 }
 
-export function buildCodexPrompt(problemStatement: string, branch: string): string {
+export function buildCodexPrompt(
+  problemStatement: string,
+  branch: string,
+  pullRequestNumber: number
+): string {
   return [
-    `You are already on branch '${branch}' with pull request created.`,
+    `You are already on branch '${branch}' with pull request #${pullRequestNumber} created.`,
     "1. Create plan of the given instructions.",
     "2. Comment on pull request with created plan.",
     "3. Follow the plan, commit and push the changes as you go.",
