@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 POSTGRES_DATA_DIR="${SCRIPT_DIR}/postgres_data"
 REDIS_DATA_DIR="${SCRIPT_DIR}/redis_data"
 REPOSITORIES_DATA_DIR="${SCRIPT_DIR}/repositories_data"
+CODEX_DATA_DIR="${SCRIPT_DIR}/codex_data"
 
 ensure_data_dir() {
   local dir="$1"
@@ -67,5 +68,6 @@ docker compose down
 ensure_data_dir "${POSTGRES_DATA_DIR}" "70" "70"
 ensure_data_dir "${REDIS_DATA_DIR}" "999" "999"
 ensure_data_dir "${REPOSITORIES_DATA_DIR}" "649" "649"
+ensure_data_dir "${CODEX_DATA_DIR}" "649" "649"
 
 docker compose up -d --build app

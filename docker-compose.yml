@@ -40,6 +40,7 @@ services:
       - "127.0.0.1:12986:12986"
     volumes:
       - ./repositories_data:/app/tmp
+      - ./codex_data:/home/docker/.codex
   postgres:
     image: postgres:17-alpine
     environment:
