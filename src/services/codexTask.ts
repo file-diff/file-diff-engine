@@ -10,6 +10,7 @@ import { createLogger } from "../utils/logger";
 
 const logger = createLogger("codex-task");
 const TWO_HOURS_IN_SECONDS = 2 * 60 * 60;
+const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
 const DEFAULT_CODEX_TIMEOUT_MS = TWO_HOURS_IN_SECONDS * 1_000;
 const DEFAULT_OUTPUT_LIMIT = 1_000_000;
 const DEFAULT_LOG_FLUSH_INTERVAL_MS = 15_000;
@@ -50,6 +51,7 @@ async function runCodex(
   callbacks?: OpencodeExecutionCallbacks
 ): Promise<OpencodeCapturedLogs> {
   const prompt = buildCodexPrompt(options.problemStatement, branch);
+  const model = resolveCodexModel(options.model);
   const timeout = parsePositiveInteger(
     process.env.CODEX_TIMEOUT_MS,
     DEFAULT_CODEX_TIMEOUT_MS
@@ -65,7 +67,7 @@ async function runCodex(
   const args = [
     "exec",
     "--model",
-    options.model,
+    model,
     "--cd",
     cwd,
     "--dangerously-bypass-approvals-and-sandbox",
@@ -92,7 +94,7 @@ async function runCodex(
     jobId: options.jobId,
     repo: options.repo,
     branch,
-    model: options.model,
+    model,
     reasoningEffort: options.reasoningEffort,
     reasoningSummary: options.reasoningSummary,
     verbosity: options.verbosity,
@@ -256,6 +258,20 @@ async function runCodex(
 
 function getCodexBin(): string {
   return (process.env.CODEX_BIN || "codex").trim();
+}
+
+export function resolveCodexModel(model: string | null | undefined): string {
+  const normalizedModel = typeof model === "string" ? model.trim() : "";
+  if (normalizedModel) {
+    return normalizedModel;
+  }
+
+  const configuredModel = process.env.CODEX_MODEL?.trim();
+  if (configuredModel) {
+    return configuredModel;
+  }
+
+  return DEFAULT_CODEX_MODEL;
 }
 
 function buildCodexPrompt(problemStatement: string, branch: string): string {
