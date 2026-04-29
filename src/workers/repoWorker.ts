@@ -106,6 +106,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     jobId,
     repoName,
     baseRef,
+    branch,
     problemStatement,
     model,
     task = job.name === "create-opencode-task" ? "opencode" : "codex",
@@ -120,6 +121,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     jobId: string;
     repoName: string;
     baseRef: string;
+    branch?: string;
     problemStatement: string;
     model: AgentTaskModel;
     task?: AgentTaskRunner;
@@ -159,6 +161,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       jobId,
       repo: repoName,
       baseRef,
+      branch,
       problemStatement,
       model,
       taskRunner: task,

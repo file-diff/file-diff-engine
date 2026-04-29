@@ -164,4 +164,91 @@ describe("registerDiscoveryRoutes", () => {
       await database.end();
     }
   });
+
+  it("passes an optional branch override through to the queued task payload", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Queue;
+
+    try {
+      registerDiscoveryRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          base_ref: "main",
+          branch: "feature-03",
+          problem_statement: "Use a requested branch name when starting the task",
+          task: "codex",
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      const body = response.json() as { id: string };
+
+      await expect(jobRepo.getAgentTaskJob(body.id)).resolves.toMatchObject({
+        id: body.id,
+        branch: "feature-03",
+      });
+
+      expect(queue.add).toHaveBeenCalledWith(
+        "create-codex-task",
+        expect.objectContaining({
+          branch: "feature-03",
+        }),
+        expect.objectContaining({
+          jobId: body.id,
+        })
+      );
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("rejects an invalid branch override", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Queue;
+
+    try {
+      registerDiscoveryRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          base_ref: "main",
+          branch: "bad..branch",
+          problem_statement: "Reject invalid branch overrides",
+          task: "codex",
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error:
+          "Field 'branch' must be a non-empty git ref, cannot start with '-' or '/', cannot contain '..', '@{', backslashes, or control characters.",
+      });
+      expect(queue.add).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
 });

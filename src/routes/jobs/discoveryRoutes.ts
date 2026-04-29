@@ -62,6 +62,7 @@ import {
   cancelAgentTaskJob,
   deleteAgentTaskJob,
 } from "../../services/agentTaskActions";
+import { normalizeGitRef } from "../../services/opencodeTask";
 import * as repoProcessor from "../../services/repoProcessor";
 import { getCommitShort } from "../../utils/commit";
 import {
@@ -1370,6 +1371,7 @@ export function registerDiscoveryRoutes(
         auto_merge,
         pull_request_completion_mode,
         base_ref,
+        branch,
         task_delay_ms,
         deepseek_api_key,
         githubKey,
@@ -1390,6 +1392,25 @@ export function registerDiscoveryRoutes(
             "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
         };
         return reply.code(400).send(response);
+      }
+
+      let requestedBranch: string | undefined;
+      if (branch !== undefined) {
+        if (typeof branch !== "string") {
+          const response: ErrorResponse = {
+            error: "Field 'branch' must be a non-empty git ref string.",
+          };
+          return reply.code(400).send(response);
+        }
+
+        try {
+          requestedBranch = normalizeGitRef(branch, "branch");
+        } catch (error) {
+          const response: ErrorResponse = {
+            error: error instanceof Error ? error.message : "Invalid branch value.",
+          };
+          return reply.code(400).send(response);
+        }
       }
 
       const taskRunner = task === undefined ? DEFAULT_AGENT_TASK_RUNNER : task;
@@ -1546,6 +1567,7 @@ export function registerDiscoveryRoutes(
             verbosity,
             codexWebSearch: codex_web_search,
             baseRef: base_ref,
+            branchName: requestedBranch,
             pullRequestCompletionMode,
           }
         );
@@ -1554,6 +1576,7 @@ export function registerDiscoveryRoutes(
           jobId,
           `${owner}/${repoName}`,
           base_ref,
+          requestedBranch,
           problem_statement,
           taskRunner,
           taskModel,
@@ -1651,6 +1674,7 @@ async function enqueueAgentTaskJob(
   jobId: string,
   repoName: string,
   baseRef: string,
+  branch: string | undefined,
   problemStatement: string,
   task: AgentTaskRunner,
   model: string,
@@ -1669,6 +1693,7 @@ async function enqueueAgentTaskJob(
       jobId,
       repoName,
       baseRef,
+      ...(branch ? { branch } : {}),
       problemStatement,
       task,
       model,
@@ -1774,6 +1799,10 @@ function summarizeCreateTaskPayload(body: CreateTaskRequest | undefined): Record
 
   if (typeof body?.base_ref === "string") {
     summary.baseRef = body.base_ref;
+  }
+
+  if (typeof body?.branch === "string") {
+    summary.branch = body.branch;
   }
 
   if (typeof body?.task_delay_ms === "number") {

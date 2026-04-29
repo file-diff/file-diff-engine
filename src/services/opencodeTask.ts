@@ -46,6 +46,7 @@ export interface OpencodeTaskOptions {
   jobId: string;
   repo: string;
   baseRef: string;
+  branch?: string;
   problemStatement: string;
   model: AgentTaskModel;
   taskRunner?: AgentTaskRunner;
@@ -132,6 +133,9 @@ export async function prepareOpencodeTaskBranch(
 ): Promise<OpencodePreparedTask> {
   const repo = options.repo.trim();
   const baseRef = normalizeGitRef(options.baseRef, "base_ref");
+  const requestedBranch = options.branch?.trim()
+    ? normalizeGitRef(options.branch, "branch")
+    : undefined;
   const githubKey = resolveGitHubToken(options.githubKey);
   if (!githubKey) {
     throw new Error(
@@ -142,7 +146,6 @@ export async function prepareOpencodeTaskBranch(
   const workDir = getOpencodeTaskWorkDir(options);
   const cloneDir = getOpencodeTaskCloneDir(options);
   const repoUrl = getRepositoryUrl(repo);
-  const branch = buildTaskBranchName(options.jobId);
   const gitEnv = getGitCommandEnv(githubKey);
 
   fs.rmSync(workDir, { recursive: true, force: true });
@@ -163,6 +166,9 @@ export async function prepareOpencodeTaskBranch(
     ],
     gitEnv
   );
+  const branch = requestedBranch
+    ? await resolveUniqueRemoteBranchName(cloneDir, requestedBranch, gitEnv)
+    : buildTaskBranchName(options.jobId);
   await runGit(cloneDir, ["checkout", "-B", branch, `origin/${baseRef}`], gitEnv);
   await configureCommitAuthor(cloneDir, gitEnv);
   await runGit(
@@ -727,7 +733,7 @@ export function findNewOpencodeSessionId(
   return afterSessionIds.find((sessionId) => !knownSessionIds.has(sessionId)) ?? null;
 }
 
-function normalizeGitRef(value: string, fieldName: string): string {
+export function normalizeGitRef(value: string, fieldName: string): string {
   const ref = value.trim();
   if (
     !ref ||
@@ -742,6 +748,41 @@ function normalizeGitRef(value: string, fieldName: string): string {
     );
   }
   return ref;
+}
+
+export function incrementBranchName(branch: string): string {
+  const match = branch.match(/^(.*)-(\d+)$/);
+  if (!match) {
+    return `${branch}-1`;
+  }
+
+  const [, prefix, suffix] = match;
+  const incremented = String(Number.parseInt(suffix, 10) + 1).padStart(
+    suffix.length,
+    "0"
+  );
+  return `${prefix}-${incremented}`;
+}
+
+async function resolveUniqueRemoteBranchName(
+  cwd: string,
+  branch: string,
+  env: NodeJS.ProcessEnv
+): Promise<string> {
+  let candidate = branch;
+  while (await remoteBranchExists(cwd, candidate, env)) {
+    candidate = incrementBranchName(candidate);
+  }
+  return candidate;
+}
+
+async function remoteBranchExists(
+  cwd: string,
+  branch: string,
+  env: NodeJS.ProcessEnv
+): Promise<boolean> {
+  const output = await runGit(cwd, ["ls-remote", "--heads", "origin", branch], env);
+  return output.length > 0;
 }
 
 function getOpencodeBin(): string {

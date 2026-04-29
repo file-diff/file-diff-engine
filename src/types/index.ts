@@ -413,6 +413,8 @@ export interface CreateTaskRequest {
   pull_request_completion_mode?: PullRequestCompletionMode;
   /** Base ref for new branch/PR */
   base_ref?: string;
+  /** Optional task branch name override */
+  branch?: string;
   /** Optional delay in milliseconds before starting the remote task */
   task_delay_ms?: number;
   /** Optional DeepSeek API key override for this task. Prefer DEEPSEEK_API_KEY in production. */
