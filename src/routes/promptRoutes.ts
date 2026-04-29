@@ -21,13 +21,15 @@ export function registerPromptRoutes(app: FastifyInstance): void {
         promptPreview: safePromptPreview,
       });
 
-      const response: ShortenPromptResponse = {
-        title: await generatePromptTitle(prompt),
-      };
+      const promptTitleResult = await generatePromptTitle(prompt);
+      const response: ShortenPromptResponse = promptTitleResult;
 
       logger.info("Completed shorten-prompt request", {
         endpoint: "/api/shorten-prompt",
         title: response.title,
+        inputTokens: response.inputTokens,
+        outputTokens: response.outputTokens,
+        durationMs: response.durationMs,
       });
 
       return response;

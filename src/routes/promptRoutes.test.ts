@@ -26,6 +26,10 @@ describe("registerPromptRoutes", () => {
         ok: true,
         json: vi.fn().mockResolvedValue({
           choices: [{ message: { content: "shorten-prompt-title" } }],
+          usage: {
+            prompt_tokens: 74,
+            completion_tokens: 235,
+          },
         }),
       })
     );
@@ -45,7 +49,14 @@ describe("registerPromptRoutes", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toEqual({ title: "shorten-prompt-title" });
+      expect(response.json()).toEqual(
+        expect.objectContaining({
+          title: "shorten-prompt-title",
+          inputTokens: 74,
+          outputTokens: 235,
+        })
+      );
+      expect(response.json().durationMs).toEqual(expect.any(Number));
     } finally {
       await app.close();
     }
@@ -70,7 +81,14 @@ describe("registerPromptRoutes", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toEqual({ title: PROMPT_TITLE_FALLBACK });
+      expect(response.json()).toEqual(
+        expect.objectContaining({
+          title: PROMPT_TITLE_FALLBACK,
+          inputTokens: 0,
+          outputTokens: 0,
+        })
+      );
+      expect(response.json().durationMs).toEqual(expect.any(Number));
     } finally {
       await app.close();
     }

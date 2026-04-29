@@ -41,12 +41,20 @@ describe("prompt title generation", () => {
       ok: true,
       json: vi.fn().mockResolvedValue({
         choices: [{ message: { content: "implement-short-title" } }],
+        usage: {
+          prompt_tokens: 74,
+          completion_tokens: 235,
+        },
       }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(generatePromptTitle("Build the prompt title endpoint")).resolves.toBe(
-      "implement-short-title"
+    await expect(generatePromptTitle("Build the prompt title endpoint")).resolves.toEqual(
+      expect.objectContaining({
+        title: "implement-short-title",
+        inputTokens: 74,
+        outputTokens: 235,
+      })
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -77,8 +85,12 @@ describe("prompt title generation", () => {
     process.env.DEEPSEEK_API_KEY = "deepseek-token";
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
 
-    await expect(generatePromptTitle("Build the prompt title endpoint")).resolves.toBe(
-      PROMPT_TITLE_FALLBACK
+    await expect(generatePromptTitle("Build the prompt title endpoint")).resolves.toEqual(
+      expect.objectContaining({
+        title: PROMPT_TITLE_FALLBACK,
+        inputTokens: 0,
+        outputTokens: 0,
+      })
     );
   });
 
@@ -87,8 +99,12 @@ describe("prompt title generation", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(generatePromptTitle("Build the prompt title endpoint")).resolves.toBe(
-      PROMPT_TITLE_FALLBACK
+    await expect(generatePromptTitle("Build the prompt title endpoint")).resolves.toEqual(
+      expect.objectContaining({
+        title: PROMPT_TITLE_FALLBACK,
+        inputTokens: 0,
+        outputTokens: 0,
+      })
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });

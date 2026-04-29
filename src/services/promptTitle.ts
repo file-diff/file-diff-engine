@@ -15,6 +15,21 @@ interface DeepSeekChatCompletionResponse {
       content?: string;
     };
   }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    completion_tokens_details?: {
+      reasoning_tokens?: number;
+    };
+  };
+}
+
+export interface PromptTitleResult {
+  title: string;
+  inputTokens: number;
+  outputTokens: number;
+  durationMs: number;
 }
 
 export function parsePromptTitle(output: unknown): string {
@@ -36,6 +51,20 @@ export function parsePromptTitle(output: unknown): string {
   return title;
 }
 
+function createPromptTitleResult(
+  title: string,
+  inputTokens: number,
+  outputTokens: number,
+  durationMs: number
+): PromptTitleResult {
+  return {
+    title,
+    inputTokens,
+    outputTokens,
+    durationMs,
+  };
+}
+
 function getDeepSeekChatCompletionsUrl(): string {
   const baseUrl =
     process.env.DEEPSEEK_API_BASE_URL?.trim() || DEFAULT_DEEPSEEK_API_BASE_URL;
@@ -43,19 +72,21 @@ function getDeepSeekChatCompletionsUrl(): string {
   return `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
 }
 
-export async function generatePromptTitle(prompt: unknown): Promise<string> {
+export async function generatePromptTitle(prompt: unknown): Promise<PromptTitleResult> {
+  const startedAt = Date.now();
+
   if (typeof prompt !== "string" || !prompt.trim()) {
     logger.warn("DeepSeek title generation skipped: invalid prompt", {
       promptType: typeof prompt,
       promptProvided: prompt !== undefined,
     });
-    return PROMPT_TITLE_FALLBACK;
+    return createPromptTitleResult(PROMPT_TITLE_FALLBACK, 0, 0, Date.now() - startedAt);
   }
 
   const deepseekApiKey = process.env.DEEPSEEK_API_KEY?.trim();
   if (!deepseekApiKey) {
     logger.warn("DeepSeek title generation skipped: API key missing");
-    return PROMPT_TITLE_FALLBACK;
+    return createPromptTitleResult(PROMPT_TITLE_FALLBACK, 0, 0, Date.now() - startedAt);
   }
 
   const requestPayload = {
@@ -70,8 +101,8 @@ export async function generatePromptTitle(prompt: unknown): Promise<string> {
         content: prompt,
       },
     ],
-    temperature: 0,
-    max_tokens: 32,
+    temperature: 1.0,
+    max_tokens: 100000,
     stream: false,
   };
   const url = getDeepSeekChatCompletionsUrl();
@@ -108,19 +139,27 @@ export async function generatePromptTitle(prompt: unknown): Promise<string> {
         statusText: responseStatusText,
         errorBody: errorBodyText.slice(0, 1024),
       });
-      return PROMPT_TITLE_FALLBACK;
+      return createPromptTitleResult(PROMPT_TITLE_FALLBACK, 0, 0, Date.now() - startedAt);
     }
 
     const result = (await response.json()) as DeepSeekChatCompletionResponse;
     const generatedTitle = parsePromptTitle(result.choices?.[0]?.message?.content);
+    const inputTokens = result.usage?.prompt_tokens ?? 0;
+    const outputTokens = result.usage?.completion_tokens ?? 0;
+    const durationMs = Date.now() - startedAt;
     logger.debug("DeepSeek title generation parsed response", {
       hasChoices: Array.isArray(result.choices),
       choiceCount: Array.isArray(result.choices) ? result.choices.length : 0,
       rawMessage: result.choices?.[0]?.message?.content,
       generatedTitle,
+      inputTokens,
+      outputTokens,
+      totalTokens: result.usage?.total_tokens ?? 0,
+      reasoningTokens: result.usage?.completion_tokens_details?.reasoning_tokens ?? 0,
+      durationMs,
     });
 
-    return generatedTitle;
+    return createPromptTitleResult(generatedTitle, inputTokens, outputTokens, durationMs);
   } catch (error) {
     logger.warn("DeepSeek title generation is unavailable.", {
       error: error instanceof Error ? error.message : String(error),
@@ -130,6 +169,6 @@ export async function generatePromptTitle(prompt: unknown): Promise<string> {
         stack: error.stack.slice(0, 1500),
       });
     }
-    return PROMPT_TITLE_FALLBACK;
+    return createPromptTitleResult(PROMPT_TITLE_FALLBACK, 0, 0, Date.now() - startedAt);
   }
 }

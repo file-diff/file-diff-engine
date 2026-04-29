@@ -374,6 +374,9 @@ export interface ShortenPromptRequest {
 /** Response payload for prompt title generation. */
 export interface ShortenPromptResponse {
   title: string;
+  inputTokens: number;
+  outputTokens: number;
+  durationMs: number;
 }
 
 /** Follow-up pull request action after a successful agent task run. */
