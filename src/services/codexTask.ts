@@ -91,6 +91,7 @@ async function runCodex(
   }
 
   logger.info("Starting codex task", {
+    args,
     jobId: options.jobId,
     repo: options.repo,
     branch,
