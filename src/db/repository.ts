@@ -81,6 +81,10 @@ function mapAgentTaskJobRow(row: Record<string, unknown>): AgentTaskJobInfo {
     ),
     taskDelayMs: normalizeTaskDelayMs(row.task_delay_ms),
     scheduledAt: row.scheduled_at ? toIsoString(row.scheduled_at) : null,
+    cancelRequestedAt: row.cancel_requested_at
+      ? toIsoString(row.cancel_requested_at)
+      : null,
+    deletedAt: row.deleted_at ? toIsoString(row.deleted_at) : null,
     error: (row.error as string | null) ?? undefined,
     output: (row.output as string | null) ?? undefined,
     stdout: (row.stdout as string | null) ?? undefined,
@@ -187,6 +191,45 @@ export class JobRepository {
     );
   }
 
+  async requestAgentTaskCancellation(id: string): Promise<void> {
+    await this.db.query(
+      `UPDATE agent_task_jobs
+       SET cancel_requested_at = COALESCE(cancel_requested_at, CURRENT_TIMESTAMP),
+           task_status = CASE
+             WHEN status IN ('waiting', 'active') THEN 'canceling'
+             ELSE task_status
+           END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [id]
+    );
+  }
+
+  async markAgentTaskJobDeleted(id: string): Promise<void> {
+    await this.db.query(
+      `UPDATE agent_task_jobs
+       SET deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [id]
+    );
+  }
+
+  async isAgentTaskCancellationRequested(id: string): Promise<boolean> {
+    const result = await this.db.query(
+      `SELECT cancel_requested_at, status, deleted_at
+       FROM agent_task_jobs
+       WHERE id = $1`,
+      [id]
+    );
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    return Boolean(
+      row?.cancel_requested_at ||
+        row?.deleted_at ||
+        row?.status === "canceled"
+    );
+  }
+
   async attachAgentTaskToJob(
     id: string,
     taskId: string,
@@ -282,6 +325,7 @@ export class JobRepository {
        FROM agent_task_jobs
        WHERE status = 'waiting'
          AND github_task_id IS NULL
+         AND deleted_at IS NULL
        ORDER BY COALESCE(scheduled_at, created_at) ASC, created_at ASC`
     );
 
@@ -292,7 +336,7 @@ export class JobRepository {
 
   async listActiveAgentTaskJobs(repo?: string): Promise<AgentTaskJobInfo[]> {
     const params: unknown[] = [];
-    let whereClause = "status IN ('waiting', 'active')";
+    let whereClause = "status IN ('waiting', 'active') AND deleted_at IS NULL";
     if (repo !== undefined) {
       params.push(repo);
       whereClause += ` AND repo = $${params.length}`;

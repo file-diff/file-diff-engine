@@ -979,6 +979,8 @@ Status: `200 OK`
 | `pullRequestCompletionMode` | `string` | Requested follow-up PR action: `None`, `AutoReady`, or `AutoMerge` when set. `AutoMerge` enables GitHub auto-merge on the created pull request. |
 | `taskDelayMs` | `integer` | Configured startup delay in milliseconds |
 | `scheduledAt` | `string \| null` | Scheduled start time for delayed jobs, otherwise `null` |
+| `cancelRequestedAt` | `string \| null` | Time cancellation was requested, otherwise `null` |
+| `deletedAt` | `string \| null` | Time the task was soft-deleted, otherwise `null` |
 | `error` | `string` | Error message when the job fails |
 | `createdAt` | `string` | Job creation timestamp |
 | `updatedAt` | `string` | Last update timestamp |
@@ -991,7 +993,7 @@ Status: `200 OK`
 
 ### `POST /api/jobs/create-task/:id/cancel`
 
-Cancels a local agent-task job before it starts. This only succeeds while the job is still waiting and has not yet created the remote GitHub task.
+Cancels a local agent-task job. Waiting jobs are removed from the queue and marked `canceled`; running Codex/opencode jobs receive a persisted cancellation request and the worker terminates the attached process before marking the row `canceled`.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -999,12 +1001,30 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 
 Status: `200 OK`
 
-Returns the updated job payload documented for `GET /api/jobs/create-task/:id`, with `status` set to `canceled`.
+Returns the updated job payload documented for `GET /api/jobs/create-task/:id`.
 
 #### Common statuses
 
 - `404 Not Found` when the task job id is unknown
-- `409 Conflict` when the task job has already started and can no longer be canceled
+- `409 Conflict` when the task job has already completed or failed
+
+---
+
+### `DELETE /api/jobs/create-task/:id`
+
+Soft-deletes a local agent-task job without removing its database row. If the task is waiting or running, cancellation is requested first. Deleted jobs are omitted from active task listings.
+
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Success response
+
+Status: `200 OK`
+
+Returns the updated job payload documented for `GET /api/jobs/create-task/:id`, with `deletedAt` set.
+
+#### Common statuses
+
+- `404 Not Found` when the task job id is unknown
 
 ---
 
@@ -1034,6 +1054,26 @@ Returns the agent task job record from the local database, including its repo, t
 curl https://your-host.example.com/api/agents/repos/facebook/react/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
   -H "Authorization: Bearer <token>"
 ```
+
+---
+
+### `DELETE /api/agents/repos/:owner/:repo/tasks/:task_id`
+
+Soft-deletes a single locally-managed agent task job for a repository. If it is waiting or running, cancellation is requested first. The task row and captured output remain in the database.
+
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Success response
+
+Status: `200 OK`
+
+Returns the updated agent task job record.
+
+#### Common statuses
+
+- `400 Bad Request` when the repository path or task id is invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `404 Not Found` when no agent task job with the given id exists for the specified repository
 
 ---
 
@@ -2283,6 +2323,8 @@ Status: `200 OK`
 | `error` | `string` | Present when the job failed. |
 | `taskDelayMs` | `number` | Delay configured when the task was queued. |
 | `scheduledAt` | `string \| null` | Scheduled start timestamp for delayed tasks. |
+| `cancelRequestedAt` | `string \| null` | Time cancellation was requested, otherwise `null`. |
+| `deletedAt` | `string \| null` | Time the task was soft-deleted, otherwise `null`. |
 | `createdAt` | `string` | Creation timestamp. |
 | `updatedAt` | `string` | Last update timestamp. |
 

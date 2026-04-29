@@ -88,6 +88,8 @@ Important response fields:
 - `pullRequestUrl` / `pullRequestNumber`: initialized draft pull request.
 - `output`: captured agent stdout/stderr or failure message.
 - `error`: failure details when `status` is `failed`.
+- `cancelRequestedAt`: set when a waiting or running task has been asked to stop.
+- `deletedAt`: set when a task has been soft-deleted; the database row is retained.
 
 ## How it works
 
@@ -96,7 +98,8 @@ Important response fields:
 3. The worker clones the repository, checks out `base_ref`, creates a new `fde-agent/...` branch, and creates an empty initialization commit containing the task text.
 4. The branch is pushed and a draft pull request is opened before the selected agent starts.
 5. Codex or opencode is launched on the prepared branch. The prompt tells the agent that the branch and pull request already exist and instructs it to commit and push progress to that branch.
-6. When the agent exits, the worker captures output, commits/pushes any remaining uncommitted changes, and marks the task `completed`; failures are stored as `failed`.
+6. While Codex/opencode is running, the worker polls the task row for cancellation. If cancellation is requested, it terminates the attached process group, stores `canceled`, and sends a Slack terminal notification with the cancellation details.
+7. When the agent exits normally, the worker captures output, commits/pushes any remaining uncommitted changes, and marks the task `completed`; failures are stored as `failed`.
 
 ## Docker Compose example
 

@@ -1,5 +1,9 @@
 import { spawn } from "child_process";
 import {
+  AgentTaskCanceledError,
+  signalChildProcessTree,
+} from "./agentTaskControl";
+import {
   commitAndPushFinalChanges,
   getOpencodeTaskCloneDir,
   type OpencodeCapturedLogs,
@@ -14,6 +18,8 @@ const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
 const DEFAULT_CODEX_TIMEOUT_MS = TWO_HOURS_IN_SECONDS * 1_000;
 const DEFAULT_OUTPUT_LIMIT = 1_000_000;
 const DEFAULT_LOG_FLUSH_INTERVAL_MS = 15_000;
+const DEFAULT_CANCELLATION_POLL_INTERVAL_MS = 2_000;
+const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 
 export class CodexExecutionError extends Error {
   constructor(
@@ -32,6 +38,9 @@ export async function executeCodexOnPreparedBranch(
 ): Promise<OpencodeCapturedLogs> {
   const cloneDir = getOpencodeTaskCloneDir(options);
   const logs = await runCodex(options, branch, cloneDir, callbacks);
+  if (await callbacks?.isCancellationRequested?.()) {
+    throw new AgentTaskCanceledError("Task canceled by request.", logs);
+  }
 
   try {
     await commitAndPushFinalChanges(cloneDir, options, branch);
@@ -64,6 +73,10 @@ async function runCodex(
     process.env.CODEX_LOG_FLUSH_INTERVAL_MS,
     DEFAULT_LOG_FLUSH_INTERVAL_MS
   );
+  const cancellationPollIntervalMs = parsePositiveInteger(
+    process.env.AGENT_TASK_CANCELLATION_POLL_INTERVAL_MS,
+    DEFAULT_CANCELLATION_POLL_INTERVAL_MS
+  );
   const args = buildCodexArgs(options, model, cwd);
 
   logger.info("Starting codex task", {
@@ -84,6 +97,7 @@ async function runCodex(
     cwd,
     env: { ...process.env },
     stdio: ["pipe", "pipe", "pipe"],
+    detached: true,
   });
 
   child.stdin?.end(prompt);
@@ -95,6 +109,8 @@ async function runCodex(
   let outputTruncated = false;
   let dirty = false;
   let timedOut = false;
+  let cancellationRequested = false;
+  let terminationStarted = false;
   let spawnError: Error | undefined;
   let flushError: Error | undefined;
   let intervalFlushPending = false;
@@ -105,6 +121,46 @@ async function runCodex(
     stdout: stdoutChunks.join(""),
     stderr: stderrChunks.join(""),
   });
+
+  const requestTermination = (reason: "cancel" | "timeout" | "flush-error"): void => {
+    if (terminationStarted) {
+      return;
+    }
+
+    terminationStarted = true;
+    logger.info("Terminating codex process", {
+      jobId: options.jobId,
+      repo: options.repo,
+      branch,
+      reason,
+      pid: child.pid,
+    });
+
+    try {
+      signalChildProcessTree(child, "SIGTERM");
+    } catch (error) {
+      logger.warn("Failed to send SIGTERM to codex process", {
+        jobId: options.jobId,
+        repo: options.repo,
+        branch,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const killHandle = setTimeout(() => {
+      try {
+        signalChildProcessTree(child, "SIGKILL");
+      } catch (error) {
+        logger.warn("Failed to send SIGKILL to codex process", {
+          jobId: options.jobId,
+          repo: options.repo,
+          branch,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }, DEFAULT_TERMINATION_GRACE_MS);
+    killHandle.unref?.();
+  };
 
   const queueFlush = (force = false): Promise<void> => {
     flushChain = flushChain
@@ -119,9 +175,7 @@ async function runCodex(
       })
       .catch((error) => {
         flushError = error instanceof Error ? error : new Error(String(error));
-        if (!child.killed) {
-          child.kill();
-        }
+        requestTermination("flush-error");
       });
 
     return flushChain;
@@ -141,11 +195,30 @@ async function runCodex(
 
   const timeoutHandle = setTimeout(() => {
     timedOut = true;
-    if (!child.killed) {
-      child.kill();
-    }
+    requestTermination("timeout");
   }, timeout);
   timeoutHandle.unref?.();
+
+  const cancellationInterval = setInterval(() => {
+    if (!callbacks?.isCancellationRequested || cancellationRequested) {
+      return;
+    }
+
+    void Promise.resolve(callbacks.isCancellationRequested())
+      .then((requested) => {
+        if (!requested || cancellationRequested) {
+          return;
+        }
+
+        cancellationRequested = true;
+        requestTermination("cancel");
+      })
+      .catch((error) => {
+        flushError = error instanceof Error ? error : new Error(String(error));
+        requestTermination("flush-error");
+      });
+  }, cancellationPollIntervalMs);
+  cancellationInterval.unref?.();
 
   const appendChunk = (target: "stdout" | "stderr", chunk: string): void => {
     if (!chunk || flushError) {
@@ -201,6 +274,7 @@ async function runCodex(
   );
 
   clearInterval(flushInterval);
+  clearInterval(cancellationInterval);
   clearTimeout(timeoutHandle);
   await queueFlush(true);
 
@@ -211,6 +285,10 @@ async function runCodex(
 
   if (spawnError) {
     throw new CodexExecutionError(spawnError.message, logs);
+  }
+
+  if (cancellationRequested) {
+    throw new AgentTaskCanceledError("Task canceled by request.", logs);
   }
 
   if (timedOut) {
