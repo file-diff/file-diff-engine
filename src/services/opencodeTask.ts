@@ -822,7 +822,7 @@ export function buildPullRequestBody(
     );
     if (options.pullRequestCompletionMode === "AutoMerge") {
       details.push(
-        "Completion behavior: this task pull request starts as a draft and auto-merge will be enabled after the agent run completes successfully."
+        'Completion behavior: this task pull request starts as a draft. After the agent run completes successfully, it will be marked ready and auto-merge will be enabled if the repository setting "Allow auto-merge" is enabled.'
       );
     } else if (options.pullRequestCompletionMode === "AutoReady") {
       details.push(

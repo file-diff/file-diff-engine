@@ -41,7 +41,7 @@ describe("task messaging helpers", () => {
     expect(body).toContain("Web search: `enabled`");
     expect(body).toContain("Pull request completion mode: `AutoMerge`");
     expect(body).toContain(
-      "Completion behavior: this task pull request starts as a draft and auto-merge will be enabled after the agent run completes successfully."
+      'Completion behavior: this task pull request starts as a draft. After the agent run completes successfully, it will be marked ready and auto-merge will be enabled if the repository setting "Allow auto-merge" is enabled.'
     );
   });
 
