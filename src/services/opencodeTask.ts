@@ -470,7 +470,7 @@ async function runOpencode(
 
   if (exit.code === 0 && !opencodeSessionId) {
     throw new OpencodeExecutionError(
-      "Unable to determine the opencode session id for the completed run.",
+      "Unable to determine the opencode session id for the completed run. The session may not have been created or session detection may have failed.",
       logs
     );
   }
@@ -565,7 +565,9 @@ async function exportOpencodeSession(
 ): Promise<unknown> {
   const output = await runOpencodeCommand(cwd, ["export", sessionId], env);
   if (!output) {
-    throw new Error(`opencode export returned no output for session '${sessionId}'.`);
+    throw new Error(
+      `opencode export returned no output for session '${sessionId}'. The session may not exist yet or the CLI may have failed to export it.`
+    );
   }
 
   try {

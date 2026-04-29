@@ -629,7 +629,10 @@ function parseStoredJsonValue(value: unknown): unknown {
   try {
     return JSON.parse(text) as unknown;
   } catch {
-    return text;
+    logger.warn("Failed to parse stored JSON value from agent task job row.", {
+      valuePreview: text.slice(0, 200),
+    });
+    return undefined;
   }
 }
 
