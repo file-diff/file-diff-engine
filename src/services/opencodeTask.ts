@@ -681,7 +681,7 @@ function getGitCommandEnv(githubKey?: string): NodeJS.ProcessEnv {
 function getRepositoryUrl(repo: string): string {
   return repo.startsWith("https://github.com/")
     ? repo
-    : `https://github.com/${repo.replace(/\.git$/, "")}.git`;
+    : `https://github.com/${repo.replace(/\.git$/, "")}`;
 }
 
 function buildTaskBranchName(jobId: string): string {

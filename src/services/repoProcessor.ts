@@ -165,7 +165,7 @@ export function getRepositoryUrl(repo: string): string {
     return repo;
   }
 
-  return `https://github.com/${repo}.git`;
+  return `https://github.com/${repo}`;
 }
 
 export async function resolveRefToCommitHash(
