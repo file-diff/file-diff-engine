@@ -34,9 +34,21 @@ export async function applyPullRequestCompletionMode(options: {
     return actions;
   }
 
-  await githubApi.enablePullRequestAutoMerge(options.repo, options.pullNumber, {
-    token: options.token,
-  });
+  try {
+    await githubApi.enablePullRequestAutoMerge(options.repo, options.pullNumber, {
+      token: options.token,
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("Auto merge is not allowed for this repository")
+    ) {
+      throw new Error(
+        `GitHub auto-merge is disabled for repository '${options.repo}'. Enable the repository setting "Allow auto-merge" before using pull request completion mode AutoMerge.`
+      );
+    }
+    throw error;
+  }
   actions.push(`Enabled auto-merge for pull request #${options.pullNumber}.`);
   return actions;
 }

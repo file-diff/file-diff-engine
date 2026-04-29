@@ -5,8 +5,8 @@ import { buildOpencodePrompt, buildPullRequestBody } from "./opencodeTask";
 
 describe("task messaging helpers", () => {
   it("includes the pull request report instruction in codex prompts", () => {
-    expect(buildCodexPrompt("Fix the bug", "fde-agent/test", 42)).toContain(
-      "After done comment on pull request with detailed summary report"
+    expect(buildCodexPrompt("Fix the bug", "fde-agent/test")).toContain(
+      "5. After done comment on pull request with detailed summary report"
     );
   });
 
@@ -49,6 +49,9 @@ describe("task messaging helpers", () => {
     expect(body).toContain("Verbosity: `medium`");
     expect(body).toContain("Web search: `enabled`");
     expect(body).toContain("Pull request completion mode: `AutoMerge`");
+    expect(body).toContain(
+      'Completion behavior: this task pull request starts as a draft. After the agent run completes successfully, it will be marked ready and auto-merge will be enabled if the repository setting "Allow auto-merge" is enabled.'
+    );
   });
 
   it("uses the pull request link in Slack notifications when available", () => {

@@ -75,6 +75,31 @@ describe("applyPullRequestCompletionMode", () => {
     ]);
   });
 
+  it("surfaces a clear error when repository auto-merge is disabled", async () => {
+    vi.mocked(githubApi.findOpenPullRequestByHeadBranch).mockResolvedValue({
+      number: 100,
+      title: "Task PR",
+      url: "https://github.com/file-diff/file-diff-engine/pull/100",
+      state: "open",
+      draft: false,
+      baseBranch: "main",
+    });
+    vi.mocked(githubApi.enablePullRequestAutoMerge).mockRejectedValue(
+      new Error("Auto merge is not allowed for this repository")
+    );
+
+    await expect(
+      applyPullRequestCompletionMode({
+        repo: "file-diff/file-diff-engine",
+        branch: "fde-agent/test",
+        pullNumber: 100,
+        mode: "AutoMerge",
+      })
+    ).rejects.toThrow(
+      'GitHub auto-merge is disabled for repository \'file-diff/file-diff-engine\'. Enable the repository setting "Allow auto-merge" before using pull request completion mode AutoMerge.'
+    );
+  });
+
   it("persists pull request completion mode on task jobs", async () => {
     const database = await createTestDatabase();
     const repository = new JobRepository(database);

@@ -833,6 +833,15 @@ export function buildPullRequestBody(
     details.push(
       `Pull request completion mode: \`${options.pullRequestCompletionMode}\``
     );
+    if (options.pullRequestCompletionMode === "AutoMerge") {
+      details.push(
+        'Completion behavior: this task pull request starts as a draft. After the agent run completes successfully, it will be marked ready and auto-merge will be enabled if the repository setting "Allow auto-merge" is enabled.'
+      );
+    } else if (options.pullRequestCompletionMode === "AutoReady") {
+      details.push(
+        "Completion behavior: this task pull request starts as a draft and will be marked ready for review after the agent run completes successfully."
+      );
+    }
   }
 
   return [
