@@ -9,6 +9,7 @@ export interface AgentTaskSlackNotification {
   status: string;
   branch: string | null;
   durationMs: number;
+  pullRequestUrl?: string;
   pullRequestActions?: string[];
   details?: string;
 }
@@ -43,15 +44,16 @@ export async function sendAgentTaskFinishedSlackNotification(
   }
 }
 
-function buildAgentTaskFinishedSlackMessage(
+export function buildAgentTaskFinishedSlackMessage(
   notification: AgentTaskSlackNotification
 ): string {
   const repo = `${notification.owner}/${notification.repoName}`;
-  const taskUrl = buildAgentTaskUrl(
+  const linkUrl = notification.pullRequestUrl?.trim() || buildAgentTaskUrl(
     notification.owner,
     notification.repoName,
     notification.taskId
   );
+  const linkLabel = notification.pullRequestUrl?.trim() ? "Pull request" : "Task";
   const lines = [
     buildAgentTaskHeadline(repo, notification.status),
     `Status: ${notification.status}`,
@@ -66,7 +68,7 @@ function buildAgentTaskFinishedSlackMessage(
   }
 
   lines.push(`Duration: ${formatDuration(notification.durationMs)}`);
-  lines.push(`Task: ${taskUrl}`);
+  lines.push(`${linkLabel}: ${linkUrl}`);
 
   if (notification.pullRequestActions?.length) {
     lines.push("Pull request actions:");

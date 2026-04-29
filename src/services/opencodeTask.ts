@@ -13,6 +13,7 @@ import type {
   CodexReasoningEffort,
   CodexReasoningSummary,
   CodexVerbosity,
+  PullRequestCompletionMode,
 } from "../types";
 import { createLogger } from "../utils/logger";
 
@@ -52,6 +53,7 @@ export interface OpencodeTaskOptions {
   reasoningSummary?: CodexReasoningSummary;
   verbosity?: CodexVerbosity;
   codexWebSearch?: boolean;
+  pullRequestCompletionMode?: PullRequestCompletionMode;
   githubKey?: string;
   deepseekApiKey?: string;
   workDir?: string;
@@ -172,12 +174,7 @@ export async function prepareOpencodeTaskBranch(
   const pullRequest = await createPullRequest(repo, branch, baseRef, {
     token: githubKey,
     title: buildPullRequestTitle(options.problemStatement),
-    body: buildPullRequestBody(
-      options.problemStatement,
-      branch,
-      options.model,
-      options.taskRunner ?? "opencode"
-    ),
+    body: buildPullRequestBody(options, branch),
     draft: true,
   });
 
@@ -780,30 +777,68 @@ function buildPullRequestTitle(problemStatement: string): string {
   return `Agent task: ${problemStatement.replace(/\s+/g, " ").trim().slice(0, 80)}`;
 }
 
-function buildPullRequestBody(
-  problemStatement: string,
-  branch: string,
-  model: AgentTaskModel,
-  taskRunner: AgentTaskRunner
+export function buildPullRequestBody(
+  options: Pick<
+    OpencodeTaskOptions,
+    | "baseRef"
+    | "problemStatement"
+    | "model"
+    | "taskRunner"
+    | "reasoningEffort"
+    | "reasoningSummary"
+    | "verbosity"
+    | "codexWebSearch"
+    | "pullRequestCompletionMode"
+  >,
+  branch: string
 ): string {
+  const taskRunner = options.taskRunner ?? "opencode";
+  const details = [
+    `Branch: \`${branch}\``,
+    `Base branch: \`${options.baseRef}\``,
+    `Task runner: \`${taskRunner}\``,
+    `Model: \`${options.model}\``,
+  ];
+
+  if (options.reasoningEffort) {
+    details.push(`Reasoning effort: \`${options.reasoningEffort}\``);
+  }
+
+  if (options.reasoningSummary) {
+    details.push(`Reasoning summary: \`${options.reasoningSummary}\``);
+  }
+
+  if (options.verbosity) {
+    details.push(`Verbosity: \`${options.verbosity}\``);
+  }
+
+  if (options.codexWebSearch !== undefined) {
+    details.push(`Web search: \`${options.codexWebSearch ? "enabled" : "disabled"}\``);
+  }
+
+  if (options.pullRequestCompletionMode) {
+    details.push(
+      `Pull request completion mode: \`${options.pullRequestCompletionMode}\``
+    );
+  }
+
   return [
     `This pull request was initialized by file-diff-engine for a ${taskRunner}-backed agent task.`,
     "",
-    `Branch: \`${branch}\``,
-    `Task runner: \`${taskRunner}\``,
-    `Model: \`${model}\``,
+    ...details,
     "",
     "Task:",
-    problemStatement,
+    options.problemStatement,
   ].join("\n");
 }
 
-function buildOpencodePrompt(problemStatement: string, branch: string): string {
+export function buildOpencodePrompt(problemStatement: string, branch: string): string {
   return [
     `You are already on branch '${branch}'.`,
     "Implement the requested changes in this repository.",
     "Commit coherent changes and push the branch as you make progress.",
     "Do not create another branch or pull request; the pull request already exists.",
+    'After done comment report about task to current pull request.',
     "",
     problemStatement,
   ].join("\n");
