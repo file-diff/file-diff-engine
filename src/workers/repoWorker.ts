@@ -8,6 +8,7 @@ import { processRepository } from "../services/repoProcessor";
 import {
   executeOpencodeOnPreparedBranch,
   prepareOpencodeTaskBranch,
+  type OpencodeCapturedLogs,
 } from "../services/opencodeTask";
 import { applyPullRequestCompletionMode } from "../services/pullRequestCompletion";
 import { QUEUE_NAME } from "../services/queue";
@@ -19,12 +20,6 @@ const REDIS_PORT = parseInt(process.env.REDIS_PORT || "6379", 10);
 
 const TMP_DIR = process.env.TMP_DIR || "tmp";
 const logger = createLogger("repo-worker");
-
-interface OpencodeCapturedLogs {
-  output: string;
-  stdout: string;
-  stderr: string;
-}
 
 export async function createWorker(db?: DatabaseClient): Promise<Worker> {
   const database = db ?? (await getDatabase());
@@ -158,14 +153,7 @@ async function handleOpencodeTaskJob(job: Job, repo: JobRepository): Promise<voi
       lastCapturedLogs = logs;
       await repo.updateAgentTaskLogs(jobId, logs);
     };
-    const runPreparedBranch = executeOpencodeOnPreparedBranch as unknown as ((
-      options: typeof taskOptions,
-      branch: string,
-      callbacks?: {
-        onLogsUpdated?: (logs: OpencodeCapturedLogs) => Promise<void> | void;
-      }
-    ) => Promise<OpencodeCapturedLogs>);
-    const logs = await runPreparedBranch(
+    const logs = await executeOpencodeOnPreparedBranch(
       taskOptions,
       prepared.branch,
       { onLogsUpdated: persistLogs }
@@ -237,7 +225,10 @@ function isOpencodeCapturedLogs(value: unknown): value is OpencodeCapturedLogs {
   return (
     typeof logs.output === "string" &&
     typeof logs.stdout === "string" &&
-    typeof logs.stderr === "string"
+    typeof logs.stderr === "string" &&
+    (logs.opencodeSessionId === undefined ||
+      logs.opencodeSessionId === null ||
+      typeof logs.opencodeSessionId === "string")
   );
 }
 

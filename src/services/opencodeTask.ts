@@ -12,6 +12,7 @@ const TWO_HOURS_IN_SECONDS = 2 * 60 * 60;
 const DEFAULT_OPENCODE_TIMEOUT_MS = TWO_HOURS_IN_SECONDS * 1_000;
 const DEFAULT_OUTPUT_LIMIT = 1_000_000;
 const DEFAULT_LOG_FLUSH_INTERVAL_MS = 15_000;
+const DEFAULT_SESSION_EXPORT_POLL_INTERVAL_MS = 15_000;
 const DEFAULT_GIT_AUTHOR_NAME = "file-diff-agent";
 const DEFAULT_GIT_AUTHOR_EMAIL = "file-diff-agent@users.noreply.github.com";
 
@@ -19,6 +20,8 @@ export interface OpencodeCapturedLogs {
   output: string;
   stdout: string;
   stderr: string;
+  opencodeSessionId?: string;
+  opencodeSessionExport?: unknown;
 }
 
 export interface OpencodeExecutionCallbacks {
@@ -214,6 +217,25 @@ async function runOpencode(
     process.env.OPENCODE_LOG_FLUSH_INTERVAL_MS,
     DEFAULT_LOG_FLUSH_INTERVAL_MS
   );
+  const sessionExportPollIntervalMs = parsePositiveInteger(
+    process.env.OPENCODE_SESSION_EXPORT_POLL_INTERVAL_MS,
+    DEFAULT_SESSION_EXPORT_POLL_INTERVAL_MS
+  );
+  const opencodeEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    DEEPSEEK_API_KEY: deepseekApiKey,
+  };
+  let sessionIdsBefore: string[] = [];
+  try {
+    sessionIdsBefore = await listOpencodeSessionIds(cwd, opencodeEnv);
+  } catch (error) {
+    logger.warn("Failed to list opencode sessions before starting the task.", {
+      jobId: options.jobId,
+      repo: options.repo,
+      branch,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   logger.info("Starting opencode task", {
     jobId: options.jobId,
@@ -222,47 +244,14 @@ async function runOpencode(
     model: options.model,
     timeout,
     logFlushIntervalMs,
+    sessionExportPollIntervalMs,
   });
-
-  /* TODO */
-  const listSessionBefore = "opencode session list"
-
-  const extractedSessionIDBefore: string | null;
-  //extractedSessionID = ...
 
   const child = spawn(getOpencodeBin(), args, {
     cwd,
-    env: {
-      ...process.env,
-      DEEPSEEK_API_KEY: deepseekApiKey,
-    },
+    env: opencodeEnv,
     stdio: ["ignore", "pipe", "pipe"],
   });
-
-  /* TODO */
-  const listSessionAfter = "opencode session list"
-
-  const extractedSessionIDAfter: string | null;
-
-  // Example info how the output looks
-  // opencode session list > out.txt
-  // $ cat out.txt
-  // Session ID                      Title                                   Updated
-  // ───────────────────────────────────────────────────────────────────────────────
-  // ses_226f167d4ffeE5CmXZjCl54HYL  Creating documentation                  1:45 PM
-  // ses_227113e87ffe85L4H52wmCHwGg  New session - 2026-04-29T11:10:19.000Z  1:10 PM
-  // ses_22e901954ffeb8ZyOlzqoh92Fg  Create PR with spec.md                  2:14 AM · 4/28/2026
-  // ses_22e929234ffe2bg9C2ypWUMXJd  Writing project spec into spec.md       2:12 AM · 4/28/2026
-
-  /* TODO - extract session id from last entry */
-
-  if (extractedSessionIDAfter !== extractedSessionIDBefore) {
-    //success
-  } else {
-    //failed to extract session ID
-    //TODO EXIT
-  }
-
 
   const stdoutChunks: string[] = [];
   const stderrChunks: string[] = [];
@@ -271,15 +260,23 @@ async function runOpencode(
   let outputTruncated = false;
   let dirty = false;
   let timedOut = false;
+  let opencodeSessionId: string | null = null;
+  let opencodeSessionExport: unknown = undefined;
+  let lastSerializedSessionExport: string | null = null;
+  let lastObservedSessionCount = sessionIdsBefore.length;
   let spawnError: Error | undefined;
   let flushError: Error | undefined;
   let intervalFlushPending = false;
   let flushChain = Promise.resolve();
+  let sessionSyncPending = false;
+  let sessionSyncChain = Promise.resolve();
 
   const buildLogs = (): OpencodeCapturedLogs => ({
     output: outputChunks.join(""),
     stdout: stdoutChunks.join(""),
     stderr: stderrChunks.join(""),
+    opencodeSessionId: opencodeSessionId ?? undefined,
+    opencodeSessionExport,
   });
 
   const queueFlush = (force = false): Promise<void> => {
@@ -303,6 +300,77 @@ async function runOpencode(
     return flushChain;
   };
 
+  const syncSessionState = async (): Promise<void> => {
+    if (flushError) {
+      return;
+    }
+
+    if (!opencodeSessionId) {
+      try {
+        const sessionIdsAfter = await listOpencodeSessionIds(cwd, opencodeEnv);
+        lastObservedSessionCount = sessionIdsAfter.length;
+        const detectedSessionId = findNewOpencodeSessionId(
+          sessionIdsBefore,
+          sessionIdsAfter
+        );
+        if (detectedSessionId) {
+          opencodeSessionId = detectedSessionId;
+          dirty = true;
+          logger.info("Detected opencode session", {
+            jobId: options.jobId,
+            repo: options.repo,
+            branch,
+            opencodeSessionId,
+          });
+        }
+      } catch (error) {
+        logger.warn("Failed to list opencode sessions", {
+          jobId: options.jobId,
+          repo: options.repo,
+          branch,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
+    }
+
+    if (!opencodeSessionId) {
+      return;
+    }
+
+    try {
+      const exportedSession = await exportOpencodeSession(
+        cwd,
+        opencodeSessionId,
+        opencodeEnv
+      );
+      const serializedSession = JSON.stringify(exportedSession);
+      if (serializedSession !== lastSerializedSessionExport) {
+        opencodeSessionExport = exportedSession;
+        lastSerializedSessionExport = serializedSession;
+        dirty = true;
+      }
+    } catch (error) {
+      logger.warn("Failed to export opencode session", {
+        jobId: options.jobId,
+        repo: options.repo,
+        branch,
+        opencodeSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  const queueSessionSync = (): Promise<void> => {
+    sessionSyncChain = sessionSyncChain
+      .catch(() => undefined)
+      .then(async () => {
+        await syncSessionState();
+      });
+
+    return sessionSyncChain;
+  };
+
   const flushInterval = setInterval(() => {
     if (intervalFlushPending || flushError) {
       return;
@@ -314,6 +382,18 @@ async function runOpencode(
     });
   }, logFlushIntervalMs);
   flushInterval.unref?.();
+
+  const sessionExportInterval = setInterval(() => {
+    if (sessionSyncPending || flushError) {
+      return;
+    }
+
+    sessionSyncPending = true;
+    void queueSessionSync().finally(() => {
+      sessionSyncPending = false;
+    });
+  }, sessionExportPollIntervalMs);
+  sessionExportInterval.unref?.();
 
   const timeoutHandle = setTimeout(() => {
     timedOut = true;
@@ -364,6 +444,8 @@ async function runOpencode(
     appendChunk("stderr", chunk);
   });
 
+  void queueSessionSync();
+
   child.on("error", (error) => {
     spawnError = error;
   });
@@ -377,7 +459,9 @@ async function runOpencode(
   );
 
   clearInterval(flushInterval);
+  clearInterval(sessionExportInterval);
   clearTimeout(timeoutHandle);
+  await queueSessionSync();
   await queueFlush(true);
 
   const logs = buildLogs();
@@ -392,6 +476,13 @@ async function runOpencode(
   if (timedOut) {
     throw new OpencodeExecutionError(
       `opencode timed out after ${timeout}ms.`,
+      logs
+    );
+  }
+
+  if (exit.code === 0 && !opencodeSessionId) {
+    throw new OpencodeExecutionError(
+      `Failed to detect an opencode session for a successful run. Sessions before start: ${sessionIdsBefore.length}. Last observed during polling: ${lastObservedSessionCount}. Verify that the opencode CLI created a session and that session list/export commands are available in this environment.`,
       logs
     );
   }
@@ -456,6 +547,78 @@ async function runGit(
     maxBuffer: 10 * 1024 * 1024,
   });
   return result.stdout.trim();
+}
+
+async function runOpencodeCommand(
+  cwd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv
+): Promise<string> {
+  const result = await execFileAsync(getOpencodeBin(), args, {
+    cwd,
+    env,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  return result.stdout.trim();
+}
+
+async function listOpencodeSessionIds(
+  cwd: string,
+  env: NodeJS.ProcessEnv
+): Promise<string[]> {
+  const output = await runOpencodeCommand(cwd, ["session", "list"], env);
+  return parseOpencodeSessionIds(output);
+}
+
+async function exportOpencodeSession(
+  cwd: string,
+  sessionId: string,
+  env: NodeJS.ProcessEnv
+): Promise<unknown> {
+  const output = await runOpencodeCommand(cwd, ["export", sessionId], env);
+  if (!output) {
+    throw new Error(
+      `opencode export returned no output for session '${sessionId}'. The session may not exist yet or the CLI may have failed to export it.`
+    );
+  }
+
+  try {
+    return JSON.parse(output) as unknown;
+  } catch (error) {
+    throw new Error(
+      `Failed to parse opencode export JSON for session '${sessionId}': ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+export function parseOpencodeSessionIds(output: string): string[] {
+  const sessionIds: string[] = [];
+  const seen = new Set<string>();
+
+  for (const line of output.split(/\r?\n/)) {
+    const match = line.match(/\b(ses_[A-Za-z0-9]+)\b/);
+    if (!match) {
+      continue;
+    }
+
+    const sessionId = match[1];
+    if (!seen.has(sessionId)) {
+      seen.add(sessionId);
+      sessionIds.push(sessionId);
+    }
+  }
+
+  return sessionIds;
+}
+
+export function findNewOpencodeSessionId(
+  beforeSessionIds: readonly string[],
+  afterSessionIds: readonly string[]
+): string | null {
+  const knownSessionIds = new Set(beforeSessionIds);
+  return afterSessionIds.find((sessionId) => !knownSessionIds.has(sessionId)) ?? null;
 }
 
 function normalizeGitRef(value: string, fieldName: string): string {

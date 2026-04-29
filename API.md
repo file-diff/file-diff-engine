@@ -1010,7 +1010,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 
 Status: `200 OK`
 
-Returns the agent task job record from the local database, including its repo, status, model, branch, pull request information, combined `output`, split `stdout`/`stderr`, and timestamps. While opencode is running, logs are flushed into the database about every 15 seconds.
+Returns the agent task job record from the local database, including its repo, status, model, branch, pull request information, combined `output`, split `stdout`/`stderr`, the detected opencode session id, the latest exported opencode session JSON, and timestamps. While opencode is running, logs and session exports are flushed into the database about every 15 seconds.
 
 #### Common statuses
 
@@ -2253,6 +2253,8 @@ Status: `200 OK`
 | `output` | `string` | Combined captured opencode stdout/stderr, updated roughly every 15 seconds while the task is running. |
 | `stdout` | `string` | Captured opencode stdout collected so far. |
 | `stderr` | `string` | Captured opencode stderr collected so far. |
+| `opencodeSessionId` | `string` | Detected opencode session id when available. |
+| `opencodeSessionExport` | `object` | Latest JSON returned by `opencode export <sessionId>` when available. |
 | `error` | `string` | Present when the job failed. |
 | `taskDelayMs` | `number` | Delay configured when the task was queued. |
 | `scheduledAt` | `string \| null` | Scheduled start timestamp for delayed tasks. |
