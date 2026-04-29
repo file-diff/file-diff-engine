@@ -1070,6 +1070,7 @@ Returns the updated job payload documented for `GET /api/jobs/create-task/:id`, 
 
 Returns the details of a single locally-managed agent task job (Codex/opencode based).
 The `:task_id` is the local agent task job id returned from `POST /api/jobs/create-task`.
+For Codex tasks, `:task_id` can also be the captured Codex `session id` from the startup banner.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -1077,7 +1078,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 
 Status: `200 OK`
 
-Returns the agent task job record from the local database, including its repo, task runner, model, Codex option settings when present, branch, pull request information, combined `output`, split `stdout`/`stderr`, the detected opencode session id, the latest exported opencode session JSON, and timestamps. While opencode is running, logs and session exports are flushed into the database about every 15 seconds.
+Returns the agent task job record from the local database, including its repo, task runner, model, Codex option settings when present, branch, pull request information, combined `output`, split `stdout`/`stderr`, detected opencode or Codex session ids, exported session details, and timestamps. While an agent is running, logs and session details are flushed into the database about every 15 seconds.
 
 #### Common statuses
 
@@ -2358,6 +2359,9 @@ Status: `200 OK`
 | `stderr` | `string` | Captured agent stderr collected so far. |
 | `opencodeSessionId` | `string` | Detected opencode session id when available. |
 | `opencodeSessionExport` | `object` | Latest JSON returned by `opencode export <sessionId>` when available. |
+| `codexSessionId` | `string` | Captured Codex startup `session id` when available. |
+| `codexSessionFilePath` | `string` | Matching Codex rollout JSONL path under `~/.codex/sessions` when found. |
+| `codexSessionExport` | `object` | Codex session details, including `sessionId`, `sessionFilePath`, and `testDetails` lines grep-matched from the rollout JSONL. |
 | `error` | `string` | Present when the job failed. |
 | `taskDelayMs` | `number` | Delay configured when the task was queued. |
 | `scheduledAt` | `string \| null` | Scheduled start timestamp for delayed tasks. |
