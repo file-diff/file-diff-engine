@@ -383,9 +383,9 @@ export interface CreateTaskRequest {
   model?: AgentTaskModel;
   /** Local agent implementation to run. Defaults to codex. */
   task?: AgentTaskRunner;
-  /** Optional reasoning effort for Codex tasks. */
+  /** Optional reasoning effort for Codex tasks. Defaults to medium. */
   reasoning_effort?: CodexReasoningEffort;
-  /** Optional reasoning summary setting for Codex tasks. */
+  /** Optional reasoning summary setting for Codex tasks. Defaults to auto. */
   reasoning_summary?: CodexReasoningSummary;
   /** Optional output verbosity for Codex tasks. */
   verbosity?: CodexVerbosity;

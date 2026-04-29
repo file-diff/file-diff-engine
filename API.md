@@ -904,8 +904,8 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | `create_pull_request` | `boolean` | No | Compatibility field. When provided it must be `true`, because agent tasks always create a draft pull request before execution starts. |
 | `pull_request_completion_mode` | `string` | No | Follow-up PR action after a successful run: `None`, `AutoReady`, or `AutoMerge`. `AutoMerge` enables GitHub auto-merge on the created pull request. |
 | `base_ref` | `string` | Yes | Base ref for new branch/PR. |
-| `reasoning_effort` | `"low" \| "medium" \| "high" \| "xhigh"` | No | Codex-only reasoning effort override. |
-| `reasoning_summary` | `"none" \| "auto" \| "concise" \| "detailed"` | No | Codex-only reasoning summary setting. |
+| `reasoning_effort` | `"low" \| "medium" \| "high" \| "xhigh"` | No | Codex-only reasoning effort override. Defaults to `medium`. |
+| `reasoning_summary` | `"none" \| "auto" \| "concise" \| "detailed"` | No | Codex-only reasoning summary setting. Defaults to `auto`. |
 | `verbosity` | `"low" \| "medium" \| "high"` | No | Codex-only output verbosity override. |
 | `codex_web_search` | `boolean` | No | Codex-only flag to enable the Codex web search tool. |
 | `task_delay_ms` | `integer` | No | Optional non-negative delay in milliseconds before the remote GitHub task is created. |
@@ -938,8 +938,6 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
     "model": "gpt-5.2-codex",
     "create_pull_request": true,
     "pull_request_completion_mode": "AutoMerge",
-    "reasoning_effort": "high",
-    "reasoning_summary": "auto",
     "verbosity": "medium",
     "codex_web_search": true,
     "task_delay_ms": 60000
@@ -2244,8 +2242,8 @@ Admin bearer auth is required.
 | `model` | `string` | No | Model for the selected task runner. Codex defaults to `CODEX_MODEL` or `gpt-5.2-codex`; opencode defaults to `deepseek-v4-flash` and only accepts `deepseek-v4-flash` or `deepseek-v4-pro`. |
 | `create_pull_request` | `boolean` | No | Compatibility field. When provided it must be `true`, because agent tasks always create a draft pull request. |
 | `pull_request_completion_mode` | `"None" \| "AutoReady" \| "AutoMerge"` | No | Follow-up PR action after a successful run. `AutoMerge` enables GitHub auto-merge on the created pull request. |
-| `reasoning_effort` | `"low" \| "medium" \| "high" \| "xhigh"` | No | Codex-only reasoning effort override. |
-| `reasoning_summary` | `"none" \| "auto" \| "concise" \| "detailed"` | No | Codex-only reasoning summary setting. |
+| `reasoning_effort` | `"low" \| "medium" \| "high" \| "xhigh"` | No | Codex-only reasoning effort override. Defaults to `medium`. |
+| `reasoning_summary` | `"none" \| "auto" \| "concise" \| "detailed"` | No | Codex-only reasoning summary setting. Defaults to `auto`. |
 | `verbosity` | `"low" \| "medium" \| "high"` | No | Codex-only output verbosity override. |
 | `codex_web_search` | `boolean` | No | Codex-only flag to enable the Codex web search tool. |
 | `task_delay_ms` | `number` | No | Non-negative delay before the queued worker starts. |
@@ -2272,8 +2270,6 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
     "problem_statement": "Implement the requested change",
     "task": "codex",
     "model": "gpt-5.2-codex",
-    "reasoning_effort": "high",
-    "reasoning_summary": "auto",
     "verbosity": "medium"
   }'
 ```
