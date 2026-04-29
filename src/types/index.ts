@@ -452,6 +452,9 @@ export interface AgentTaskJobSummary {
   taskStatus?: string;
   opencodeSessionId?: string;
   opencodeSessionExport?: unknown;
+  codexSessionId?: string;
+  codexSessionFilePath?: string;
+  codexSessionExport?: unknown;
   taskDelayMs: number;
   scheduledAt: string | null;
   cancelRequestedAt: string | null;

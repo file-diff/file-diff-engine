@@ -28,6 +28,15 @@ describe("JobRepository", () => {
         title: "Agent session",
         messages: [{ role: "assistant", content: "done" }],
       },
+      codexSessionId: "019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf",
+      codexSessionFilePath:
+        "/home/ubuntu/.codex/sessions/2026/04/29/rollout.jsonl",
+      codexSessionExport: {
+        sessionId: "019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf",
+        sessionFilePath:
+          "/home/ubuntu/.codex/sessions/2026/04/29/rollout.jsonl",
+        testDetails: ["{\"message\":\"npm test passed\"}"],
+      },
     });
 
     await expect(repository.getAgentTaskJob("job-1")).resolves.toMatchObject({
@@ -43,6 +52,24 @@ describe("JobRepository", () => {
         title: "Agent session",
         messages: [{ role: "assistant", content: "done" }],
       },
+      codexSessionId: "019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf",
+      codexSessionFilePath:
+        "/home/ubuntu/.codex/sessions/2026/04/29/rollout.jsonl",
+      codexSessionExport: {
+        sessionId: "019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf",
+        sessionFilePath:
+          "/home/ubuntu/.codex/sessions/2026/04/29/rollout.jsonl",
+        testDetails: ["{\"message\":\"npm test passed\"}"],
+      },
+    });
+
+    await expect(
+      repository.getAgentTaskJobByIdOrCodexSessionId(
+        "019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf"
+      )
+    ).resolves.toMatchObject({
+      id: "job-1",
+      codexSessionId: "019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf",
     });
   });
 

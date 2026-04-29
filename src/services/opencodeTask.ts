@@ -35,6 +35,9 @@ export interface OpencodeCapturedLogs {
   stderr: string;
   opencodeSessionId?: string;
   opencodeSessionExport?: unknown;
+  codexSessionId?: string;
+  codexSessionFilePath?: string;
+  codexSessionExport?: unknown;
 }
 
 export interface OpencodeExecutionCallbacks {

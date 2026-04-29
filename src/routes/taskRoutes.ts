@@ -143,7 +143,7 @@ export function createTaskRoutes(
         }
 
         try {
-          const job = await jobRepo.getAgentTaskJob(taskId);
+          const job = await jobRepo.getAgentTaskJobByIdOrCodexSessionId(taskId);
           if (!job || job.repo !== fullRepo) {
             const response: ErrorResponse = {
               error: `Agent task job '${taskId}' was not found in repository '${fullRepo}'.`,

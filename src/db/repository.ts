@@ -79,6 +79,13 @@ function mapAgentTaskJobRow(row: Record<string, unknown>): AgentTaskJobInfo {
       row.opencode_session_export,
       "opencode_session_export"
     ),
+    codexSessionId: (row.codex_session_id as string | null) ?? undefined,
+    codexSessionFilePath:
+      (row.codex_session_file_path as string | null) ?? undefined,
+    codexSessionExport: parseStoredJsonValue(
+      row.codex_session_export,
+      "codex_session_export"
+    ),
     taskDelayMs: normalizeTaskDelayMs(row.task_delay_ms),
     scheduledAt: row.scheduled_at ? toIsoString(row.scheduled_at) : null,
     cancelRequestedAt: row.cancel_requested_at
@@ -169,6 +176,25 @@ export class JobRepository {
     const result = await this.db.query(
       "SELECT * FROM agent_task_jobs WHERE id = $1",
       [id]
+    );
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (!row) {
+      return undefined;
+    }
+
+    return mapAgentTaskJobRow(row);
+  }
+
+  async getAgentTaskJobByIdOrCodexSessionId(
+    value: string
+  ): Promise<AgentTaskJobInfo | undefined> {
+    const result = await this.db.query(
+      `SELECT *
+       FROM agent_task_jobs
+       WHERE id = $1 OR codex_session_id = $1
+       ORDER BY CASE WHEN id = $1 THEN 0 ELSE 1 END
+       LIMIT 1`,
+      [value]
     );
     const row = result.rows[0] as Record<string, unknown> | undefined;
     if (!row) {
@@ -297,6 +323,9 @@ export class JobRepository {
       stderr: string;
       opencodeSessionId?: string;
       opencodeSessionExport?: unknown;
+      codexSessionId?: string;
+      codexSessionFilePath?: string;
+      codexSessionExport?: unknown;
     }
   ): Promise<void> {
     await this.db.query(
@@ -306,14 +335,20 @@ export class JobRepository {
              stderr = $3,
              opencode_session_id = $4,
              opencode_session_export = $5,
+             codex_session_id = $6,
+             codex_session_file_path = $7,
+             codex_session_export = $8,
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $6`,
+         WHERE id = $9`,
       [
         logs.output,
         logs.stdout,
         logs.stderr,
         logs.opencodeSessionId ?? null,
         serializeStoredJsonValue(logs.opencodeSessionExport),
+        logs.codexSessionId ?? null,
+        logs.codexSessionFilePath ?? null,
+        serializeStoredJsonValue(logs.codexSessionExport),
         id,
       ]
     );
