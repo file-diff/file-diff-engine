@@ -482,7 +482,7 @@ async function runOpencode(
 
   if (exit.code === 0 && !opencodeSessionId) {
     throw new OpencodeExecutionError(
-      `Unable to determine the opencode session id for the completed run. No new session was detected (sessions before start: ${sessionIdsBefore.length}, last observed during polling: ${lastObservedSessionCount}). Check whether the opencode CLI created a session successfully and whether session list/export commands are available in this environment.`,
+      `Failed to detect an opencode session for a successful run. Sessions before start: ${sessionIdsBefore.length}. Last observed during polling: ${lastObservedSessionCount}. Verify that the opencode CLI created a session and that session list/export commands are available in this environment.`,
       logs
     );
   }
