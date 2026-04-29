@@ -137,12 +137,14 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
   const startedAt = Date.now();
   const taskCreatedAt = typeof job.timestamp === "number" ? job.timestamp : startedAt;
   let lastKnownBranchName: string | null = null;
+  let lastKnownPullRequestUrl: string | undefined;
   let lastCapturedLogs: OpencodeCapturedLogs | null = null;
   let pullRequestActions: string[] = [];
   const [owner, repoNameOnly] = splitRepoName(repoName);
 
   try {
     const existingJob = await repo.getAgentTaskJob(jobId);
+    lastKnownPullRequestUrl = existingJob?.pullRequestUrl;
     if (existingJob?.status === "canceled" || existingJob?.cancelRequestedAt) {
       logger.info(`${tag} Skipping canceled task job`);
       await repo.updateAgentTaskStatus(jobId, "canceled");
@@ -164,11 +166,13 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       reasoningSummary,
       verbosity,
       codexWebSearch,
+      pullRequestCompletionMode,
       githubKey,
       deepseekApiKey,
     };
     const prepared = await prepareOpencodeTaskBranch(taskOptions);
     lastKnownBranchName = prepared.branch;
+    lastKnownPullRequestUrl = prepared.pullRequest.url;
     if (await repo.isAgentTaskCancellationRequested(jobId)) {
       throw new Error("Task canceled by request.");
     }
@@ -218,7 +222,8 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       lastKnownBranchName,
       Date.now() - taskCreatedAt,
       undefined,
-      pullRequestActions
+      pullRequestActions,
+      lastKnownPullRequestUrl
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -246,7 +251,8 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
         lastKnownBranchName,
         Date.now() - taskCreatedAt,
         cancelMessage,
-        pullRequestActions
+        pullRequestActions,
+        lastKnownPullRequestUrl
       );
       return;
     }
@@ -267,7 +273,8 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       lastKnownBranchName,
       Date.now() - taskCreatedAt,
       message,
-      pullRequestActions
+      pullRequestActions,
+      lastKnownPullRequestUrl
     );
     throw err;
   }
@@ -313,7 +320,8 @@ async function sendTerminalTaskNotification(
   branch: string | null,
   durationMs: number,
   details?: string,
-  pullRequestActions?: string[]
+  pullRequestActions?: string[],
+  pullRequestUrl?: string
 ): Promise<void> {
   try {
     logger.info(`AgentTask ${taskId}: Sending Slack notification status=${status} branch=${branch ?? "none"} duration=${Math.round(durationMs / 1000)}s`);
@@ -324,6 +332,7 @@ async function sendTerminalTaskNotification(
       status,
       branch,
       durationMs,
+      pullRequestUrl,
       pullRequestActions,
       details,
     });
