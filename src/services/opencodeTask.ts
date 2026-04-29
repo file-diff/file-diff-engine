@@ -224,6 +224,12 @@ async function runOpencode(
     logFlushIntervalMs,
   });
 
+  /* TODO */
+  const listSessionBefore = "opencode session list"
+
+  const extractedSessionIDBefore: string | null;
+  //extractedSessionID = ...
+
   const child = spawn(getOpencodeBin(), args, {
     cwd,
     env: {
@@ -232,6 +238,31 @@ async function runOpencode(
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
+
+  /* TODO */
+  const listSessionAfter = "opencode session list"
+
+  const extractedSessionIDAfter: string | null;
+
+  // Example info how the output looks
+  // opencode session list > out.txt
+  // $ cat out.txt
+  // Session ID                      Title                                   Updated
+  // ───────────────────────────────────────────────────────────────────────────────
+  // ses_226f167d4ffeE5CmXZjCl54HYL  Creating documentation                  1:45 PM
+  // ses_227113e87ffe85L4H52wmCHwGg  New session - 2026-04-29T11:10:19.000Z  1:10 PM
+  // ses_22e901954ffeb8ZyOlzqoh92Fg  Create PR with spec.md                  2:14 AM · 4/28/2026
+  // ses_22e929234ffe2bg9C2ypWUMXJd  Writing project spec into spec.md       2:12 AM · 4/28/2026
+
+  /* TODO - extract session id from last entry */
+
+  if (extractedSessionIDAfter !== extractedSessionIDBefore) {
+    //success
+  } else {
+    //failed to extract session ID
+    //TODO EXIT
+  }
+
 
   const stdoutChunks: string[] = [];
   const stderrChunks: string[] = [];
