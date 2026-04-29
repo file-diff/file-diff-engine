@@ -3,7 +3,13 @@ import path from "path";
 import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import { createPullRequest } from "./githubApi";
-import type { AgentTaskModel, AgentTaskRunner } from "../types";
+import type {
+  AgentTaskModel,
+  AgentTaskRunner,
+  CodexReasoningEffort,
+  CodexReasoningSummary,
+  CodexVerbosity,
+} from "../types";
 import { createLogger } from "../utils/logger";
 
 const execFileAsync = promisify(execFile);
@@ -35,6 +41,10 @@ export interface OpencodeTaskOptions {
   problemStatement: string;
   model: AgentTaskModel;
   taskRunner?: AgentTaskRunner;
+  reasoningEffort?: CodexReasoningEffort;
+  reasoningSummary?: CodexReasoningSummary;
+  verbosity?: CodexVerbosity;
+  codexWebSearch?: boolean;
   githubKey?: string;
   deepseekApiKey?: string;
   workDir?: string;

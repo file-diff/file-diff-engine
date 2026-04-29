@@ -109,8 +109,17 @@ export type AgentTaskJobStatus = JobStatus | "canceled";
 /** Local agent implementation used to execute task instructions. */
 export type AgentTaskRunner = "codex" | "opencode";
 
-/** Supported DeepSeek models for opencode-backed agent tasks. */
+/** Model identifier for a locally-managed agent task. */
 export type AgentTaskModel = string;
+
+/** Supported Codex reasoning effort settings. */
+export type CodexReasoningEffort = "low" | "medium" | "high" | "xhigh";
+
+/** Supported Codex reasoning summary settings. */
+export type CodexReasoningSummary = "none" | "auto" | "concise" | "detailed";
+
+/** Supported Codex verbosity settings. */
+export type CodexVerbosity = "low" | "medium" | "high";
 
 /** Minimal job payload returned after creating or reusing a job. */
 export interface JobSummary {
@@ -360,7 +369,7 @@ export interface VersionResponse {
 /** Follow-up pull request action after a successful agent task run. */
 export type PullRequestCompletionMode = "None" | "AutoReady" | "AutoMerge";
 
-/** Payload sent when creating a new local agent task (DeepSeek/opencode based). */
+/** Payload sent when creating a new local agent task (Codex/opencode based). */
 export interface CreateTaskRequest {
   /** GitHub repository in owner/repo format */
   repo: string;
@@ -374,9 +383,17 @@ export interface CreateTaskRequest {
   model?: AgentTaskModel;
   /** Local agent implementation to run. Defaults to codex. */
   task?: AgentTaskRunner;
+  /** Optional reasoning effort for Codex tasks. */
+  reasoning_effort?: CodexReasoningEffort;
+  /** Optional reasoning summary setting for Codex tasks. */
+  reasoning_summary?: CodexReasoningSummary;
+  /** Optional output verbosity for Codex tasks. */
+  verbosity?: CodexVerbosity;
+  /** Enable Codex web search tool support for this task. */
+  codex_web_search?: boolean;
   /** Custom agent identifier */
   custom_agent?: string;
-  /** Whether to create a PR */
+  /** Compatibility flag; when provided it must be true because tasks always open a draft PR */
   create_pull_request?: boolean;
   /** Follow-up pull request action after a successful agent run */
   pull_request_completion_mode?: PullRequestCompletionMode;
@@ -402,8 +419,13 @@ export interface AgentTaskJobSummary {
   repo: string;
   status: AgentTaskJobStatus;
   branch: string | null;
+  taskRunner?: AgentTaskRunner;
   baseRef?: string;
   model?: AgentTaskModel;
+  reasoningEffort?: CodexReasoningEffort;
+  reasoningSummary?: CodexReasoningSummary;
+  verbosity?: CodexVerbosity;
+  codexWebSearch?: boolean;
   pullRequestCompletionMode?: PullRequestCompletionMode;
   pullRequestUrl?: string;
   pullRequestNumber?: number;

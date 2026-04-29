@@ -72,11 +72,31 @@ async function runCodex(
     "-",
   ];
 
+  if (options.reasoningEffort) {
+    args.splice(2, 0, "--config", `model_reasoning_effort=${options.reasoningEffort}`);
+  }
+
+  if (options.reasoningSummary) {
+    args.splice(2, 0, "--config", `model_reasoning_summary=${options.reasoningSummary}`);
+  }
+
+  if (options.verbosity) {
+    args.splice(2, 0, "--config", `model_verbosity=${options.verbosity}`);
+  }
+
+  if (options.codexWebSearch) {
+    args.splice(args.length - 1, 0, "--search");
+  }
+
   logger.info("Starting codex task", {
     jobId: options.jobId,
     repo: options.repo,
     branch,
     model: options.model,
+    reasoningEffort: options.reasoningEffort,
+    reasoningSummary: options.reasoningSummary,
+    verbosity: options.verbosity,
+    codexWebSearch: options.codexWebSearch === true,
     timeout,
     logFlushIntervalMs,
   });

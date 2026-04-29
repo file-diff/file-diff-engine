@@ -559,26 +559,7 @@ export async function markPullRequestReady(
   pullNumber: number,
   token?: string
 ): Promise<void> {
-  const [owner, repoName] = repo.split("/", 2);
-
-  // First, get the PR node ID via REST
-  const pr = await getJson<{ node_id?: string }>(
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/pulls/${pullNumber}`,
-    {
-      notFoundMessage: `Pull request #${pullNumber} was not found in repository '${repo}'.`,
-      token,
-    }
-  );
-
-  const nodeId = pr.node_id?.trim();
-  if (!nodeId) {
-    throw new GitHubApiError(
-      `Pull request #${pullNumber} in repository '${repo}' did not include a node ID.`,
-      502
-    );
-  }
-
-  // Use the GraphQL API to mark the PR as ready for review
+  const nodeId = await getPullRequestNodeId(repo, pullNumber, token);
   const mutation = `mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { number } } }`;
   await getJson<Record<string, unknown>>(
     "/graphql",
@@ -587,6 +568,57 @@ export async function markPullRequestReady(
       method: "POST",
       body: { query: mutation, variables: { id: nodeId } },
       token,
+    }
+  );
+}
+
+export async function enablePullRequestAutoMerge(
+  repo: string,
+  pullNumber: number,
+  options?: {
+    token?: string;
+    commitHeadline?: string;
+    commitBody?: string;
+    mergeMethod?: "MERGE" | "SQUASH" | "REBASE";
+  }
+): Promise<void> {
+  const nodeId = await getPullRequestNodeId(repo, pullNumber, options?.token);
+  const mutation = `
+    mutation(
+      $id: ID!,
+      $commitHeadline: String,
+      $commitBody: String,
+      $mergeMethod: PullRequestMergeMethod
+    ) {
+      enablePullRequestAutoMerge(
+        input: {
+          pullRequestId: $id,
+          commitHeadline: $commitHeadline,
+          commitBody: $commitBody,
+          mergeMethod: $mergeMethod
+        }
+      ) {
+        pullRequest {
+          number
+        }
+      }
+    }
+  `;
+  await getJson<Record<string, unknown>>(
+    "/graphql",
+    {
+      notFoundMessage: `Pull request #${pullNumber} was not found in repository '${repo}'.`,
+      method: "POST",
+      body: {
+        query: mutation,
+        variables: {
+          id: nodeId,
+          commitHeadline: options?.commitHeadline,
+          commitBody: options?.commitBody,
+          mergeMethod: options?.mergeMethod,
+        },
+      },
+      token: options?.token,
     }
   );
 }
@@ -633,6 +665,31 @@ export interface MergePullRequestResult {
 export interface BranchPullRequestSummary extends CommitPullRequestSummary {
   draft: boolean;
   baseBranch: string;
+}
+
+async function getPullRequestNodeId(
+  repo: string,
+  pullNumber: number,
+  token?: string
+): Promise<string> {
+  const [owner, repoName] = repo.split("/", 2);
+  const pr = await getJson<{ node_id?: string }>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/pulls/${pullNumber}`,
+    {
+      notFoundMessage: `Pull request #${pullNumber} was not found in repository '${repo}'.`,
+      token,
+    }
+  );
+
+  const nodeId = pr.node_id?.trim();
+  if (!nodeId) {
+    throw new GitHubApiError(
+      `Pull request #${pullNumber} in repository '${repo}' did not include a node ID.`,
+      502
+    );
+  }
+
+  return nodeId;
 }
 
 export async function findOpenPullRequestByHeadBranch(

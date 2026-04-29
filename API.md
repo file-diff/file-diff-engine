@@ -901,9 +901,13 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | `problem_statement` | `string` | Yes | Additional prompting for the agent. |
 | `model` | `string` | No | The model to use for this task (e.g. `claude-sonnet-4.6`, `gpt-5.2-codex`). |
 | `custom_agent` | `string` | No | Custom agent identifier. |
-| `create_pull_request` | `boolean` | No | Whether to create a PR. |
-| `pull_request_completion_mode` | `string` | No | Follow-up PR action after a successful run: `None`, `AutoReady`, or `AutoMerge`. `AutoReady` and `AutoMerge` require `create_pull_request: true`. |
+| `create_pull_request` | `boolean` | No | Compatibility field. When provided it must be `true`, because agent tasks always create a draft pull request before execution starts. |
+| `pull_request_completion_mode` | `string` | No | Follow-up PR action after a successful run: `None`, `AutoReady`, or `AutoMerge`. `AutoMerge` enables GitHub auto-merge on the created pull request. |
 | `base_ref` | `string` | Yes | Base ref for new branch/PR. |
+| `reasoning_effort` | `"low" \| "medium" \| "high" \| "xhigh"` | No | Codex-only reasoning effort override. |
+| `reasoning_summary` | `"none" \| "auto" \| "concise" \| "detailed"` | No | Codex-only reasoning summary setting. |
+| `verbosity` | `"low" \| "medium" \| "high"` | No | Codex-only output verbosity override. |
+| `codex_web_search` | `boolean` | No | Codex-only flag to enable the Codex web search tool. |
 | `task_delay_ms` | `integer` | No | Optional non-negative delay in milliseconds before the remote GitHub task is created. |
 
 #### Success response
@@ -930,9 +934,14 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
     "repo": "facebook/react",
     "problem_statement": "Investigate and fix the login flow bug",
     "base_ref": "main",
-    "model": "claude-sonnet-4.6",
+    "task": "codex",
+    "model": "gpt-5.2-codex",
     "create_pull_request": true,
     "pull_request_completion_mode": "AutoMerge",
+    "reasoning_effort": "high",
+    "reasoning_summary": "auto",
+    "verbosity": "medium",
+    "codex_web_search": true,
     "task_delay_ms": 60000
   }'
 ```
@@ -967,7 +976,7 @@ Status: `200 OK`
 | `branch` | `string \| null` | Created branch name once known, otherwise `null` |
 | `taskId` | `string` | Created GitHub Copilot task id when available |
 | `taskStatus` | `string` | Last observed GitHub task state when available |
-| `pullRequestCompletionMode` | `string` | Requested follow-up PR action: `None`, `AutoReady`, or `AutoMerge` when set |
+| `pullRequestCompletionMode` | `string` | Requested follow-up PR action: `None`, `AutoReady`, or `AutoMerge` when set. `AutoMerge` enables GitHub auto-merge on the created pull request. |
 | `taskDelayMs` | `integer` | Configured startup delay in milliseconds |
 | `scheduledAt` | `string \| null` | Scheduled start time for delayed jobs, otherwise `null` |
 | `error` | `string` | Error message when the job fails |
@@ -1001,7 +1010,7 @@ Returns the updated job payload documented for `GET /api/jobs/create-task/:id`, 
 
 ### `GET /api/agents/repos/:owner/:repo/tasks/:task_id`
 
-Returns the details of a single locally-managed agent task job (DeepSeek/opencode based).
+Returns the details of a single locally-managed agent task job (Codex/opencode based).
 The `:task_id` is the local agent task job id returned from `POST /api/jobs/create-task`.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
@@ -1010,7 +1019,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 
 Status: `200 OK`
 
-Returns the agent task job record from the local database, including its repo, status, model, branch, pull request information, combined `output`, split `stdout`/`stderr`, the detected opencode session id, the latest exported opencode session JSON, and timestamps. While opencode is running, logs and session exports are flushed into the database about every 15 seconds.
+Returns the agent task job record from the local database, including its repo, task runner, model, Codex option settings when present, branch, pull request information, combined `output`, split `stdout`/`stderr`, the detected opencode session id, the latest exported opencode session JSON, and timestamps. While opencode is running, logs and session exports are flushed into the database about every 15 seconds.
 
 #### Common statuses
 
@@ -2193,6 +2202,12 @@ Admin bearer auth is required.
 | `problem_statement` | `string` | Yes | Task instructions passed to the selected local agent and included in the initialization commit/PR body. |
 | `task` | `"codex" \| "opencode"` | No | Local agent implementation. Defaults to `codex`. |
 | `model` | `string` | No | Model for the selected task runner. Codex defaults to `CODEX_MODEL` or `gpt-5.2-codex`; opencode defaults to `deepseek-v4-flash` and only accepts `deepseek-v4-flash` or `deepseek-v4-pro`. |
+| `create_pull_request` | `boolean` | No | Compatibility field. When provided it must be `true`, because agent tasks always create a draft pull request. |
+| `pull_request_completion_mode` | `"None" \| "AutoReady" \| "AutoMerge"` | No | Follow-up PR action after a successful run. `AutoMerge` enables GitHub auto-merge on the created pull request. |
+| `reasoning_effort` | `"low" \| "medium" \| "high" \| "xhigh"` | No | Codex-only reasoning effort override. |
+| `reasoning_summary` | `"none" \| "auto" \| "concise" \| "detailed"` | No | Codex-only reasoning summary setting. |
+| `verbosity` | `"low" \| "medium" \| "high"` | No | Codex-only output verbosity override. |
+| `codex_web_search` | `boolean` | No | Codex-only flag to enable the Codex web search tool. |
 | `task_delay_ms` | `number` | No | Non-negative delay before the queued worker starts. |
 | `githubKey` | `string` | No | Per-request GitHub token override. Prefer `PRIVATE_GITHUB_TOKEN` in production. |
 | `deepseek_api_key` | `string` | No | Per-request DeepSeek API key override for opencode tasks. Prefer `DEEPSEEK_API_KEY` in production. |
@@ -2216,7 +2231,10 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
     "base_ref": "main",
     "problem_statement": "Implement the requested change",
     "task": "codex",
-    "model": "gpt-5.2-codex"
+    "model": "gpt-5.2-codex",
+    "reasoning_effort": "high",
+    "reasoning_summary": "auto",
+    "verbosity": "medium"
   }'
 ```
 
@@ -2247,9 +2265,14 @@ Status: `200 OK`
 | `status` | `string` | Local status: `waiting`, `active`, `completed`, `failed`, or `canceled`. |
 | `taskStatus` | `string` | Task phase such as `preparing`, `working`, or `completed`. |
 | `branch` | `string \| null` | Generated task branch when available. |
+| `taskRunner` | `string` | Selected task runner: `codex` or `opencode` when available. |
 | `baseRef` | `string` | Requested base ref. |
 | `model` | `string` | Selected task model. |
-| `pullRequestCompletionMode` | `string` | Requested follow-up PR action: `None`, `AutoReady`, or `AutoMerge` when set. |
+| `reasoningEffort` | `string` | Codex reasoning effort when set. |
+| `reasoningSummary` | `string` | Codex reasoning summary when set. |
+| `verbosity` | `string` | Codex verbosity when set. |
+| `codexWebSearch` | `boolean` | Whether Codex web search was enabled. |
+| `pullRequestCompletionMode` | `string` | Requested follow-up PR action: `None`, `AutoReady`, or `AutoMerge` when set. `AutoMerge` enables GitHub auto-merge on the created pull request. |
 | `pullRequestUrl` | `string` | Draft pull request URL when available. |
 | `pullRequestNumber` | `number` | Draft pull request number when available. |
 | `output` | `string` | Combined captured agent stdout/stderr, updated roughly every 15 seconds while the task is running. |

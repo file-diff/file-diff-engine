@@ -62,6 +62,12 @@ Optional request fields:
 
 - `task`: `codex` or `opencode`; defaults to `codex`.
 - `model`: model for the selected runner. opencode accepts `deepseek-v4-flash` or `deepseek-v4-pro`.
+- `create_pull_request`: compatibility field; if provided it must be `true` because agent tasks always create a draft pull request.
+- `pull_request_completion_mode`: `None`, `AutoReady`, or `AutoMerge`. `AutoMerge` enables GitHub auto-merge on the created pull request.
+- `reasoning_effort`: Codex-only override: `low`, `medium`, `high`, or `xhigh`.
+- `reasoning_summary`: Codex-only override: `none`, `auto`, `concise`, or `detailed`.
+- `verbosity`: Codex-only override: `low`, `medium`, or `high`.
+- `codex_web_search`: Codex-only boolean to enable the Codex web search tool.
 - `task_delay_ms`: delay before the worker starts.
 - `githubKey`: GitHub token override for this task.
 - `deepseek_api_key`: DeepSeek key override for opencode tasks.
@@ -78,6 +84,7 @@ Important response fields:
 - `status`: local worker status: `waiting`, `active`, `completed`, `failed`, or `canceled`.
 - `taskStatus`: high-level task phase, for example `preparing`, `working`, or `completed`.
 - `branch`: generated task branch after preparation succeeds.
+- `taskRunner`: selected task runner, for example `codex`.
 - `pullRequestUrl` / `pullRequestNumber`: initialized draft pull request.
 - `output`: captured agent stdout/stderr or failure message.
 - `error`: failure details when `status` is `failed`.

@@ -3,7 +3,13 @@ import path from "path";
 import fs from "fs";
 import { getDatabase, type DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
-import type { AgentTaskModel, AgentTaskRunner } from "../types";
+import type {
+  AgentTaskModel,
+  AgentTaskRunner,
+  CodexReasoningEffort,
+  CodexReasoningSummary,
+  CodexVerbosity,
+} from "../types";
 import { executeCodexOnPreparedBranch } from "../services/codexTask";
 import { processRepository } from "../services/repoProcessor";
 import {
@@ -101,6 +107,10 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     problemStatement,
     model,
     task = job.name === "create-opencode-task" ? "opencode" : "codex",
+    reasoningEffort,
+    reasoningSummary,
+    verbosity,
+    codexWebSearch,
     githubKey,
     deepseekApiKey,
   } = job.data as {
@@ -110,6 +120,10 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     problemStatement: string;
     model: AgentTaskModel;
     task?: AgentTaskRunner;
+    reasoningEffort?: CodexReasoningEffort;
+    reasoningSummary?: CodexReasoningSummary;
+    verbosity?: CodexVerbosity;
+    codexWebSearch?: boolean;
     githubKey?: string;
     deepseekApiKey?: string;
   };
@@ -140,6 +154,10 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       problemStatement,
       model,
       taskRunner: task,
+      reasoningEffort,
+      reasoningSummary,
+      verbosity,
+      codexWebSearch,
       githubKey,
       deepseekApiKey,
     };

@@ -3,6 +3,10 @@ import {
   AgentTaskJobStatus,
   AgentTaskModel,
   AgentTaskJobInfo,
+  AgentTaskRunner,
+  CodexReasoningEffort,
+  CodexReasoningSummary,
+  CodexVerbosity,
   FileRecord,
   JobInfo,
   JobStatus,
@@ -49,8 +53,18 @@ function mapAgentTaskJobRow(row: Record<string, unknown>): AgentTaskJobInfo {
     repo: row.repo as string,
     status: row.status as AgentTaskJobStatus,
     branch: (row.branch_name as string | null) ?? null,
+    taskRunner: (row.task_runner as AgentTaskRunner | null) ?? undefined,
     baseRef: (row.base_ref as string | null) ?? undefined,
     model: (row.model as AgentTaskModel | null) ?? undefined,
+    reasoningEffort: (row.reasoning_effort as CodexReasoningEffort | null) ?? undefined,
+    reasoningSummary: (row.reasoning_summary as CodexReasoningSummary | null) ?? undefined,
+    verbosity: (row.verbosity as CodexVerbosity | null) ?? undefined,
+    codexWebSearch:
+      typeof row.codex_web_search === "boolean"
+        ? row.codex_web_search
+        : row.codex_web_search === null || row.codex_web_search === undefined
+          ? undefined
+          : Boolean(row.codex_web_search),
     pullRequestCompletionMode:
       (row.pull_request_completion_mode as PullRequestCompletionMode | null) ?? undefined,
     pullRequestUrl: (row.pull_request_url as string | null) ?? undefined,
@@ -83,21 +97,28 @@ export interface FileLookupRecord {
   fileHash: string;
 }
 
+export interface CreateAgentTaskJobParams {
+  id: string;
+  repo: string;
+  taskId?: string;
+  taskStatus?: string;
+  branchName?: string | null;
+  taskDelayMs?: number;
+  scheduledAt?: Date | string | null;
+  taskRunner?: AgentTaskRunner;
+  model?: AgentTaskModel;
+  reasoningEffort?: CodexReasoningEffort;
+  reasoningSummary?: CodexReasoningSummary;
+  verbosity?: CodexVerbosity;
+  codexWebSearch?: boolean;
+  baseRef?: string;
+  pullRequestCompletionMode?: PullRequestCompletionMode;
+}
+
 export class JobRepository {
   constructor(private db: DatabaseClient) {}
 
-  async createAgentTaskJob(
-    id: string,
-    repo: string,
-    taskId?: string,
-    taskStatus?: string,
-    branchName?: string | null,
-    taskDelayMs = 0,
-    scheduledAt?: Date | string | null,
-    model?: AgentTaskModel,
-    baseRef?: string,
-    pullRequestCompletionMode?: PullRequestCompletionMode
-  ): Promise<void> {
+  async createAgentTaskJob(params: CreateAgentTaskJobParams): Promise<void> {
     await this.db.query(
       `INSERT INTO agent_task_jobs (
          id,
@@ -106,26 +127,36 @@ export class JobRepository {
          github_task_id,
          task_status,
          branch_name,
-         model,
+         task_runner,
          base_ref,
+         model,
+         reasoning_effort,
+         reasoning_summary,
+         verbosity,
+         codex_web_search,
          pull_request_completion_mode,
          task_delay_ms,
          scheduled_at,
          created_at,
          updated_at
         )
-       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [
-        id,
-        repo,
-        taskId ?? null,
-        taskStatus ?? null,
-        branchName ?? null,
-        model ?? null,
-        baseRef ?? null,
-        pullRequestCompletionMode ?? null,
-        taskDelayMs,
-        scheduledAt ?? null,
+        params.id,
+        params.repo,
+        params.taskId ?? null,
+        params.taskStatus ?? null,
+        params.branchName ?? null,
+        params.taskRunner ?? null,
+        params.baseRef ?? null,
+        params.model ?? null,
+        params.reasoningEffort ?? null,
+        params.reasoningSummary ?? null,
+        params.verbosity ?? null,
+        params.codexWebSearch ?? null,
+        params.pullRequestCompletionMode ?? null,
+        params.taskDelayMs ?? 0,
+        params.scheduledAt ?? null,
       ]
     );
   }

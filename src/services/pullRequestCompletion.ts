@@ -34,15 +34,9 @@ export async function applyPullRequestCompletionMode(options: {
     return actions;
   }
 
-  const result = await githubApi.mergePullRequest(options.repo, options.pullNumber, {
+  await githubApi.enablePullRequestAutoMerge(options.repo, options.pullNumber, {
     token: options.token,
   });
-  if (!result.merged) {
-    throw new Error(
-      result.message || `GitHub did not merge pull request #${options.pullNumber}.`
-    );
-  }
-
-  actions.push(`Merged pull request #${options.pullNumber}.`);
+  actions.push(`Enabled auto-merge for pull request #${options.pullNumber}.`);
   return actions;
 }

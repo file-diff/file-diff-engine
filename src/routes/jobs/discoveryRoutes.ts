@@ -29,6 +29,9 @@ import type {
   ResolvePullRequestResponse,
   CreateTaskRequest,
   CreateTaskResponse,
+  CodexReasoningEffort,
+  CodexReasoningSummary,
+  CodexVerbosity,
   CreateTagRequest,
   CreateTagResponse,
   DeleteActionRunRequest,
@@ -77,6 +80,23 @@ const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
 const SUPPORTED_AGENT_TASK_RUNNERS = ["codex", "opencode"] as const;
 const DEFAULT_AGENT_TASK_RUNNER: AgentTaskRunner = "codex";
 const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
+const SUPPORTED_CODEX_REASONING_EFFORTS: readonly CodexReasoningEffort[] = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+];
+const SUPPORTED_CODEX_REASONING_SUMMARIES: readonly CodexReasoningSummary[] = [
+  "none",
+  "auto",
+  "concise",
+  "detailed",
+];
+const SUPPORTED_CODEX_VERBOSITY_LEVELS: readonly CodexVerbosity[] = [
+  "low",
+  "medium",
+  "high",
+];
 type SupportedDeepSeekModel = (typeof SUPPORTED_DEEPSEEK_MODELS)[number];
 
 function isSupportedDeepSeekModel(model: unknown): model is SupportedDeepSeekModel {
@@ -85,6 +105,25 @@ function isSupportedDeepSeekModel(model: unknown): model is SupportedDeepSeekMod
 
 function isSupportedAgentTaskRunner(task: unknown): task is AgentTaskRunner {
   return typeof task === "string" && SUPPORTED_AGENT_TASK_RUNNERS.includes(task as AgentTaskRunner);
+}
+
+function isSupportedCodexReasoningEffort(
+  value: unknown
+): value is CodexReasoningEffort {
+  return typeof value === "string" &&
+    SUPPORTED_CODEX_REASONING_EFFORTS.includes(value as CodexReasoningEffort);
+}
+
+function isSupportedCodexReasoningSummary(
+  value: unknown
+): value is CodexReasoningSummary {
+  return typeof value === "string" &&
+    SUPPORTED_CODEX_REASONING_SUMMARIES.includes(value as CodexReasoningSummary);
+}
+
+function isSupportedCodexVerbosity(value: unknown): value is CodexVerbosity {
+  return typeof value === "string" &&
+    SUPPORTED_CODEX_VERBOSITY_LEVELS.includes(value as CodexVerbosity);
 }
 
 export function registerDiscoveryRoutes(
@@ -1267,6 +1306,10 @@ export function registerDiscoveryRoutes(
         problem_statement,
         model,
         task,
+        reasoning_effort,
+        reasoning_summary,
+        verbosity,
+        codex_web_search,
         custom_agent,
         create_pull_request,
         pull_request_completion_mode,
@@ -1324,24 +1367,79 @@ export function registerDiscoveryRoutes(
       }
 
       if (
-        pull_request_completion_mode !== undefined &&
-        !PULL_REQUEST_COMPLETION_MODES.includes(pull_request_completion_mode)
+        create_pull_request !== undefined &&
+        create_pull_request !== true
       ) {
         const response: ErrorResponse = {
           error:
-            "Field 'pull_request_completion_mode' must be one of: None, AutoReady, AutoMerge.",
+            "Field 'create_pull_request' must be true when provided because agent tasks always open a draft pull request.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        reasoning_effort !== undefined &&
+        !isSupportedCodexReasoningEffort(reasoning_effort)
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'reasoning_effort' must be one of: low, medium, high, xhigh.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        reasoning_summary !== undefined &&
+        !isSupportedCodexReasoningSummary(reasoning_summary)
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'reasoning_summary' must be one of: none, auto, concise, detailed.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        verbosity !== undefined &&
+        !isSupportedCodexVerbosity(verbosity)
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'verbosity' must be one of: low, medium, high.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        codex_web_search !== undefined &&
+        typeof codex_web_search !== "boolean"
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'codex_web_search' must be a boolean.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        taskRunner !== "codex" &&
+        (
+          reasoning_effort !== undefined ||
+          reasoning_summary !== undefined ||
+          verbosity !== undefined ||
+          codex_web_search !== undefined
+        )
+      ) {
+        const response: ErrorResponse = {
+          error:
+            "Fields 'reasoning_effort', 'reasoning_summary', 'verbosity', and 'codex_web_search' are only supported for codex tasks.",
         };
         return reply.code(400).send(response);
       }
 
       if (
         pull_request_completion_mode !== undefined &&
-        pull_request_completion_mode !== "None" &&
-        create_pull_request !== true
+        !PULL_REQUEST_COMPLETION_MODES.includes(pull_request_completion_mode)
       ) {
         const response: ErrorResponse = {
           error:
-            "Field 'create_pull_request' must be true when 'pull_request_completion_mode' is AutoReady or AutoMerge.",
+            "Field 'pull_request_completion_mode' must be one of: None, AutoReady, AutoMerge.",
         };
         return reply.code(400).send(response);
       }
@@ -1371,16 +1469,20 @@ export function registerDiscoveryRoutes(
       try {
         logger.info(`AgentTask: Scheduling ${taskRunner} task job=${jobId} repo=${repo} model=${taskModel} delay_ms=${taskDelayMs}`);
         await jobRepo.createAgentTaskJob(
-          jobId,
-          repo,
-          undefined,
-          undefined,
-          undefined,
-          taskDelayMs,
-          scheduledAt,
-          taskModel,
-          base_ref,
-          pull_request_completion_mode
+          {
+            id: jobId,
+            repo,
+            taskDelayMs,
+            scheduledAt,
+            taskRunner,
+            model: taskModel,
+            reasoningEffort: reasoning_effort,
+            reasoningSummary: reasoning_summary,
+            verbosity,
+            codexWebSearch: codex_web_search,
+            baseRef: base_ref,
+            pullRequestCompletionMode: pull_request_completion_mode,
+          }
         );
         await enqueueAgentTaskJob(
           queue,
@@ -1390,6 +1492,10 @@ export function registerDiscoveryRoutes(
           problem_statement,
           taskRunner,
           taskModel,
+          reasoning_effort,
+          reasoning_summary,
+          verbosity,
+          codex_web_search,
           taskDelayMs,
           githubKey?.trim() || undefined,
           deepseek_api_key?.trim() || undefined
@@ -1484,6 +1590,10 @@ async function enqueueAgentTaskJob(
   problemStatement: string,
   task: AgentTaskRunner,
   model: string,
+  reasoningEffort: CodexReasoningEffort | undefined,
+  reasoningSummary: CodexReasoningSummary | undefined,
+  verbosity: CodexVerbosity | undefined,
+  codexWebSearch: boolean | undefined,
   delayMs = 0,
   githubKey?: string,
   deepseekApiKey?: string
@@ -1497,6 +1607,10 @@ async function enqueueAgentTaskJob(
       problemStatement,
       task,
       model,
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+      ...(reasoningSummary ? { reasoningSummary } : {}),
+      ...(verbosity ? { verbosity } : {}),
+      ...(codexWebSearch !== undefined ? { codexWebSearch } : {}),
       ...(githubKey ? { githubKey } : {}),
       ...(task === "opencode" && deepseekApiKey ? { deepseekApiKey } : {}),
     },
@@ -1555,6 +1669,26 @@ function summarizeCreateTaskPayload(body: CreateTaskRequest | undefined): Record
 
   if (typeof body?.model === "string") {
     summary.model = body.model;
+  }
+
+  if (typeof body?.task === "string") {
+    summary.task = body.task;
+  }
+
+  if (typeof body?.reasoning_effort === "string") {
+    summary.reasoningEffort = body.reasoning_effort;
+  }
+
+  if (typeof body?.reasoning_summary === "string") {
+    summary.reasoningSummary = body.reasoning_summary;
+  }
+
+  if (typeof body?.verbosity === "string") {
+    summary.verbosity = body.verbosity;
+  }
+
+  if (typeof body?.codex_web_search === "boolean") {
+    summary.codexWebSearch = body.codex_web_search;
   }
 
   if (typeof body?.custom_agent === "string") {

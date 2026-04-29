@@ -86,8 +86,13 @@ async function initSchema(db: DatabaseClient): Promise<void> {
         github_task_id TEXT,
         task_status TEXT,
         branch_name TEXT,
+        task_runner TEXT,
         base_ref TEXT,
         model TEXT,
+        reasoning_effort TEXT,
+        reasoning_summary TEXT,
+        verbosity TEXT,
+        codex_web_search BOOLEAN,
         pull_request_completion_mode TEXT,
         pull_request_url TEXT,
         pull_request_number INTEGER,
@@ -117,10 +122,25 @@ async function initSchema(db: DatabaseClient): Promise<void> {
       ADD COLUMN IF NOT EXISTS branch_name TEXT;
 
       ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS task_runner TEXT;
+
+      ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS base_ref TEXT;
 
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS model TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS reasoning_effort TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS reasoning_summary TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS verbosity TEXT;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS codex_web_search BOOLEAN;
 
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS pull_request_completion_mode TEXT;

@@ -6,7 +6,7 @@ import { createTestDatabase } from "../__tests__/helpers/testDatabase";
 vi.mock("./githubApi", () => ({
   findOpenPullRequestByHeadBranch: vi.fn(),
   markPullRequestReady: vi.fn(),
-  mergePullRequest: vi.fn(),
+  enablePullRequestAutoMerge: vi.fn(),
 }));
 
 import * as githubApi from "./githubApi";
@@ -47,10 +47,10 @@ describe("applyPullRequestCompletionMode", () => {
       42,
       "token"
     );
-    expect(githubApi.mergePullRequest).not.toHaveBeenCalled();
+    expect(githubApi.enablePullRequestAutoMerge).not.toHaveBeenCalled();
   });
 
-  it("marks draft pull requests ready and merges for AutoMerge", async () => {
+  it("marks draft pull requests ready and enables auto-merge for AutoMerge", async () => {
     vi.mocked(githubApi.findOpenPullRequestByHeadBranch).mockResolvedValue({
       number: 99,
       title: "Task PR",
@@ -60,11 +60,7 @@ describe("applyPullRequestCompletionMode", () => {
       baseBranch: "main",
     });
     vi.mocked(githubApi.markPullRequestReady).mockResolvedValue();
-    vi.mocked(githubApi.mergePullRequest).mockResolvedValue({
-      merged: true,
-      message: "Pull Request successfully merged",
-      sha: "abc123",
-    });
+    vi.mocked(githubApi.enablePullRequestAutoMerge).mockResolvedValue();
 
     await expect(
       applyPullRequestCompletionMode({
@@ -75,7 +71,7 @@ describe("applyPullRequestCompletionMode", () => {
       })
     ).resolves.toEqual([
       "Marked pull request #99 as ready for review.",
-      "Merged pull request #99.",
+      "Enabled auto-merge for pull request #99.",
     ]);
   });
 
@@ -83,18 +79,13 @@ describe("applyPullRequestCompletionMode", () => {
     const database = await createTestDatabase();
     const repository = new JobRepository(database);
 
-    await repository.createAgentTaskJob(
-      "job-1",
-      "file-diff/file-diff-engine",
-      undefined,
-      undefined,
-      undefined,
-      0,
-      null,
-      "deepseek-v4-flash",
-      "main",
-      "AutoMerge"
-    );
+    await repository.createAgentTaskJob({
+      id: "job-1",
+      repo: "file-diff/file-diff-engine",
+      model: "deepseek-v4-flash",
+      baseRef: "main",
+      pullRequestCompletionMode: "AutoMerge",
+    });
 
     await expect(repository.getAgentTaskJob("job-1")).resolves.toMatchObject({
       id: "job-1",
