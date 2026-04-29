@@ -225,7 +225,17 @@ async function runOpencode(
     ...process.env,
     DEEPSEEK_API_KEY: deepseekApiKey,
   };
-  const sessionIdsBefore = await listOpencodeSessionIds(cwd, opencodeEnv);
+  let sessionIdsBefore: string[] = [];
+  try {
+    sessionIdsBefore = await listOpencodeSessionIds(cwd, opencodeEnv);
+  } catch (error) {
+    logger.warn("Failed to list opencode sessions before starting the task.", {
+      jobId: options.jobId,
+      repo: options.repo,
+      branch,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   logger.info("Starting opencode task", {
     jobId: options.jobId,
@@ -253,6 +263,7 @@ async function runOpencode(
   let opencodeSessionId: string | null = null;
   let opencodeSessionExport: unknown = undefined;
   let lastSerializedSessionExport: string | null = null;
+  let lastObservedSessionCount = sessionIdsBefore.length;
   let spawnError: Error | undefined;
   let flushError: Error | undefined;
   let intervalFlushPending = false;
@@ -297,6 +308,7 @@ async function runOpencode(
     if (!opencodeSessionId) {
       try {
         const sessionIdsAfter = await listOpencodeSessionIds(cwd, opencodeEnv);
+        lastObservedSessionCount = sessionIdsAfter.length;
         const detectedSessionId = findNewOpencodeSessionId(
           sessionIdsBefore,
           sessionIdsAfter
@@ -470,7 +482,7 @@ async function runOpencode(
 
   if (exit.code === 0 && !opencodeSessionId) {
     throw new OpencodeExecutionError(
-      "Unable to determine the opencode session id for the completed run. The session may not have been created or session detection may have failed.",
+      `Unable to determine the opencode session id for the completed run. No new session was detected (sessions before start: ${sessionIdsBefore.length}, last observed during polling: ${lastObservedSessionCount}). The session may not have been created or session detection may have failed.`,
       logs
     );
   }
