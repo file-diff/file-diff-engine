@@ -395,6 +395,10 @@ export interface CreateTaskRequest {
   custom_agent?: string;
   /** Compatibility flag; when provided it must be true because tasks always open a draft PR */
   create_pull_request?: boolean;
+  /** Compatibility flag that marks the created draft PR ready for review after success */
+  auto_ready?: boolean;
+  /** Compatibility flag that enables auto-merge on the created PR after success */
+  auto_merge?: boolean;
   /** Follow-up pull request action after a successful agent run */
   pull_request_completion_mode?: PullRequestCompletionMode;
   /** Base ref for new branch/PR */

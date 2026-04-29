@@ -133,6 +133,53 @@ function isSupportedCodexVerbosity(value: unknown): value is CodexVerbosity {
     SUPPORTED_CODEX_VERBOSITY_LEVELS.includes(value as CodexVerbosity);
 }
 
+function resolvePullRequestCompletionMode(body: CreateTaskRequest): {
+  mode?: PullRequestCompletionMode;
+  error?: string;
+} {
+  const { auto_ready, auto_merge, pull_request_completion_mode } = body;
+
+  if (auto_ready !== undefined && typeof auto_ready !== "boolean") {
+    return { error: "Field 'auto_ready' must be a boolean." };
+  }
+
+  if (auto_merge !== undefined && typeof auto_merge !== "boolean") {
+    return { error: "Field 'auto_merge' must be a boolean." };
+  }
+
+  if (
+    pull_request_completion_mode !== undefined &&
+    !PULL_REQUEST_COMPLETION_MODES.includes(pull_request_completion_mode)
+  ) {
+    return {
+      error:
+        "Field 'pull_request_completion_mode' must be one of: None, AutoReady, AutoMerge.",
+    };
+  }
+
+  let compatibilityMode: PullRequestCompletionMode | undefined;
+  if (auto_merge === true) {
+    compatibilityMode = "AutoMerge";
+  } else if (auto_ready === true) {
+    compatibilityMode = "AutoReady";
+  }
+
+  if (
+    compatibilityMode &&
+    pull_request_completion_mode !== undefined &&
+    pull_request_completion_mode !== compatibilityMode
+  ) {
+    return {
+      error:
+        "Fields 'auto_ready'/'auto_merge' conflict with 'pull_request_completion_mode'.",
+    };
+  }
+
+  return {
+    mode: compatibilityMode ?? pull_request_completion_mode,
+  };
+}
+
 export function registerDiscoveryRoutes(
   app: FastifyInstance,
   queue: Queue,
@@ -1319,6 +1366,8 @@ export function registerDiscoveryRoutes(
         codex_web_search,
         custom_agent,
         create_pull_request,
+        auto_ready,
+        auto_merge,
         pull_request_completion_mode,
         base_ref,
         task_delay_ms,
@@ -1449,16 +1498,16 @@ export function registerDiscoveryRoutes(
           ? reasoning_summary ?? DEFAULT_CODEX_REASONING_SUMMARY
           : undefined;
 
-      if (
-        pull_request_completion_mode !== undefined &&
-        !PULL_REQUEST_COMPLETION_MODES.includes(pull_request_completion_mode)
-      ) {
+      const pullRequestCompletionResolution = resolvePullRequestCompletionMode(
+        request.body ?? {}
+      );
+      if (pullRequestCompletionResolution.error) {
         const response: ErrorResponse = {
-          error:
-            "Field 'pull_request_completion_mode' must be one of: None, AutoReady, AutoMerge.",
+          error: pullRequestCompletionResolution.error,
         };
         return reply.code(400).send(response);
       }
+      const pullRequestCompletionMode = pullRequestCompletionResolution.mode;
 
       if (
         task_delay_ms !== undefined &&
@@ -1497,7 +1546,7 @@ export function registerDiscoveryRoutes(
             verbosity,
             codexWebSearch: codex_web_search,
             baseRef: base_ref,
-            pullRequestCompletionMode: pull_request_completion_mode,
+            pullRequestCompletionMode,
           }
         );
         await enqueueAgentTaskJob(
@@ -1512,6 +1561,7 @@ export function registerDiscoveryRoutes(
           reasoningSummary,
           verbosity,
           codex_web_search,
+          pullRequestCompletionMode,
           taskDelayMs,
           githubKey?.trim() || undefined,
           deepseek_api_key?.trim() || undefined
@@ -1608,6 +1658,7 @@ async function enqueueAgentTaskJob(
   reasoningSummary: CodexReasoningSummary | undefined,
   verbosity: CodexVerbosity | undefined,
   codexWebSearch: boolean | undefined,
+  pullRequestCompletionMode: PullRequestCompletionMode | undefined,
   delayMs = 0,
   githubKey?: string,
   deepseekApiKey?: string
@@ -1625,6 +1676,7 @@ async function enqueueAgentTaskJob(
       ...(reasoningSummary ? { reasoningSummary } : {}),
       ...(verbosity ? { verbosity } : {}),
       ...(codexWebSearch !== undefined ? { codexWebSearch } : {}),
+      ...(pullRequestCompletionMode ? { pullRequestCompletionMode } : {}),
       ...(githubKey ? { githubKey } : {}),
       ...(task === "opencode" && deepseekApiKey ? { deepseekApiKey } : {}),
     },
@@ -1713,11 +1765,11 @@ function summarizeCreateTaskPayload(body: CreateTaskRequest | undefined): Record
     summary.createPullRequest = body.create_pull_request;
   }
 
-  if (
-    typeof body?.pull_request_completion_mode === "string" &&
-    PULL_REQUEST_COMPLETION_MODES.includes(body.pull_request_completion_mode)
-  ) {
-    summary.pullRequestCompletionMode = body.pull_request_completion_mode;
+  const pullRequestCompletionResolution = body
+    ? resolvePullRequestCompletionMode(body)
+    : undefined;
+  if (pullRequestCompletionResolution?.mode) {
+    summary.pullRequestCompletionMode = pullRequestCompletionResolution.mode;
   }
 
   if (typeof body?.base_ref === "string") {
