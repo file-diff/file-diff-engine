@@ -364,12 +364,13 @@ export function buildCodexArgs(
 
 export function buildCodexPrompt(problemStatement: string, branch: string): string {
   return [
-    `You are already on branch '${branch}'.`,
-    "Implement the requested changes in this repository.",
-    "Commit coherent changes and push the branch as you make progress.",
-    "Do not create another branch or pull request; the pull request already exists.",
-    'After done comment report about task to current pull request.',
-    "",
+    `You are already on branch '${branch}' with pull request created.`,
+    "1. Create plan of the given instructions.",
+    "2. Comment on pull request with created plan.",
+    "3. Follow the plan, commit and push the changes as you go.",
+    "4. Do not create another branch or pull request.",
+    '5. After done comment on pull request with detailed summary report',
+    "User instructions starts here:",
     problemStatement,
   ].join("\n");
 }
