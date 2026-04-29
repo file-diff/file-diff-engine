@@ -52,6 +52,8 @@ RUN wget https://go.dev/dl/go1.22.1.linux-amd64.tar.gz \
     && rm go1.22.1.linux-amd64.tar.gz
 ENV PATH=$PATH:/usr/local/go/bin
 
+RUN npm i -g @openai/codex
+
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
