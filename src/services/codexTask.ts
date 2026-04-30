@@ -12,6 +12,7 @@ import {
   type OpencodeCapturedLogs,
   type OpencodeExecutionCallbacks,
   type OpencodeTaskOptions,
+  runAgentBootstrapIfAvailable,
 } from "./opencodeTask";
 import { createLogger } from "../utils/logger";
 
@@ -91,6 +92,12 @@ async function runCodex(
     DEFAULT_CANCELLATION_POLL_INTERVAL_MS
   );
   const args = buildCodexArgs(options, model, cwd);
+  await runAgentBootstrapIfAvailable(cwd, process.env, {
+    jobId: options.jobId,
+    repo: options.repo,
+    branch,
+    taskRunner: "codex",
+  });
 
   logger.info("Starting codex task", {
     args,

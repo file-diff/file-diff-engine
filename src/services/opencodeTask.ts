@@ -28,6 +28,7 @@ const DEFAULT_CANCELLATION_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 const DEFAULT_GIT_AUTHOR_NAME = "file-diff-agent";
 const DEFAULT_GIT_AUTHOR_EMAIL = "file-diff-agent@users.noreply.github.com";
+const AGENT_BOOTSTRAP_SCRIPT = path.join("fd-agent", "agent-bootstrap.sh");
 
 export interface OpencodeCapturedLogs {
   output: string;
@@ -275,6 +276,13 @@ async function runOpencode(
     ...process.env,
     DEEPSEEK_API_KEY: deepseekApiKey,
   };
+  await runAgentBootstrapIfAvailable(cwd, opencodeEnv, {
+    jobId: options.jobId,
+    repo: options.repo,
+    branch,
+    taskRunner: "opencode",
+  });
+
   let sessionIdsBefore: string[] = [];
   try {
     sessionIdsBefore = await listOpencodeSessionIds(cwd, opencodeEnv);
@@ -635,6 +643,58 @@ export async function commitAndPushFinalChanges(
   await runGit(cwd, ["push", "origin", branch], gitEnv);
 }
 
+export async function runAgentBootstrapIfAvailable(
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+  context?: {
+    jobId?: string;
+    repo?: string;
+    branch?: string;
+    taskRunner?: AgentTaskRunner;
+  }
+): Promise<void> {
+  const bootstrapPath = path.join(cwd, AGENT_BOOTSTRAP_SCRIPT);
+  if (!fs.existsSync(bootstrapPath)) {
+    logger.info("Agent bootstrap script not found; skipping.", {
+      ...context,
+      bootstrapScript: AGENT_BOOTSTRAP_SCRIPT,
+    });
+    return;
+  }
+
+  const stat = fs.statSync(bootstrapPath);
+  if (!stat.isFile()) {
+    logger.info("Agent bootstrap path is not a file; skipping.", {
+      ...context,
+      bootstrapScript: AGENT_BOOTSTRAP_SCRIPT,
+    });
+    return;
+  }
+
+  logger.info("Running agent bootstrap script.", {
+    ...context,
+    bootstrapScript: AGENT_BOOTSTRAP_SCRIPT,
+  });
+
+  try {
+    await execFileAsync("bash", [`./${AGENT_BOOTSTRAP_SCRIPT}`], {
+      cwd,
+      env,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  } catch (error) {
+    const details = getExecErrorDetails(error);
+    throw new Error(
+      `Agent bootstrap script failed: ${details || "bash exited unsuccessfully."}`
+    );
+  }
+
+  logger.info("Agent bootstrap script completed.", {
+    ...context,
+    bootstrapScript: AGENT_BOOTSTRAP_SCRIPT,
+  });
+}
+
 async function configureCommitAuthor(
   cwd: string,
   env: NodeJS.ProcessEnv
@@ -675,6 +735,29 @@ async function runOpencodeCommand(
     maxBuffer: 10 * 1024 * 1024,
   });
   return result.stdout.trim();
+}
+
+function getExecErrorDetails(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return String(error);
+  }
+
+  const candidate = error as {
+    message?: unknown;
+    stderr?: unknown;
+    stdout?: unknown;
+  };
+  const stderr = typeof candidate.stderr === "string" ? candidate.stderr.trim() : "";
+  if (stderr) {
+    return stderr;
+  }
+
+  const stdout = typeof candidate.stdout === "string" ? candidate.stdout.trim() : "";
+  if (stdout) {
+    return stdout;
+  }
+
+  return typeof candidate.message === "string" ? candidate.message : String(error);
 }
 
 async function listOpencodeSessionIds(
