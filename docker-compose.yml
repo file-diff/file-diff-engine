@@ -2,6 +2,8 @@ services:
   app:
     build:
       context: .
+      args:
+        DOCKER_ROOT_PASSWORD: ${DOCKER_ROOT_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -17,6 +17,7 @@ WORKDIR /app
 ARG DIFFT_TAG_NAME=0.68.0-dev.3
 ARG OPENCODE_VERSION=1.14.28
 ARG PUBLIC_GITHUB_TOKEN
+ARG DOCKER_ROOT_PASSWORD
 
 ADD https://github.com/file-diff/difftastic/releases/download/${DIFFT_TAG_NAME}/difft-${DIFFT_TAG_NAME}-x86_64-unknown-linux-gnu.tar.xz /tmp/difft.tar.xz
 
@@ -87,6 +88,10 @@ RUN groupadd -g 649 docker \
   && useradd -u 649 -g docker -m -d /home/docker -s /bin/bash docker \
   && mkdir -p /app/tmp /home/docker \
   && chown -R docker:docker /app /app/tmp /home/docker || true
+
+RUN if [ -n "${DOCKER_ROOT_PASSWORD}" ]; then \
+    echo "root:${DOCKER_ROOT_PASSWORD}" | chpasswd; \
+  fi
 
 EXPOSE 12986
 
