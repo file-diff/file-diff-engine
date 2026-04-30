@@ -49,6 +49,8 @@ export async function applyPullRequestCompletionMode(options: {
     }
     throw error;
   }
-  actions.push(`Enabled auto-merge for pull request #${options.pullNumber}.`);
+  actions.push(
+    `Requested auto-merge for pull request #${options.pullNumber}; GitHub has not merged it yet because required checks, approvals, or branch protection requirements may still be pending.`
+  );
   return actions;
 }
