@@ -45,6 +45,8 @@ services:
     volumes:
       - ./repositories_data:/app/tmp
       - ./codex_data:/home/docker/.codex
+      - ./cargo_cache:/home/docker/.cargo
+      - ./rust_project_cache:/rust_project_cache
   postgres:
     image: postgres:17-alpine
     environment:

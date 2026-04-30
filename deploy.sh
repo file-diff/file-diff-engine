@@ -8,6 +8,8 @@ POSTGRES_DATA_DIR="${SCRIPT_DIR}/postgres_data"
 REDIS_DATA_DIR="${SCRIPT_DIR}/redis_data"
 REPOSITORIES_DATA_DIR="${SCRIPT_DIR}/repositories_data"
 CODEX_DATA_DIR="${SCRIPT_DIR}/codex_data"
+CARGO_CACHE_DIR="${SCRIPT_DIR}/cargo_cache"
+RUST_PROJECT_CACHE_DIR="${SCRIPT_DIR}/rust_project_cache"
 
 ensure_data_dir() {
   local dir="$1"
@@ -69,5 +71,7 @@ ensure_data_dir "${POSTGRES_DATA_DIR}" "70" "70"
 ensure_data_dir "${REDIS_DATA_DIR}" "999" "999"
 ensure_data_dir "${REPOSITORIES_DATA_DIR}" "649" "649"
 ensure_data_dir "${CODEX_DATA_DIR}" "649" "649"
+ensure_data_dir "${CARGO_CACHE_DIR}" "649" "649"
+ensure_data_dir "${RUST_PROJECT_CACHE_DIR}" "649" "649"
 
 docker compose up -d --build app
