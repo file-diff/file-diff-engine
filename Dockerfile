@@ -37,10 +37,11 @@ RUN npm install -g opencode-ai@${OPENCODE_VERSION}
 # Install node modules and build the application in the build stage
 # Install essential system tools
 RUN apt-get update && apt-get install -y \
-    curl wget git build-essential sudo jq unzip zip nano vim \
+    curl wget git build-essential sudo jq unzip zip nano vim rsync \
     software-properties-common apt-transport-https ca-certificates gnupg \
     python3 python3-pip python3-venv \
     mold \
+    libclang-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Go
