@@ -52,9 +52,8 @@ RUN wget https://go.dev/dl/go1.22.1.linux-amd64.tar.gz \
     && rm go1.22.1.linux-amd64.tar.gz
 ENV PATH=$PATH:/usr/local/go/bin
 
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Install Rust - managed manually right now
+ENV PATH="/home/docker/.cargo/bin:${PATH}"
 
 RUN npm i -g @openai/codex
 
