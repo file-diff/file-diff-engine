@@ -39,24 +39,24 @@ RUN npm install -g opencode-ai@${OPENCODE_VERSION}
 RUN apt-get update && apt-get install -y \
     curl wget git build-essential sudo jq unzip zip nano vim \
     software-properties-common apt-transport-https ca-certificates gnupg \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python 3 and pip
-RUN apt-get update && apt-get install -y \
     python3 python3-pip python3-venv \
+    mold \
     && rm -rf /var/lib/apt/lists/*
-
 
 # Install Go
-RUN wget https://go.dev/dl/go1.22.1.linux-amd64.tar.gz \
-    && tar -C /usr/local -xzf go1.22.1.linux-amd64.tar.gz \
-    && rm go1.22.1.linux-amd64.tar.gz
+RUN export GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -n 1) \
+    && wget "https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz" \
+    && tar -C /usr/local -xzf "${GO_VERSION}.linux-amd64.tar.gz" \
+    && rm "${GO_VERSION}.linux-amd64.tar.gz"
 ENV PATH=$PATH:/usr/local/go/bin
 
 # Install Rust - managed manually right now
 ENV PATH="/home/docker/.cargo/bin:${PATH}"
 
 RUN npm i -g @openai/codex
+
+RUN curl -sL https://github.com/foundry-rs/foundry/releases/download/v1.7.0/foundry_v1.7.0_linux_amd64.tar.gz | tar -xz \
+    && mv forge cast anvil chisel /usr/local/bin/
 
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
