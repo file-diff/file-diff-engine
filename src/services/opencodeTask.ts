@@ -28,7 +28,7 @@ const DEFAULT_CANCELLATION_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 const DEFAULT_GIT_AUTHOR_NAME = "file-diff-agent";
 const DEFAULT_GIT_AUTHOR_EMAIL = "file-diff-agent@users.noreply.github.com";
-const AGENT_BOOTSTRAP_SCRIPT = path.join("fd-agent", "agent-bootstrap.sh");
+const AGENT_BOOTSTRAP_SCRIPT = path.join(".fd-agent", "agent-bootstrap.sh");
 
 export interface OpencodeCapturedLogs {
   output: string;
