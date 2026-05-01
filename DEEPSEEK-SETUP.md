@@ -44,7 +44,7 @@ curl -X POST http://127.0.0.1:12986/api/jobs/create-task \
   -d '{
     "repo": "file-diff/file-diff-engine",
     "base_ref": "main",
-    "branch": "feature-01",
+    "branch_title": "fd-agent/custom-name",
     "problem_statement": "Implement the requested change",
     "task": "codex",
     "model": "gpt-5.2-codex"
@@ -66,6 +66,7 @@ Optional request fields:
 - `create_pull_request`: compatibility field; if provided it must be `true` because agent tasks always create a draft pull request.
 - `pull_request_completion_mode`: `None`, `AutoReady`, or `AutoMerge`. Agent tasks always start from a draft pull request; `AutoReady` marks it ready for review after success, and `AutoMerge` then enables GitHub auto-merge after success if the repository setting `Allow auto-merge` is enabled.
 - `branch`: optional task branch name override. If the branch already exists on origin, the worker increments the trailing numeric suffix until a free branch name is found, for example `branch` -> `branch-1` and `branch-03` -> `branch-04`.
+- `branch_title`: optional task branch name override accepted from frontend clients. If both `branch` and `branch_title` are provided, they must normalize to the same value.
 - `reasoning_effort`: Codex-only override: `low`, `medium`, `high`, or `xhigh` (defaults to `medium`).
 - `reasoning_summary`: Codex-only override: `none`, `auto`, `concise`, or `detailed` (defaults to `auto`).
 - `verbosity`: Codex-only override: `low`, `medium`, or `high`.
@@ -97,7 +98,7 @@ Important response fields:
 
 1. The API validates the repository, base branch, problem statement, task runner, model, and auth token.
 2. A local task record is created and queued in Redis.
-3. The worker clones the repository, checks out `base_ref`, creates either the requested task branch or a new `fde-agent/...` branch, and creates an empty initialization commit containing the task text. If the requested branch already exists on origin, the worker increments its trailing numeric suffix until it finds a free name.
+3. The worker clones the repository, checks out `base_ref`, creates either the requested task branch or a new `fd-agent/...` branch, and creates an empty initialization commit containing the task text. If the requested branch already exists on origin, the worker increments its trailing numeric suffix until it finds a free name.
 4. The branch is pushed and a draft pull request is opened before the selected agent starts.
 5. Codex or opencode is launched on the prepared branch. The prompt tells the agent that the branch and pull request already exist and instructs it to commit and push progress to that branch.
 6. While Codex/opencode is running, the worker polls the task row for cancellation. If cancellation is requested, it terminates the attached process group, stores `canceled`, and sends a Slack terminal notification with the cancellation details.

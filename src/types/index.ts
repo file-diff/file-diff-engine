@@ -418,6 +418,8 @@ export interface CreateTaskRequest {
   base_ref?: string;
   /** Optional task branch name override */
   branch?: string;
+  /** Optional task branch name override accepted from frontend clients */
+  branch_title?: string;
   /** Optional delay in milliseconds before starting the remote task */
   task_delay_ms?: number;
   /** Optional DeepSeek API key override for this task. Prefer DEEPSEEK_API_KEY in production. */

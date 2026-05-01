@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildTaskBranchName,
   findNewOpencodeSessionId,
   incrementBranchName,
   parseOpencodeSessionIds,
@@ -69,6 +70,12 @@ ses_227113e87ffe85L4H52wmCHwGg  New session - 2026-04-29T11:10:19.000Z  1:10 PM`
     expect(incrementBranchName("branch-03")).toBe("branch-04");
   });
 
+  it("uses the fd-agent prefix for generated task branch names", () => {
+    expect(buildTaskBranchName("12345678-90ab-cdef-1234-567890abcdef")).toMatch(
+      /^fd-agent\/\d{8}-\d{6}-12345678$/
+    );
+  });
+
   it("skips the agent bootstrap when the script is unavailable", async () => {
     const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-bootstrap-"));
     tempDirs.push(rootDir);
@@ -79,7 +86,7 @@ ses_227113e87ffe85L4H52wmCHwGg  New session - 2026-04-29T11:10:19.000Z  1:10 PM`
   it("runs the agent bootstrap script with bash from the repository root", async () => {
     const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-bootstrap-"));
     tempDirs.push(rootDir);
-    const bootstrapDir = path.join(rootDir, "fd-agent");
+    const bootstrapDir = path.join(rootDir, ".fd-agent");
     fs.mkdirSync(bootstrapDir, { recursive: true });
     fs.writeFileSync(
       path.join(bootstrapDir, "agent-bootstrap.sh"),
@@ -106,7 +113,7 @@ ses_227113e87ffe85L4H52wmCHwGg  New session - 2026-04-29T11:10:19.000Z  1:10 PM`
   it("surfaces bootstrap script failures before starting an agent", async () => {
     const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-bootstrap-"));
     tempDirs.push(rootDir);
-    const bootstrapDir = path.join(rootDir, "fd-agent");
+    const bootstrapDir = path.join(rootDir, ".fd-agent");
     fs.mkdirSync(bootstrapDir, { recursive: true });
     fs.writeFileSync(
       path.join(bootstrapDir, "agent-bootstrap.sh"),

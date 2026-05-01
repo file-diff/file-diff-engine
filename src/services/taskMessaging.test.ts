@@ -5,23 +5,23 @@ import { buildOpencodePrompt, buildPullRequestBody } from "./opencodeTask";
 
 describe("task messaging helpers", () => {
   it("includes the pull request report instruction in codex prompts", () => {
-    expect(buildCodexPrompt("Fix the bug", "fde-agent/test")).toContain(
+    expect(buildCodexPrompt("Fix the bug", "fd-agent/test")).toContain(
       "5. After done comment on pull request with detailed summary report"
     );
   });
 
   it("includes the pull request number in both prompts", () => {
-    expect(buildCodexPrompt("Fix the bug", "fde-agent/test", 42)).toContain(
+    expect(buildCodexPrompt("Fix the bug", "fd-agent/test", 42)).toContain(
       "pull request #42"
     );
-    expect(buildOpencodePrompt("Fix the bug", "fde-agent/test", 42)).toContain(
+    expect(buildOpencodePrompt("Fix the bug", "fd-agent/test", 42)).toContain(
       "pull request #42"
     );
   });
 
   it("keeps the opencode prompt aligned with the codex prompt", () => {
-    expect(buildOpencodePrompt("Fix the bug", "fde-agent/test", 42)).toBe(
-      buildCodexPrompt("Fix the bug", "fde-agent/test", 42)
+    expect(buildOpencodePrompt("Fix the bug", "fd-agent/test", 42)).toBe(
+      buildCodexPrompt("Fix the bug", "fd-agent/test", 42)
     );
   });
 
@@ -38,7 +38,7 @@ describe("task messaging helpers", () => {
         codexWebSearch: true,
         pullRequestCompletionMode: "AutoMerge",
       },
-      "fde-agent/test"
+      "fd-agent/test"
     );
 
     expect(body).toContain("Base branch: `main`");
@@ -61,7 +61,7 @@ describe("task messaging helpers", () => {
         repoName: "file-diff-engine",
         taskId: "task-123",
         status: "completed",
-        branch: "fde-agent/test",
+        branch: "fd-agent/test",
         durationMs: 12_000,
         pullRequestUrl: "https://github.com/file-diff/file-diff-engine/pull/42",
       })
@@ -77,7 +77,7 @@ describe("task messaging helpers", () => {
         repoName: "file-diff-engine",
         taskId: "task-123",
         status: "completed",
-        branch: "fde-agent/test",
+        branch: "fd-agent/test",
         durationMs: 12_000,
         pullRequestUrl: "https://github.com/file-diff/file-diff-engine/pull/42",
         pullRequestActions: [

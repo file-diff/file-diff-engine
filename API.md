@@ -944,6 +944,8 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | `create_pull_request` | `boolean` | No | Compatibility field. When provided it must be `true`, because agent tasks always create a draft pull request before execution starts. |
 | `pull_request_completion_mode` | `string` | No | Follow-up PR action after a successful run: `None`, `AutoReady`, or `AutoMerge`. Agent tasks always start from a draft pull request; `AutoReady` marks it ready for review after success, and `AutoMerge` then enables GitHub auto-merge after success if the repository setting `Allow auto-merge` is enabled. |
 | `base_ref` | `string` | Yes | Base ref for new branch/PR. |
+| `branch` | `string` | No | Optional task branch name override. |
+| `branch_title` | `string` | No | Optional task branch name override accepted from frontend clients. If both `branch` and `branch_title` are provided, they must normalize to the same value. |
 | `reasoning_effort` | `"low" \| "medium" \| "high" \| "xhigh"` | No | Codex-only reasoning effort override. Defaults to `medium`. |
 | `reasoning_summary` | `"none" \| "auto" \| "concise" \| "detailed"` | No | Codex-only reasoning summary setting. Defaults to `auto`. |
 | `verbosity` | `"low" \| "medium" \| "high"` | No | Codex-only output verbosity override. |
@@ -974,6 +976,7 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
     "repo": "facebook/react",
     "problem_statement": "Investigate and fix the login flow bug",
     "base_ref": "main",
+    "branch_title": "fd-agent/custom-name",
     "task": "codex",
     "model": "gpt-5.2-codex",
     "create_pull_request": true,
@@ -2278,7 +2281,8 @@ Admin bearer auth is required.
 | --- | --- | --- | --- |
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
 | `base_ref` | `string` | Yes | Branch or ref to check out before creating the task branch. |
-| `branch` | `string` | No | Optional task branch name override. When omitted, the service keeps generating the default `fde-agent/...` branch name. When provided and the branch already exists on origin, the service increments the trailing numeric suffix until it finds a free branch name, for example `branch` -> `branch-1`, `branch-1` -> `branch-2`, and `branch-03` -> `branch-04`. |
+| `branch` | `string` | No | Optional task branch name override. When omitted, the service keeps generating the default `fd-agent/...` branch name. When provided and the branch already exists on origin, the service increments the trailing numeric suffix until it finds a free branch name, for example `branch` -> `branch-1`, `branch-1` -> `branch-2`, and `branch-03` -> `branch-04`. |
+| `branch_title` | `string` | No | Optional task branch name override accepted from frontend clients. If both `branch` and `branch_title` are provided, they must normalize to the same value. |
 | `problem_statement` | `string` | Yes | Task instructions passed to the selected local agent and included in the initialization commit/PR body. |
 | `task` | `"codex" \| "opencode"` | No | Local agent implementation. Defaults to `codex`. |
 | `model` | `string` | No | Model for the selected task runner. Codex defaults to `CODEX_MODEL` or `gpt-5.2-codex`; opencode defaults to `deepseek-v4-flash` and only accepts `deepseek-v4-flash` or `deepseek-v4-pro`. |
@@ -2309,7 +2313,7 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
   -d '{
     "repo": "file-diff/file-diff-engine",
     "base_ref": "main",
-    "branch": "feature-01",
+    "branch_title": "fd-agent/custom-name",
     "problem_statement": "Implement the requested change",
     "task": "codex",
     "model": "gpt-5.2-codex",
