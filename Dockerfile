@@ -59,6 +59,8 @@ RUN npm i -g @openai/codex
 RUN curl -sL https://github.com/foundry-rs/foundry/releases/download/v1.7.0/foundry_v1.7.0_linux_amd64.tar.gz | tar -xz \
     && mv forge cast anvil chisel /usr/local/bin/
 
+RUN npm install -g @ccusage/codex
+
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
