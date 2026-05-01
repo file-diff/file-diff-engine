@@ -30,7 +30,7 @@ describe("applyPullRequestCompletionMode", () => {
     await expect(
       applyPullRequestCompletionMode({
         repo: "file-diff/file-diff-engine",
-        branch: "fde-agent/test",
+        branch: "fd-agent/test",
         pullNumber: 42,
         mode: "AutoReady",
         token: "token",
@@ -39,7 +39,7 @@ describe("applyPullRequestCompletionMode", () => {
 
     expect(githubApi.findOpenPullRequestByHeadBranch).toHaveBeenCalledWith(
       "file-diff/file-diff-engine",
-      "fde-agent/test",
+      "fd-agent/test",
       "token"
     );
     expect(githubApi.markPullRequestReady).toHaveBeenCalledWith(
@@ -65,7 +65,7 @@ describe("applyPullRequestCompletionMode", () => {
     await expect(
       applyPullRequestCompletionMode({
         repo: "file-diff/file-diff-engine",
-        branch: "fde-agent/test",
+        branch: "fd-agent/test",
         pullNumber: 99,
         mode: "AutoMerge",
       })
@@ -91,7 +91,7 @@ describe("applyPullRequestCompletionMode", () => {
     await expect(
       applyPullRequestCompletionMode({
         repo: "file-diff/file-diff-engine",
-        branch: "fde-agent/test",
+        branch: "fd-agent/test",
         pullNumber: 100,
         mode: "AutoMerge",
       })

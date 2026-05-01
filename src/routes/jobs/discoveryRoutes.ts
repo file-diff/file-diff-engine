@@ -1372,6 +1372,7 @@ export function registerDiscoveryRoutes(
         pull_request_completion_mode,
         base_ref,
         branch,
+        branch_title,
         task_delay_ms,
         deepseek_api_key,
         githubKey,
@@ -1395,22 +1396,45 @@ export function registerDiscoveryRoutes(
       }
 
       let requestedBranch: string | undefined;
-      if (branch !== undefined) {
-        if (typeof branch !== "string") {
+      if (branch !== undefined && typeof branch !== "string") {
+        const response: ErrorResponse = {
+          error: "Field 'branch' must be a non-empty git ref string.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (branch_title !== undefined && typeof branch_title !== "string") {
+        const response: ErrorResponse = {
+          error: "Field 'branch_title' must be a non-empty git ref string.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      try {
+        const normalizedBranch = branch !== undefined
+          ? normalizeGitRef(branch, "branch")
+          : undefined;
+        const normalizedBranchTitle = branch_title !== undefined
+          ? normalizeGitRef(branch_title, "branch_title")
+          : undefined;
+
+        if (
+          normalizedBranch &&
+          normalizedBranchTitle &&
+          normalizedBranch !== normalizedBranchTitle
+        ) {
           const response: ErrorResponse = {
-            error: "Field 'branch' must be a non-empty git ref string.",
+            error: "Fields 'branch' and 'branch_title' must match when both are provided.",
           };
           return reply.code(400).send(response);
         }
 
-        try {
-          requestedBranch = normalizeGitRef(branch, "branch");
-        } catch (error) {
-          const response: ErrorResponse = {
-            error: error instanceof Error ? error.message : "Invalid branch value.",
-          };
-          return reply.code(400).send(response);
-        }
+        requestedBranch = normalizedBranch ?? normalizedBranchTitle;
+      } catch (error) {
+        const response: ErrorResponse = {
+          error: error instanceof Error ? error.message : "Invalid branch value.",
+        };
+        return reply.code(400).send(response);
       }
 
       const taskRunner = task === undefined ? DEFAULT_AGENT_TASK_RUNNER : task;
@@ -1803,6 +1827,8 @@ function summarizeCreateTaskPayload(body: CreateTaskRequest | undefined): Record
 
   if (typeof body?.branch === "string") {
     summary.branch = body.branch;
+  } else if (typeof body?.branch_title === "string") {
+    summary.branch = body.branch_title;
   }
 
   if (typeof body?.task_delay_ms === "number") {

@@ -900,13 +900,13 @@ function getRepositoryUrl(repo: string): string {
     : `https://github.com/${repo.replace(/\.git$/, "")}`;
 }
 
-function buildTaskBranchName(jobId: string): string {
+export function buildTaskBranchName(jobId: string): string {
   const timestamp = new Date()
     .toISOString()
     .replace(/[-:]/g, "")
     .replace(/\..+$/, "")
     .replace("T", "-");
-  return `fde-agent/${timestamp}-${jobId.slice(0, 8)}`;
+  return `fd-agent/${timestamp}-${jobId.slice(0, 8)}`;
 }
 
 function buildInitCommitSubject(problemStatement: string): string {
