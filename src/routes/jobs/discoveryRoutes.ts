@@ -83,9 +83,10 @@ const PULL_REQUEST_COMPLETION_MODES: readonly PullRequestCompletionMode[] = [
 ];
 const SUPPORTED_DEEPSEEK_MODELS = ["deepseek-v4-flash", "deepseek-v4-pro"] as const;
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
-const SUPPORTED_AGENT_TASK_RUNNERS = ["codex", "opencode"] as const;
+const SUPPORTED_AGENT_TASK_RUNNERS = ["codex", "opencode", "claude"] as const;
 const DEFAULT_AGENT_TASK_RUNNER: AgentTaskRunner = "codex";
 const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
+const DEFAULT_CLAUDE_MODEL = "sonnet";
 const DEFAULT_CODEX_REASONING_EFFORT: CodexReasoningEffort = "medium";
 const DEFAULT_CODEX_REASONING_SUMMARY: CodexReasoningSummary = "auto";
 const SUPPORTED_CODEX_REASONING_EFFORTS: readonly CodexReasoningEffort[] = [
@@ -1431,7 +1432,7 @@ export function registerDiscoveryRoutes(
       const taskRunner = task === undefined ? DEFAULT_AGENT_TASK_RUNNER : task;
       if (!isSupportedAgentTaskRunner(taskRunner)) {
         const response: ErrorResponse = {
-          error: "Field 'task' must be one of: codex, opencode.",
+          error: "Field 'task' must be one of: codex, opencode, claude.",
         };
         return reply.code(400).send(response);
       }
@@ -1448,7 +1449,7 @@ export function registerDiscoveryRoutes(
       }
 
       if (
-        taskRunner === "codex" &&
+        (taskRunner === "codex" || taskRunner === "claude") &&
         model !== undefined &&
         (typeof model !== "string" || !model.trim())
       ) {
@@ -1561,7 +1562,9 @@ export function registerDiscoveryRoutes(
         model?.trim() ||
         (taskRunner === "opencode"
           ? DEFAULT_DEEPSEEK_MODEL
-          : process.env.CODEX_MODEL?.trim() || DEFAULT_CODEX_MODEL);
+          : taskRunner === "claude"
+            ? process.env.CLAUDE_MODEL?.trim() || DEFAULT_CLAUDE_MODEL
+            : process.env.CODEX_MODEL?.trim() || DEFAULT_CODEX_MODEL);
       const jobId = randomUUID();
       const scheduledAt = taskDelayMs > 0
         ? new Date(Date.now() + taskDelayMs)
@@ -1703,7 +1706,11 @@ async function enqueueAgentTaskJob(
   deepseekApiKey?: string
 ): Promise<void> {
   await queue.add(
-    task === "opencode" ? "create-opencode-task" : "create-codex-task",
+    task === "opencode"
+      ? "create-opencode-task"
+      : task === "claude"
+        ? "create-claude-task"
+        : "create-codex-task",
     {
       jobId,
       repoName,

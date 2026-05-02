@@ -11,6 +11,7 @@ import type {
   CodexVerbosity,
   PullRequestCompletionMode,
 } from "../types";
+import { executeClaudeOnPreparedBranch } from "../services/claudeTask";
 import { executeCodexOnPreparedBranch } from "../services/codexTask";
 import { processRepository } from "../services/repoProcessor";
 import {
@@ -38,7 +39,11 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
   const worker = new Worker(
     QUEUE_NAME,
     async (job: Job) => {
-      if (job.name === "create-opencode-task" || job.name === "create-codex-task") {
+      if (
+        job.name === "create-opencode-task" ||
+        job.name === "create-codex-task" ||
+        job.name === "create-claude-task"
+      ) {
         await handleAgentTaskJob(job, repo);
         return;
       }
@@ -109,7 +114,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     branch,
     problemStatement,
     model,
-    task = job.name === "create-opencode-task" ? "opencode" : "codex",
+    task = resolveAgentTaskRunnerFromJobName(job.name),
     reasoningEffort,
     reasoningSummary,
     verbosity,
@@ -193,25 +198,30 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     };
     const isCancellationRequested = async (): Promise<boolean> =>
       repo.isAgentTaskCancellationRequested(jobId);
+    const executionCallbacks = {
+      onLogsUpdated: persistLogs,
+      isCancellationRequested,
+    };
     const logs = task === "opencode"
       ? await executeOpencodeOnPreparedBranch(
           taskOptions,
           prepared.branch,
           prepared.pullRequest.number,
-          {
-            onLogsUpdated: persistLogs,
-            isCancellationRequested,
-          }
+          executionCallbacks
         )
-      : await executeCodexOnPreparedBranch(
-          taskOptions,
-          prepared.branch,
-          prepared.pullRequest.number,
-          {
-            onLogsUpdated: persistLogs,
-            isCancellationRequested,
-          }
-        );
+      : task === "claude"
+        ? await executeClaudeOnPreparedBranch(
+            taskOptions,
+            prepared.branch,
+            prepared.pullRequest.number,
+            executionCallbacks
+          )
+        : await executeCodexOnPreparedBranch(
+            taskOptions,
+            prepared.branch,
+            prepared.pullRequest.number,
+            executionCallbacks
+          );
     lastCapturedLogs = logs;
     if (await repo.isAgentTaskCancellationRequested(jobId)) {
       throw new Error("Task canceled by request.");
@@ -291,6 +301,18 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     );
     throw err;
   }
+}
+
+function resolveAgentTaskRunnerFromJobName(jobName: string): AgentTaskRunner {
+  if (jobName === "create-opencode-task") {
+    return "opencode";
+  }
+
+  if (jobName === "create-claude-task") {
+    return "claude";
+  }
+
+  return "codex";
 }
 
 function isOpencodeExecutionError(

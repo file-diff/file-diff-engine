@@ -126,6 +126,60 @@ describe("registerDiscoveryRoutes", () => {
     }
   });
 
+  it("queues claude tasks with the claude default model", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Queue;
+    const originalClaudeModel = process.env.CLAUDE_MODEL;
+    process.env.CLAUDE_MODEL = "opus";
+
+    try {
+      registerDiscoveryRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          base_ref: "main",
+          problem_statement: "Run this task with Claude",
+          task: "claude",
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      const body = response.json() as { id: string };
+
+      await expect(jobRepo.getAgentTaskJob(body.id)).resolves.toMatchObject({
+        id: body.id,
+        taskRunner: "claude",
+        model: "opus",
+      });
+
+      expect(queue.add).toHaveBeenCalledWith(
+        "create-claude-task",
+        expect.objectContaining({
+          task: "claude",
+          model: "opus",
+        }),
+        expect.objectContaining({
+          jobId: body.id,
+          delay: 0,
+        })
+      );
+    } finally {
+      process.env.CLAUDE_MODEL = originalClaudeModel;
+      await app.close();
+      await database.end();
+    }
+  });
+
   it("rejects conflicting auto_ready and pull_request_completion_mode values", async () => {
     const app = Fastify();
     const database = await createTestDatabase();
