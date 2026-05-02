@@ -1,6 +1,6 @@
-﻿# Codex + opencode task setup
+﻿# Codex + opencode + Claude task setup
 
-This service starts Codex-backed agent tasks by default through `POST /api/jobs/create-task`. Clients can still request opencode-backed tasks with `"task": "opencode"`. Task progress/output is exposed through `GET /api/jobs/create-task/:id`.
+This service starts Codex-backed agent tasks by default through `POST /api/jobs/create-task`. Clients can also request opencode-backed tasks with `"task": "opencode"` or Claude-backed tasks with `"task": "claude"`. Task progress/output is exposed through `GET /api/jobs/create-task/:id`.
 
 ## Required configuration
 
@@ -15,6 +15,10 @@ Set these environment variables for the API container:
 | `CODEX_BIN` | No | Codex executable path. Defaults to `codex`. |
 | `CODEX_TIMEOUT_MS` | No | Maximum Codex runtime per task. Defaults to `7200000` (2 hours). |
 | `CODEX_OUTPUT_LIMIT` | No | Maximum captured Codex stdout/stderr bytes. Defaults to `1000000`. |
+| `CLAUDE_MODEL` | No | Default Claude Code model. Defaults to `sonnet`. |
+| `CLAUDE_BIN` | No | Claude executable path. Defaults to `claude`. |
+| `CLAUDE_TIMEOUT_MS` | No | Maximum Claude runtime per task. Defaults to `7200000` (2 hours). |
+| `CLAUDE_OUTPUT_LIMIT` | No | Maximum captured Claude stdout/stderr bytes. Defaults to `1000000`. |
 | `DEEPSEEK_API_KEY` | Only for opencode | DeepSeek API key used by opencode. A per-request `deepseek_api_key` can override this, but the environment variable is preferred. |
 | `OPENCODE_BIN` | No | opencode executable path. Defaults to `opencode`. |
 | `OPENCODE_TIMEOUT_MS` | No | Maximum opencode runtime per task. Defaults to `7200000` (2 hours). |
@@ -22,7 +26,7 @@ Set these environment variables for the API container:
 | `GIT_AUTHOR_NAME` | No | Git author name for generated commits. |
 | `GIT_AUTHOR_EMAIL` | No | Git author email for generated commits. |
 
-Docker images install Codex and opencode, and expose these variables in `docker-compose.yml`.
+Docker images install Codex, Claude Code, and opencode, and expose these variables in `docker-compose.yml`.
 
 ## Supported models
 
@@ -61,8 +65,8 @@ Response:
 
 Optional request fields:
 
-- `task`: `codex` or `opencode`; defaults to `codex`.
-- `model`: model for the selected runner. opencode accepts `deepseek-v4-flash` or `deepseek-v4-pro`.
+- `task`: `codex`, `opencode`, or `claude`; defaults to `codex`.
+- `model`: model for the selected runner. Claude accepts any non-empty Claude Code model string. opencode accepts `deepseek-v4-flash` or `deepseek-v4-pro`.
 - `create_pull_request`: compatibility field; if provided it must be `true` because agent tasks always create a draft pull request.
 - `pull_request_completion_mode`: `None`, `AutoReady`, or `AutoMerge`. Agent tasks always start from a draft pull request; `AutoReady` marks it ready for review after success, and `AutoMerge` then enables GitHub auto-merge after success if the repository setting `Allow auto-merge` is enabled.
 - `branch`: optional task branch name override. If the branch already exists on origin, the worker increments the trailing numeric suffix until a free branch name is found, for example `branch` -> `branch-1` and `branch-03` -> `branch-04`.
@@ -100,8 +104,8 @@ Important response fields:
 2. A local task record is created and queued in Redis.
 3. The worker clones the repository, checks out `base_ref`, creates either the requested task branch or a new `fd-agent/...` branch, and creates an empty initialization commit containing the task text. If the requested branch already exists on origin, the worker increments its trailing numeric suffix until it finds a free name.
 4. The branch is pushed and a draft pull request is opened before the selected agent starts.
-5. Codex or opencode is launched on the prepared branch. The prompt tells the agent that the branch and pull request already exist and instructs it to commit and push progress to that branch.
-6. While Codex/opencode is running, the worker polls the task row for cancellation. If cancellation is requested, it terminates the attached process group, stores `canceled`, and sends a Slack terminal notification with the cancellation details.
+5. Codex, Claude, or opencode is launched on the prepared branch. The prompt tells the agent that the branch and pull request already exist and instructs it to commit and push progress to that branch.
+6. While the selected runner is active, the worker polls the task row for cancellation. If cancellation is requested, it terminates the attached process group, stores `canceled`, and sends a Slack terminal notification with the cancellation details.
 7. When the agent exits normally, the worker captures output, commits/pushes any remaining uncommitted changes, and marks the task `completed`; failures are stored as `failed`.
 
 ## Docker Compose example

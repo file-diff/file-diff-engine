@@ -16,7 +16,7 @@ const TASK_ROUTE_RATE_LIMIT_WINDOW_MS = 60_000;
 const logger = createLogger("task-routes");
 
 /**
- * Routes for inspecting locally-managed agent task jobs (Codex/opencode based).
+ * Routes for inspecting locally-managed agent task jobs (Codex/opencode/Claude based).
  *
  * The legacy GitHub Copilot remote-task endpoints have been removed; these routes
  * now read from the local `agent_task_jobs` table via {@link JobRepository}.

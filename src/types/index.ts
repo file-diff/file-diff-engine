@@ -107,7 +107,7 @@ export type JobStatus = "waiting" | "active" | "completed" | "failed";
 export type AgentTaskJobStatus = JobStatus | "canceled";
 
 /** Local agent implementation used to execute task instructions. */
-export type AgentTaskRunner = "codex" | "opencode";
+export type AgentTaskRunner = "codex" | "opencode" | "claude";
 
 /** Model identifier for a locally-managed agent task. */
 export type AgentTaskModel = string;
@@ -382,7 +382,7 @@ export interface ShortenPromptResponse {
 /** Follow-up pull request action after a successful agent task run. */
 export type PullRequestCompletionMode = "None" | "AutoReady" | "AutoMerge";
 
-/** Payload sent when creating a new local agent task (Codex/opencode based). */
+/** Payload sent when creating a new local agent task (Codex/opencode/Claude based). */
 export interface CreateTaskRequest {
   /** GitHub repository in owner/repo format */
   repo: string;

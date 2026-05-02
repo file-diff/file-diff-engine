@@ -928,7 +928,7 @@ curl -X POST https://your-host.example.com/api/jobs/pull-request/open \
 
 ### `POST /api/jobs/create-task`
 
-Creates a local GitHub Copilot agent-task job for a repository and enqueues background processing. By default the remote GitHub task is started as soon as the worker picks up the job. When `task_delay_ms` is provided, remote task creation is deferred until the delay expires.
+Creates a local GitHub Copilot agent-task job for a repository and enqueues background processing. By default the Codex runner starts as soon as the worker picks up the job. Claude and opencode can be selected with `task`. When `task_delay_ms` is provided, task execution is deferred until the delay expires.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -939,6 +939,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
 | `agent_id` | `integer` | No | Agent ID (optional, defaults to coding agent). |
 | `problem_statement` | `string` | Yes | Additional prompting for the agent. |
+| `task` | `"codex" \| "opencode" \| "claude"` | No | Local agent implementation. Defaults to `codex`. |
 | `model` | `string` | No | The model to use for this task (e.g. `claude-sonnet-4.6`, `gpt-5.2-codex`). |
 | `custom_agent` | `string` | No | Custom agent identifier. |
 | `create_pull_request` | `boolean` | No | Compatibility field. When provided it must be `true`, because agent tasks always create a draft pull request before execution starts. |
@@ -1034,7 +1035,7 @@ Status: `200 OK`
 
 ### `POST /api/jobs/create-task/:id/cancel`
 
-Cancels a local agent-task job. Waiting jobs are removed from the queue and marked `canceled`; running Codex/opencode jobs receive a persisted cancellation request and the worker terminates the attached process before marking the row `canceled`.
+Cancels a local agent-task job. Waiting jobs are removed from the queue and marked `canceled`; running Codex/opencode/Claude jobs receive a persisted cancellation request and the worker terminates the attached process before marking the row `canceled`.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -1071,7 +1072,7 @@ Returns the updated job payload documented for `GET /api/jobs/create-task/:id`, 
 
 ### `GET /api/agents/repos/:owner/:repo/tasks/:task_id`
 
-Returns the details of a single locally-managed agent task job (Codex/opencode based).
+Returns the details of a single locally-managed agent task job (Codex/opencode/Claude based).
 The `:task_id` is the local agent task job id returned from `POST /api/jobs/create-task`.
 For Codex tasks, `:task_id` can also be the captured Codex `session id` from the startup banner.
 
@@ -2271,7 +2272,7 @@ Example response:
 
 ### `POST /api/jobs/create-task`
 
-Starts a Codex-backed agent task for a repository by default, or an opencode-backed task when requested. The worker checks out the requested base branch, creates and pushes a new task branch, creates an initialization commit containing the task, opens a draft pull request, then runs the selected local agent.
+Starts a Codex-backed agent task for a repository by default, or an opencode/Claude-backed task when requested. The worker checks out the requested base branch, creates and pushes a new task branch, creates an initialization commit containing the task, opens a draft pull request, then runs the selected local agent.
 
 Admin bearer auth is required.
 
@@ -2284,8 +2285,8 @@ Admin bearer auth is required.
 | `branch` | `string` | No | Optional task branch name override. When omitted, the service keeps generating the default `fd-agent/...` branch name. When provided and the branch already exists on origin, the service increments the trailing numeric suffix until it finds a free branch name, for example `branch` -> `branch-1`, `branch-1` -> `branch-2`, and `branch-03` -> `branch-04`. |
 | `branch_title` | `string` | No | Optional task branch name override accepted from frontend clients. If both `branch` and `branch_title` are provided, they must normalize to the same value. |
 | `problem_statement` | `string` | Yes | Task instructions passed to the selected local agent and included in the initialization commit/PR body. |
-| `task` | `"codex" \| "opencode"` | No | Local agent implementation. Defaults to `codex`. |
-| `model` | `string` | No | Model for the selected task runner. Codex defaults to `CODEX_MODEL` or `gpt-5.2-codex`; opencode defaults to `deepseek-v4-flash` and only accepts `deepseek-v4-flash` or `deepseek-v4-pro`. |
+| `task` | `"codex" \| "opencode" \| "claude"` | No | Local agent implementation. Defaults to `codex`. |
+| `model` | `string` | No | Model for the selected task runner. Codex defaults to `CODEX_MODEL` or `gpt-5.2-codex`; Claude defaults to `CLAUDE_MODEL` or `sonnet`; opencode defaults to `deepseek-v4-flash` and only accepts `deepseek-v4-flash` or `deepseek-v4-pro`. |
 | `create_pull_request` | `boolean` | No | Compatibility field. When provided it must be `true`, because agent tasks always create a draft pull request. |
 | `pull_request_completion_mode` | `"None" \| "AutoReady" \| "AutoMerge"` | No | Follow-up PR action after a successful run. `AutoMerge` enables GitHub auto-merge on the created pull request. |
 | `reasoning_effort` | `"low" \| "medium" \| "high" \| "xhigh"` | No | Codex-only reasoning effort override. Defaults to `medium`. |
@@ -2348,7 +2349,7 @@ Status: `200 OK`
 | `status` | `string` | Local status: `waiting`, `active`, `completed`, `failed`, or `canceled`. |
 | `taskStatus` | `string` | Task phase such as `preparing`, `working`, or `completed`. |
 | `branch` | `string \| null` | Generated task branch when available. |
-| `taskRunner` | `string` | Selected task runner: `codex` or `opencode` when available. |
+| `taskRunner` | `string` | Selected task runner: `codex`, `opencode`, or `claude` when available. |
 | `baseRef` | `string` | Requested base ref. |
 | `model` | `string` | Selected task model. |
 | `reasoningEffort` | `string` | Codex reasoning effort when set. |

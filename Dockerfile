@@ -54,6 +54,7 @@ ENV PATH=$PATH:/usr/local/go/bin
 ENV PATH="/home/docker/.cargo/bin:${PATH}"
 
 RUN npm i -g @openai/codex
+RUN npm i -g @anthropic-ai/claude-code
 
 RUN curl -sL https://github.com/foundry-rs/foundry/releases/download/v1.7.0/foundry_v1.7.0_linux_amd64.tar.gz | tar -xz \
     && mv forge cast anvil chisel /usr/local/bin/
@@ -76,6 +77,10 @@ ENV CODEX_MODEL=gpt-5.2-codex
 ENV CODEX_BIN=codex
 ENV CODEX_TIMEOUT_MS=7200000
 ENV CODEX_OUTPUT_LIMIT=1000000
+ENV CLAUDE_MODEL=sonnet
+ENV CLAUDE_BIN=claude
+ENV CLAUDE_TIMEOUT_MS=7200000
+ENV CLAUDE_OUTPUT_LIMIT=1000000
 ENV OPENCODE_BIN=opencode
 ENV OPENCODE_TIMEOUT_MS=7200000
 ENV OPENCODE_OUTPUT_LIMIT=1000000
