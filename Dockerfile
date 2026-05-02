@@ -59,7 +59,7 @@ RUN npm i -g @anthropic-ai/claude-code
 RUN curl -sL https://github.com/foundry-rs/foundry/releases/download/v1.7.0/foundry_v1.7.0_linux_amd64.tar.gz | tar -xz \
     && mv forge cast anvil chisel /usr/local/bin/
 
-RUN npm install -g @ccusage/codex
+RUN npm install -g @ccusage/codex ccusage
 
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
