@@ -68,10 +68,10 @@ export function buildClaudeArgs(model: string): string[] {
     model,
     "--output-format",
     "text",
-    "--dangerously-skip-permissions",
+    "--permission-mode", // Activates immediately
+    "bypassPermissions", // No user input required
   ];
 }
-
 export function buildClaudePrompt(
   problemStatement: string,
   branch: string,
