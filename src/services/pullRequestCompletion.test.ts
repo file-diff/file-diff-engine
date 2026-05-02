@@ -75,6 +75,62 @@ describe("applyPullRequestCompletionMode", () => {
     ]);
   });
 
+  it("retries auto-merge after 15 seconds on transient failure then succeeds", async () => {
+    vi.useFakeTimers();
+    vi.mocked(githubApi.findOpenPullRequestByHeadBranch).mockResolvedValue({
+      number: 101,
+      title: "Task PR",
+      url: "https://github.com/file-diff/file-diff-engine/pull/101",
+      state: "open",
+      draft: false,
+      baseBranch: "main",
+    });
+    vi.mocked(githubApi.enablePullRequestAutoMerge)
+      .mockRejectedValueOnce(new Error("transient GitHub error"))
+      .mockResolvedValueOnce(undefined);
+
+    const promise = applyPullRequestCompletionMode({
+      repo: "file-diff/file-diff-engine",
+      branch: "fd-agent/test",
+      pullNumber: 101,
+      mode: "AutoMerge",
+    });
+
+    await vi.advanceTimersByTimeAsync(15000);
+    await expect(promise).resolves.toEqual([
+      "Requested auto-merge for pull request #101; GitHub has not merged it yet because required checks, approvals, or branch protection requirements may still be pending.",
+    ]);
+    expect(githubApi.enablePullRequestAutoMerge).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("returns error if retry after 15 seconds also fails", async () => {
+    vi.useFakeTimers();
+    vi.mocked(githubApi.findOpenPullRequestByHeadBranch).mockResolvedValue({
+      number: 102,
+      title: "Task PR",
+      url: "https://github.com/file-diff/file-diff-engine/pull/102",
+      state: "open",
+      draft: false,
+      baseBranch: "main",
+    });
+    vi.mocked(githubApi.enablePullRequestAutoMerge)
+      .mockRejectedValueOnce(new Error("transient GitHub error"))
+      .mockRejectedValueOnce(new Error("transient GitHub error"));
+
+    const promise = applyPullRequestCompletionMode({
+      repo: "file-diff/file-diff-engine",
+      branch: "fd-agent/test",
+      pullNumber: 102,
+      mode: "AutoMerge",
+    });
+
+    await vi.advanceTimersByTimeAsync(15000);
+    await expect(promise).rejects.toThrow("transient GitHub error");
+    expect(githubApi.enablePullRequestAutoMerge).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
   it("surfaces a clear error when repository auto-merge is disabled", async () => {
     vi.mocked(githubApi.findOpenPullRequestByHeadBranch).mockResolvedValue({
       number: 100,
