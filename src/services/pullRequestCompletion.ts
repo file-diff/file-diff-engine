@@ -34,11 +34,8 @@ export async function applyPullRequestCompletionMode(options: {
     return actions;
   }
 
-  try {
-    await githubApi.enablePullRequestAutoMerge(options.repo, options.pullNumber, {
-      token: options.token,
-    });
-  } catch (error) {
+  const autoMergeArgs = { token: options.token };
+  const throwIfConfigError = (error: unknown) => {
     if (
       error instanceof Error &&
       error.message.includes("Auto merge is not allowed for this repository")
@@ -47,7 +44,20 @@ export async function applyPullRequestCompletionMode(options: {
         `GitHub auto-merge is disabled for repository '${options.repo}'. Enable the repository setting "Allow auto-merge" before using pull request completion mode AutoMerge.`
       );
     }
-    throw error;
+  };
+
+  try {
+    await githubApi.enablePullRequestAutoMerge(options.repo, options.pullNumber, autoMergeArgs);
+  } catch (error) {
+    throwIfConfigError(error);
+    // Wait 15 seconds and retry once — GitHub sometimes needs time after a PR is marked ready
+    await new Promise((resolve) => setTimeout(resolve, 15000));
+    try {
+      await githubApi.enablePullRequestAutoMerge(options.repo, options.pullNumber, autoMergeArgs);
+    } catch (retryError) {
+      throwIfConfigError(retryError);
+      throw retryError;
+    }
   }
   actions.push(
     `Requested auto-merge for pull request #${options.pullNumber}; GitHub has not merged it yet because required checks, approvals, or branch protection requirements may still be pending.`
