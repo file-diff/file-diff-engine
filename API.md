@@ -161,6 +161,64 @@ Example response:
 
 ---
 
+### `GET /api/codex/stats`
+
+Returns Codex CLI usage statistics for the host the API runs on. The endpoint shells out to `npx @ccusage/codex` and returns the command's stdout verbatim as `text/plain`.
+
+#### Request arguments
+
+None.
+
+#### Success response
+
+Status: `200 OK`
+
+Response body:
+
+- Plain-text usage report produced by `@ccusage/codex` (`Content-Type: text/plain; charset=utf-8`).
+
+#### Common statuses
+
+- `429 Too Many Requests` when the per-IP rate limit (30 requests per minute) is exceeded
+- `500 Internal Server Error` when `npx @ccusage/codex` fails to run or exceeds the 30 second execution timeout
+
+#### Example
+
+```bash
+curl -X GET https://your-host.example.com/api/codex/stats
+```
+
+---
+
+### `GET /api/claude/stats`
+
+Returns Claude CLI usage statistics for the host the API runs on. The endpoint shells out to `npx ccusage` and returns the command's stdout verbatim as `text/plain`.
+
+#### Request arguments
+
+None.
+
+#### Success response
+
+Status: `200 OK`
+
+Response body:
+
+- Plain-text usage report produced by `ccusage` (`Content-Type: text/plain; charset=utf-8`).
+
+#### Common statuses
+
+- `429 Too Many Requests` when the per-IP rate limit (30 requests per minute) is exceeded
+- `500 Internal Server Error` when `npx ccusage` fails to run or exceeds the 30 second execution timeout
+
+#### Example
+
+```bash
+curl -X GET https://your-host.example.com/api/claude/stats
+```
+
+---
+
 ### `POST /api/shorten-prompt`
 
 Generates a concise lowercase hyphenated title from a long prompt using DeepSeek `deepseek-v4-flash`.
@@ -180,6 +238,9 @@ Status: `200 OK`
 | Field | Type | Description |
 | --- | --- | --- |
 | `title` | `string` | Generated title, or `failed-to-generate-prompt-title` fallback |
+| `inputTokens` | `number` | Prompt tokens reported by DeepSeek for the request, or `0` when generation was skipped |
+| `outputTokens` | `number` | Completion tokens reported by DeepSeek for the response, or `0` when generation was skipped |
+| `durationMs` | `number` | Total wall-clock time spent generating the title, in milliseconds |
 
 #### Example
 
@@ -195,7 +256,10 @@ Example response:
 
 ```json
 {
-  "title": "shorten-prompt-title"
+  "title": "shorten-prompt-title",
+  "inputTokens": 42,
+  "outputTokens": 7,
+  "durationMs": 318
 }
 ```
 
@@ -408,6 +472,64 @@ curl -X POST https://your-host.example.com/api/jobs/delete-remote-branch \
     "repo": "facebook/react",
     "branch": "feature-branch"
   }'
+```
+
+---
+
+### `POST /api/jobs/branch-permissions`
+
+Checks whether the configured GitHub token can read from and write to a specific branch in a repository.
+
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `branch` | `string` | Yes | Branch name to check permissions for. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN`. |
+
+#### Success response
+
+Status: `200 OK`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `repo` | `string` | Normalized repository name |
+| `branch` | `string` | Branch name that was checked |
+| `read` | `boolean` | Whether the token has read access to the branch |
+| `write` | `boolean` | Whether the token has write access to the branch |
+
+#### Common statuses
+
+- `400 Bad Request` when `repo` or `branch` is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `404 Not Found` when the repository or branch does not exist
+- `503 Service Unavailable` when the bearer token is not configured
+- `500 Internal Server Error` for GitHub API failures
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/branch-permissions \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "branch": "main"
+  }'
+```
+
+Example response:
+
+```json
+{
+  "repo": "facebook/react",
+  "branch": "main",
+  "read": true,
+  "write": false
+}
 ```
 
 ---
@@ -928,7 +1050,7 @@ curl -X POST https://your-host.example.com/api/jobs/pull-request/open \
 
 ### `POST /api/jobs/create-task`
 
-Creates a local GitHub Copilot agent-task job for a repository and enqueues background processing. By default the Codex runner starts as soon as the worker picks up the job. Claude and opencode can be selected with `task`. When `task_delay_ms` is provided, task execution is deferred until the delay expires.
+Creates a local agent-task job for a repository and enqueues background processing. The worker checks out `base_ref`, creates and pushes a new task branch, opens a draft pull request, then runs the selected local agent (Codex by default; Claude or opencode when `task` is set). When `task_delay_ms` is provided, task execution is deferred until the delay expires.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -937,21 +1059,25 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
-| `agent_id` | `integer` | No | Agent ID (optional, defaults to coding agent). |
-| `problem_statement` | `string` | Yes | Additional prompting for the agent. |
+| `problem_statement` | `string` | Yes | Task instructions passed to the selected local agent and included in the initialization commit/PR body. |
+| `base_ref` | `string` | Yes | Base ref for the new branch/PR. |
 | `task` | `"codex" \| "opencode" \| "claude"` | No | Local agent implementation. Defaults to `codex`. |
-| `model` | `string` | No | The model to use for this task (e.g. `claude-sonnet-4.6`, `gpt-5.2-codex`). |
-| `custom_agent` | `string` | No | Custom agent identifier. |
+| `model` | `string` | No | Model for the selected task runner. Codex defaults to `CODEX_MODEL` or `gpt-5.2-codex`; Claude defaults to `CLAUDE_MODEL` or `sonnet`; opencode defaults to `deepseek-v4-flash` and only accepts `deepseek-v4-flash` or `deepseek-v4-pro`. |
+| `agent_id` | `integer` | No | Compatibility field stored on the task summary; not used to dispatch a remote agent. |
+| `custom_agent` | `string` | No | Compatibility field stored on the task summary; not used to dispatch a remote agent. |
 | `create_pull_request` | `boolean` | No | Compatibility field. When provided it must be `true`, because agent tasks always create a draft pull request before execution starts. |
-| `pull_request_completion_mode` | `string` | No | Follow-up PR action after a successful run: `None`, `AutoReady`, or `AutoMerge`. Agent tasks always start from a draft pull request; `AutoReady` marks it ready for review after success, and `AutoMerge` then enables GitHub auto-merge after success if the repository setting `Allow auto-merge` is enabled. |
-| `base_ref` | `string` | Yes | Base ref for new branch/PR. |
-| `branch` | `string` | No | Optional task branch name override. |
+| `auto_ready` | `boolean` | No | Compatibility flag equivalent to `pull_request_completion_mode: "AutoReady"`. Cannot be combined with a conflicting `pull_request_completion_mode` value. |
+| `auto_merge` | `boolean` | No | Compatibility flag equivalent to `pull_request_completion_mode: "AutoMerge"`. Takes precedence over `auto_ready` and cannot be combined with a conflicting `pull_request_completion_mode` value. |
+| `pull_request_completion_mode` | `"None" \| "AutoReady" \| "AutoMerge"` | No | Follow-up PR action after a successful run. `AutoReady` marks the draft PR ready for review after success; `AutoMerge` additionally enables GitHub auto-merge if the repository setting `Allow auto-merge` is enabled. |
+| `branch` | `string` | No | Optional task branch name override. When the branch already exists on origin, the service increments the trailing numeric suffix until it finds a free name (e.g. `branch` → `branch-1`, `branch-03` → `branch-04`). |
 | `branch_title` | `string` | No | Optional task branch name override accepted from frontend clients. If both `branch` and `branch_title` are provided, they must normalize to the same value. |
 | `reasoning_effort` | `"low" \| "medium" \| "high" \| "xhigh"` | No | Codex-only reasoning effort override. Defaults to `medium`. |
 | `reasoning_summary` | `"none" \| "auto" \| "concise" \| "detailed"` | No | Codex-only reasoning summary setting. Defaults to `auto`. |
 | `verbosity` | `"low" \| "medium" \| "high"` | No | Codex-only output verbosity override. |
 | `codex_web_search` | `boolean` | No | Codex-only flag to enable the Codex web search tool. |
-| `task_delay_ms` | `integer` | No | Optional non-negative delay in milliseconds before the remote GitHub task is created. |
+| `task_delay_ms` | `integer` | No | Optional non-negative delay in milliseconds before the queued worker starts processing the task. |
+| `githubKey` | `string` | No | Per-request GitHub token override used for branch, commit, push, and PR creation. Defaults to `PRIVATE_GITHUB_TOKEN`. |
+| `deepseek_api_key` | `string` | No | Per-request DeepSeek API key override for opencode tasks. Defaults to `DEEPSEEK_API_KEY`. |
 
 #### Success response
 
@@ -992,7 +1118,7 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
 
 ### `GET /api/jobs/create-task/pending`
 
-Lists local agent-task jobs that are still waiting to start and have not yet created a remote GitHub task.
+Lists local agent-task jobs that are queued and have not yet been picked up by a worker.
 
 #### Success response
 
@@ -1004,7 +1130,7 @@ Returns an array of the same objects documented for `GET /api/jobs/create-task/:
 
 ### `GET /api/jobs/create-task/:id`
 
-Returns the locally tracked status for a background agent-task job, including the created branch name once the remote task reports it.
+Returns the locally tracked status, captured output, and session metadata for a background agent-task job. While an agent is running, logs and session details are flushed into the database about every 15 seconds.
 
 #### Success response
 
@@ -1014,22 +1140,45 @@ Status: `200 OK`
 | --- | --- | --- |
 | `id` | `string` | Local agent-task job id |
 | `repo` | `string` | Repository in `owner/repo` format |
-| `status` | `string` | Local job status (`waiting`, `active`, `completed`, `failed`, `canceled`) |
-| `branch` | `string \| null` | Created branch name once known, otherwise `null` |
-| `taskId` | `string` | Created GitHub Copilot task id when available |
-| `taskStatus` | `string` | Last observed GitHub task state when available |
-| `pullRequestCompletionMode` | `string` | Requested follow-up PR action: `None`, `AutoReady`, or `AutoMerge` when set. `AutoMerge` enables GitHub auto-merge on the created pull request. |
+| `status` | `string` | Local job status: `waiting`, `active`, `completed`, `failed`, or `canceled` |
+| `taskStatus` | `string` | Task phase such as `preparing`, `working`, or `completed`, when available |
+| `taskRunner` | `"codex" \| "opencode" \| "claude"` | Selected task runner, when available |
+| `baseRef` | `string` | Requested base ref, when available |
+| `model` | `string` | Selected task model, when available |
+| `branch` | `string \| null` | Generated task branch name once known, otherwise `null` |
+| `pullRequestUrl` | `string` | Draft pull request URL when available |
+| `pullRequestNumber` | `number` | Draft pull request number when available |
+| `pullRequestCompletionMode` | `"None" \| "AutoReady" \| "AutoMerge"` | Requested follow-up PR action when set. `AutoMerge` enables GitHub auto-merge on the created pull request. |
+| `reasoningEffort` | `string` | Codex reasoning effort when set |
+| `reasoningSummary` | `string` | Codex reasoning summary when set |
+| `verbosity` | `string` | Codex verbosity when set |
+| `codexWebSearch` | `boolean` | Whether Codex web search was enabled |
+| `output` | `string` | Combined captured agent stdout/stderr collected so far |
+| `stdout` | `string` | Captured agent stdout collected so far |
+| `stderr` | `string` | Captured agent stderr collected so far |
+| `opencodeSessionId` | `string` | Detected opencode session id when available |
+| `opencodeSessionExport` | `object` | Latest JSON returned by `opencode export <sessionId>` when available |
+| `codexSessionId` | `string` | Captured Codex startup `session id` when available |
+| `codexSessionFilePath` | `string` | Matching Codex rollout JSONL path under `~/.codex/sessions` when found |
+| `codexSessionExport` | `object` | Codex session details, including `sessionId`, `sessionFilePath`, and `testDetails` lines grep-matched from the rollout JSONL |
+| `error` | `string` | Error message when the job has failed |
 | `taskDelayMs` | `integer` | Configured startup delay in milliseconds |
 | `scheduledAt` | `string \| null` | Scheduled start time for delayed jobs, otherwise `null` |
 | `cancelRequestedAt` | `string \| null` | Time cancellation was requested, otherwise `null` |
 | `deletedAt` | `string \| null` | Time the task was soft-deleted, otherwise `null` |
-| `error` | `string` | Error message when the job fails |
 | `createdAt` | `string` | Job creation timestamp |
 | `updatedAt` | `string` | Last update timestamp |
 
 #### Common statuses
 
 - `404 Not Found` when the task job id is unknown
+
+#### Example
+
+```bash
+curl https://your-host.example.com/api/jobs/create-task/7eb718f7-5c92-42d4-a6f8-1caaedfb29dc \
+  -H "Authorization: Bearer <token>"
+```
 
 ---
 
@@ -2268,116 +2417,8 @@ Example response:
 2. Use `sourceCommit` and `targetCommit` in your client workflow.
 3. Create jobs with `POST /api/jobs` for either or both commits if you want processed file metadata from this service.
 
----
+### Run an agent task and watch its progress
 
-### `POST /api/jobs/create-task`
-
-Starts a Codex-backed agent task for a repository by default, or an opencode/Claude-backed task when requested. The worker checks out the requested base branch, creates and pushes a new task branch, creates an initialization commit containing the task, opens a draft pull request, then runs the selected local agent.
-
-Admin bearer auth is required.
-
-#### Request arguments
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
-| `base_ref` | `string` | Yes | Branch or ref to check out before creating the task branch. |
-| `branch` | `string` | No | Optional task branch name override. When omitted, the service keeps generating the default `fd-agent/...` branch name. When provided and the branch already exists on origin, the service increments the trailing numeric suffix until it finds a free branch name, for example `branch` -> `branch-1`, `branch-1` -> `branch-2`, and `branch-03` -> `branch-04`. |
-| `branch_title` | `string` | No | Optional task branch name override accepted from frontend clients. If both `branch` and `branch_title` are provided, they must normalize to the same value. |
-| `problem_statement` | `string` | Yes | Task instructions passed to the selected local agent and included in the initialization commit/PR body. |
-| `task` | `"codex" \| "opencode" \| "claude"` | No | Local agent implementation. Defaults to `codex`. |
-| `model` | `string` | No | Model for the selected task runner. Codex defaults to `CODEX_MODEL` or `gpt-5.2-codex`; Claude defaults to `CLAUDE_MODEL` or `sonnet`; opencode defaults to `deepseek-v4-flash` and only accepts `deepseek-v4-flash` or `deepseek-v4-pro`. |
-| `create_pull_request` | `boolean` | No | Compatibility field. When provided it must be `true`, because agent tasks always create a draft pull request. |
-| `pull_request_completion_mode` | `"None" \| "AutoReady" \| "AutoMerge"` | No | Follow-up PR action after a successful run. `AutoMerge` enables GitHub auto-merge on the created pull request. |
-| `reasoning_effort` | `"low" \| "medium" \| "high" \| "xhigh"` | No | Codex-only reasoning effort override. Defaults to `medium`. |
-| `reasoning_summary` | `"none" \| "auto" \| "concise" \| "detailed"` | No | Codex-only reasoning summary setting. Defaults to `auto`. |
-| `verbosity` | `"low" \| "medium" \| "high"` | No | Codex-only output verbosity override. |
-| `codex_web_search` | `boolean` | No | Codex-only flag to enable the Codex web search tool. |
-| `task_delay_ms` | `number` | No | Non-negative delay before the queued worker starts. |
-| `githubKey` | `string` | No | Per-request GitHub token override. Prefer `PRIVATE_GITHUB_TOKEN` in production. |
-| `deepseek_api_key` | `string` | No | Per-request DeepSeek API key override for opencode tasks. Prefer `DEEPSEEK_API_KEY` in production. |
-
-#### Success response
-
-Status: `201 Created`
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `id` | `string` | Local task job id used for status/output lookups. |
-
-#### Example
-
-```bash
-curl -X POST https://your-host.example.com/api/jobs/create-task \
-  -H "Authorization: Bearer $ADMIN_BEARER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "repo": "file-diff/file-diff-engine",
-    "base_ref": "main",
-    "branch_title": "fd-agent/custom-name",
-    "problem_statement": "Implement the requested change",
-    "task": "codex",
-    "model": "gpt-5.2-codex",
-    "verbosity": "medium"
-  }'
-```
-
-Example response:
-
-```json
-{
-  "id": "7eb718f7-5c92-42d4-a6f8-1caaedfb29dc"
-}
-```
-
----
-
-### `GET /api/jobs/create-task/:id`
-
-Returns local progress and captured output for a locally-managed agent task.
-
-Viewer bearer auth is required.
-
-#### Success response
-
-Status: `200 OK`
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `id` | `string` | Local task job id. |
-| `repo` | `string` | Repository in `owner/repo` format. |
-| `status` | `string` | Local status: `waiting`, `active`, `completed`, `failed`, or `canceled`. |
-| `taskStatus` | `string` | Task phase such as `preparing`, `working`, or `completed`. |
-| `branch` | `string \| null` | Generated task branch when available. |
-| `taskRunner` | `string` | Selected task runner: `codex`, `opencode`, or `claude` when available. |
-| `baseRef` | `string` | Requested base ref. |
-| `model` | `string` | Selected task model. |
-| `reasoningEffort` | `string` | Codex reasoning effort when set. |
-| `reasoningSummary` | `string` | Codex reasoning summary when set. |
-| `verbosity` | `string` | Codex verbosity when set. |
-| `codexWebSearch` | `boolean` | Whether Codex web search was enabled. |
-| `pullRequestCompletionMode` | `string` | Requested follow-up PR action: `None`, `AutoReady`, or `AutoMerge` when set. `AutoMerge` enables GitHub auto-merge on the created pull request. |
-| `pullRequestUrl` | `string` | Draft pull request URL when available. |
-| `pullRequestNumber` | `number` | Draft pull request number when available. |
-| `output` | `string` | Combined captured agent stdout/stderr, updated roughly every 15 seconds while the task is running. |
-| `stdout` | `string` | Captured agent stdout collected so far. |
-| `stderr` | `string` | Captured agent stderr collected so far. |
-| `opencodeSessionId` | `string` | Detected opencode session id when available. |
-| `opencodeSessionExport` | `object` | Latest JSON returned by `opencode export <sessionId>` when available. |
-| `codexSessionId` | `string` | Captured Codex startup `session id` when available. |
-| `codexSessionFilePath` | `string` | Matching Codex rollout JSONL path under `~/.codex/sessions` when found. |
-| `codexSessionExport` | `object` | Codex session details, including `sessionId`, `sessionFilePath`, and `testDetails` lines grep-matched from the rollout JSONL. |
-| `error` | `string` | Present when the job failed. |
-| `taskDelayMs` | `number` | Delay configured when the task was queued. |
-| `scheduledAt` | `string \| null` | Scheduled start timestamp for delayed tasks. |
-| `cancelRequestedAt` | `string \| null` | Time cancellation was requested, otherwise `null`. |
-| `deletedAt` | `string \| null` | Time the task was soft-deleted, otherwise `null`. |
-| `createdAt` | `string` | Creation timestamp. |
-| `updatedAt` | `string` | Last update timestamp. |
-
-#### Example
-
-```bash
-curl https://your-host.example.com/api/jobs/create-task/7eb718f7-5c92-42d4-a6f8-1caaedfb29dc \
-  -H "Authorization: Bearer $VIEWER_BEARER_TOKEN"
-```
+1. Call `POST /api/jobs/create-task` with the repo, `base_ref`, `problem_statement`, and the desired `task` runner.
+2. Poll `GET /api/jobs/create-task/:id` (or `GET /api/agents/repos/:owner/:repo/tasks/:task_id`) for `status`, captured `output`, and the draft pull request URL.
+3. Optionally call `POST /api/jobs/create-task/:id/cancel` to stop a running task or `DELETE /api/jobs/create-task/:id` to soft-delete it.

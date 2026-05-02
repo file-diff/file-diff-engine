@@ -10,6 +10,7 @@ import {
   type DatabaseConfig,
 } from "./db/database";
 import { JobRepository, AmbiguousHashError } from "./db/repository";
+import { registerClaudeUsageStatsRoutes } from "./routes/claudeUsageStatsRoutes";
 import { registerCodexUsageStatsRoutes } from "./routes/codexUsageStatsRoutes";
 import { createJobRoutes } from "./routes/jobs";
 import { registerPromptRoutes } from "./routes/promptRoutes";
@@ -169,6 +170,7 @@ export async function createApp(
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
   registerPromptRoutes(app);
   registerCodexUsageStatsRoutes(app);
+  registerClaudeUsageStatsRoutes(app);
   await app.register(createTaskRoutes(jobRepo, queue), { prefix: "/api" });
 
   app.get<{
