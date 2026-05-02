@@ -1018,7 +1018,7 @@ function getRequestHeaders(
     token = tokenOverride.trim() || undefined;
   } else if (allowEnvironmentFallback) {
     token =
-      process.env.PRIVATE_GITHUB_TOKEN?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim();
+      process.env.PRIVATE_GITHUB_TOKEN?.trim();
   }
 
   const headers: Record<string, string> = {

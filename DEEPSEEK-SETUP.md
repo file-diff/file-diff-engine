@@ -1,4 +1,4 @@
-# Codex + opencode task setup
+﻿# Codex + opencode task setup
 
 This service starts Codex-backed agent tasks by default through `POST /api/jobs/create-task`. Clients can still request opencode-backed tasks with `"task": "opencode"`. Task progress/output is exposed through `GET /api/jobs/create-task/:id`.
 
@@ -8,7 +8,7 @@ Set these environment variables for the API container:
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN` | Yes | GitHub token used to clone the repo, create/push branches, create the initial commit, and open the pull request. |
+| `PRIVATE_GITHUB_TOKEN` | Yes | GitHub token used to clone the repo, create/push branches, create the initial commit, and open the pull request. |
 | `ADMIN_BEARER_TOKEN` | Yes | Bearer token required to start/cancel tasks. |
 | `VIEWER_BEARER_TOKEN` | Yes | Bearer token required to read task status/output. The admin token is also accepted by viewer endpoints. |
 | `CODEX_MODEL` | No | Default Codex model. Defaults to `gpt-5.2-codex`. |

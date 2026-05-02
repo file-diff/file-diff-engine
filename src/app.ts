@@ -301,7 +301,7 @@ export async function createApp(
   );
 
   app.get("/api/health", { preHandler: requireViewerBearerToken }, async () => {
-    const githubConfigured = Boolean(process.env.PRIVATE_GITHUB_TOKEN?.trim() || process.env.PUBLIC_GITHUB_TOKEN?.trim());
+    const githubConfigured = Boolean(process.env.PRIVATE_GITHUB_TOKEN?.trim());
     let github: HealthResponse["github"];
 
     try {

@@ -143,7 +143,7 @@ export async function prepareOpencodeTaskBranch(
   const githubKey = resolveGitHubToken(options.githubKey);
   if (!githubKey) {
     throw new Error(
-      "GitHub token is required. Set PRIVATE_GITHUB_TOKEN/PUBLIC_GITHUB_TOKEN or pass githubKey."
+      "GitHub token is required. Set PRIVATE_GITHUB_TOKEN or pass githubKey."
     );
   }
 
@@ -879,7 +879,6 @@ function resolveGitHubToken(githubKey?: string): string | undefined {
   return (
     githubKey?.trim() ||
     process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-    process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
     undefined
   );
 }

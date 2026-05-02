@@ -401,7 +401,6 @@ export function registerDiscoveryRoutes(
     const token =
       githubKey ||
       process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
       undefined;
 
     try {
@@ -467,7 +466,6 @@ export function registerDiscoveryRoutes(
     const token =
       githubKey ||
       process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
       undefined;
 
     try {
@@ -530,7 +528,6 @@ export function registerDiscoveryRoutes(
     const token =
       githubKey ||
       process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
       undefined;
 
     try {
@@ -591,7 +588,6 @@ export function registerDiscoveryRoutes(
     const token =
       githubKey ||
       process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
       undefined;
 
     try {
@@ -656,7 +652,6 @@ export function registerDiscoveryRoutes(
     const token =
       githubKey ||
       process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
       undefined;
 
     try {
@@ -742,7 +737,6 @@ export function registerDiscoveryRoutes(
     const token =
       githubKey ||
       process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-      process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
       undefined;
 
     // If no title provided, fetch the last commit on the head branch to use as default
@@ -1153,7 +1147,6 @@ export function registerDiscoveryRoutes(
       const token =
         githubKey ||
         process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-        process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
         undefined;
 
       try {
@@ -1211,7 +1204,6 @@ export function registerDiscoveryRoutes(
       const token =
         githubKey ||
         process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-        process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
         undefined;
 
       try {
@@ -1261,7 +1253,6 @@ export function registerDiscoveryRoutes(
       const token =
         githubKey ||
         process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-        process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
         undefined;
 
       try {

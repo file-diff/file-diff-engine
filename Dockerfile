@@ -16,7 +16,6 @@ WORKDIR /app
 
 ARG DIFFT_TAG_NAME=0.68.0-dev.3
 ARG OPENCODE_VERSION=1.14.28
-ARG PUBLIC_GITHUB_TOKEN
 ARG DOCKER_ROOT_PASSWORD
 
 ADD https://github.com/file-diff/difftastic/releases/download/${DIFFT_TAG_NAME}/difft-${DIFFT_TAG_NAME}-x86_64-unknown-linux-gnu.tar.xz /tmp/difft.tar.xz
@@ -65,7 +64,6 @@ COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
-ENV PUBLIC_GITHUB_TOKEN=${PUBLIC_GITHUB_TOKEN}
 ENV DIFFT_TAG_NAME=${DIFFT_TAG_NAME}
 ENV OPENCODE_VERSION=${OPENCODE_VERSION}
 ENV NODE_ENV=production

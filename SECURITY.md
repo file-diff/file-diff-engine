@@ -1,4 +1,4 @@
-# Security and endpoint access
+﻿# Security and endpoint access
 
 This document lists every HTTP endpoint currently implemented by the service and which bearer token is allowed to access it.
 
@@ -6,7 +6,7 @@ This document lists every HTTP endpoint currently implemented by the service and
 
 - **Viewer**: the route requires `Authorization: Bearer <token>` and accepts `VIEWER_BEARER_TOKEN`. `ADMIN_BEARER_TOKEN` is also accepted on these endpoints.
 - **Admin**: the route requires `Authorization: Bearer <token>` and accepts `ADMIN_BEARER_TOKEN` only.
-- Some viewer endpoints still depend on server-side GitHub configuration such as `PUBLIC_GITHUB_TOKEN` for rate limits or upstream API access.
+- Some viewer endpoints still depend on server-side GitHub configuration that uses `PRIVATE_GITHUB_TOKEN` for rate limits or upstream API access.
 - Several admin endpoints also accept an optional `githubKey` request field for GitHub API operations. That is separate from the endpoint bearer token.
 
 ## Viewer endpoints

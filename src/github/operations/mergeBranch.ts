@@ -47,7 +47,6 @@ export async function mergeBranch(
   const githubKey =
     options.githubKey?.trim() ||
     process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-    process.env.PUBLIC_GITHUB_TOKEN?.trim() ||
     undefined;
   if (!githubKey) {
     logger.warn(
@@ -323,8 +322,7 @@ function getRepositoryUrl(repo: string): string {
 function getGitCommandEnv(tokenOverride?: string): NodeJS.ProcessEnv {
   const token =
     tokenOverride?.trim() ||
-    process.env.PRIVATE_GITHUB_TOKEN?.trim() ||
-    process.env.PUBLIC_GITHUB_TOKEN?.trim();
+    process.env.PRIVATE_GITHUB_TOKEN?.trim();
   if (!token) {
     return process.env;
   }

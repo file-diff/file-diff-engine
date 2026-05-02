@@ -1,4 +1,4 @@
-# File Diff Engine API
+﻿# File Diff Engine API
 
 This document describes the HTTP endpoints exposed by the file-diff-engine service, including request arguments, response fields, and example usage.
 
@@ -60,7 +60,7 @@ Status: `200 OK`
 | --- | --- | --- |
 | `status` | `"ok"` | Health status value |
 | `message` | `string` | Human-readable health message |
-| `github.configured` | `boolean` | Whether `PUBLIC_GITHUB_TOKEN` is configured |
+| `github.configured` | `boolean` | Whether `PRIVATE_GITHUB_TOKEN` is configured |
 | `github.status` | `"ok" \| "error"` | Whether the GitHub rate-limit lookup succeeded |
 | `github.rateLimit` | `object` | Present when GitHub rate-limit data was fetched successfully |
 | `github.error` | `string` | Present when the GitHub rate-limit lookup failed |
@@ -379,7 +379,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | --- | --- | --- | --- |
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
 | `branch` | `string` | Yes | Branch name to delete from the remote. |
-| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN`. |
 
 #### Success response
 
@@ -425,7 +425,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
 | `tag` | `string` | Yes | Tag name to create, for example `v1.2.3` or `release/2026.04.22`. |
 | `commit` | `string` | Yes | Full 40-character commit SHA the tag should point to. |
-| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN`. |
 
 #### Success response
 
@@ -487,7 +487,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | --- | --- | --- | --- |
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
 | `tag` | `string` | Yes | Tag name to delete from the remote (without the `refs/tags/` prefix). |
-| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN`. |
 
 #### Success response
 
@@ -531,7 +531,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
-| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN`. |
 
 #### Success response
 
@@ -723,7 +723,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | --- | --- | --- | --- |
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
 | `runId` | `number` | Yes | Workflow run id to delete. Must be a positive integer. |
-| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN`. |
 
 #### Success response
 
@@ -768,7 +768,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | --- | --- | --- | --- |
 | `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
 | `pullNumber` | `number` | Yes | Pull request number. |
-| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN`. |
 
 #### Success response
 
@@ -816,7 +816,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | `commitTitle` | `string` | No | Title for the merge commit. |
 | `commitMessage` | `string` | No | Message body for the merge commit. |
 | `mergeMethod` | `string` | No | Merge method: `merge`, `squash`, or `rebase`. Defaults to `merge`. |
-| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN`. |
 
 #### Success response
 
@@ -871,7 +871,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 | `title` | `string` | No | Pull request title. Defaults to the first line of the last commit message on the head branch. |
 | `body` | `string` | No | Pull request body/description. Defaults to the full last commit message on the head branch. |
 | `draft` | `boolean` | No | Whether to create as a draft pull request. Defaults to `false` (ready for review). |
-| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN` or `PUBLIC_GITHUB_TOKEN`. |
+| `githubKey` | `string` | No | Optional GitHub token. Defaults to `PRIVATE_GITHUB_TOKEN`. |
 
 #### Success response
 
