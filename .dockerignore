@@ -6,5 +6,6 @@ npm-debug.log
 postgres_data
 redis_data
 repositories_data
+claude_data
 codex_data
 tmp
