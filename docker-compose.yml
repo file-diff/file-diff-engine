@@ -31,6 +31,10 @@ services:
       CODEX_BIN: ${CODEX_BIN:-codex}
       CODEX_TIMEOUT_MS: ${CODEX_TIMEOUT_MS:-7200000}
       CODEX_OUTPUT_LIMIT: ${CODEX_OUTPUT_LIMIT:-1000000}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-sonnet}
+      CLAUDE_BIN: ${CLAUDE_BIN:-claude}
+      CLAUDE_TIMEOUT_MS: ${CLAUDE_TIMEOUT_MS:-7200000}
+      CLAUDE_OUTPUT_LIMIT: ${CLAUDE_OUTPUT_LIMIT:-1000000}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       OPENCODE_BIN: ${OPENCODE_BIN:-opencode}
       OPENCODE_TIMEOUT_MS: ${OPENCODE_TIMEOUT_MS:-7200000}
@@ -44,6 +48,7 @@ services:
     volumes:
       - ./repositories_data:/app/tmp
       - ./codex_data:/home/docker/.codex
+      - ./claude_data:/home/docker/.claude
       - ./cargo_cache:/home/docker/.cargo
       - ./rust_project_cache:/rust_project_cache
   postgres:
