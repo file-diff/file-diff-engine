@@ -961,7 +961,7 @@ export function buildPullRequestBody(
     );
     if (options.pullRequestCompletionMode === "AutoMerge") {
       details.push(
-        'Completion behavior: this task pull request starts as a draft. After the agent run completes successfully, it will be marked ready and auto-merge will be enabled if the repository setting "Allow auto-merge" is enabled.'
+        "Completion behavior: this task pull request starts as a draft. After the agent run completes successfully, it will be marked ready and the pull request will be merged directly. If the base branch is protected or required checks are not satisfied, the pull request will be left open and a notice posted instead."
       );
     } else if (options.pullRequestCompletionMode === "AutoReady") {
       details.push(

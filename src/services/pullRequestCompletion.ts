@@ -1,4 +1,5 @@
 import * as githubApi from "./githubApi";
+import { GitHubApiError } from "./githubApi";
 import type { PullRequestCompletionMode } from "../types";
 
 export async function applyPullRequestCompletionMode(options: {
@@ -34,33 +35,48 @@ export async function applyPullRequestCompletionMode(options: {
     return actions;
   }
 
-  const autoMergeArgs = { token: options.token };
-  const throwIfConfigError = (error: unknown) => {
-    if (
-      error instanceof Error &&
-      error.message.includes("Auto merge is not allowed for this repository")
-    ) {
-      throw new Error(
-        `GitHub auto-merge is disabled for repository '${options.repo}'. Enable the repository setting "Allow auto-merge" before using pull request completion mode AutoMerge.`
+  let mergeResult: githubApi.MergePullRequestResult;
+  try {
+    mergeResult = await githubApi.mergePullRequest(options.repo, options.pullNumber, {
+      token: options.token,
+    });
+  } catch (error) {
+    if (isMergeBlockedError(error)) {
+      const reason = error instanceof Error ? error.message : String(error);
+      actions.push(
+        `Pull request #${options.pullNumber} could not be merged because the base branch '${pullRequest.baseBranch}' is protected or required checks are not satisfied: ${reason}. Pull request was left open.`
       );
+      return actions;
     }
-  };
+    throw error;
+  }
+
+  if (!mergeResult.merged) {
+    actions.push(
+      `Pull request #${options.pullNumber} was not merged: ${mergeResult.message || "GitHub did not merge the pull request."}. Pull request was left open.`
+    );
+    return actions;
+  }
+
+  const mergedSha = mergeResult.sha ? ` (${mergeResult.sha.slice(0, 7)})` : "";
+  actions.push(`Merged pull request #${options.pullNumber}${mergedSha}.`);
 
   try {
-    await githubApi.enablePullRequestAutoMerge(options.repo, options.pullNumber, autoMergeArgs);
+    await githubApi.deleteRemoteBranch(options.repo, options.branch, options.token);
+    actions.push(`Deleted branch '${options.branch}' after successful merge.`);
   } catch (error) {
-    throwIfConfigError(error);
-    // Wait 15 seconds and retry once — GitHub sometimes needs time after a PR is marked ready
-    await new Promise((resolve) => setTimeout(resolve, 15000));
-    try {
-      await githubApi.enablePullRequestAutoMerge(options.repo, options.pullNumber, autoMergeArgs);
-    } catch (retryError) {
-      throwIfConfigError(retryError);
-      throw retryError;
-    }
+    const reason = error instanceof Error ? error.message : String(error);
+    actions.push(
+      `Pull request #${options.pullNumber} merged but branch '${options.branch}' could not be deleted: ${reason}.`
+    );
   }
-  actions.push(
-    `Requested auto-merge for pull request #${options.pullNumber}; GitHub has not merged it yet because required checks, approvals, or branch protection requirements may still be pending.`
-  );
+
   return actions;
+}
+
+function isMergeBlockedError(error: unknown): boolean {
+  if (!(error instanceof GitHubApiError)) {
+    return false;
+  }
+  return error.statusCode === 405 || error.statusCode === 409 || error.statusCode === 422;
 }
