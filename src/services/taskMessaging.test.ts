@@ -50,7 +50,7 @@ describe("task messaging helpers", () => {
     expect(body).toContain("Web search: `enabled`");
     expect(body).toContain("Pull request completion mode: `AutoMerge`");
     expect(body).toContain(
-      'Completion behavior: this task pull request starts as a draft. After the agent run completes successfully, it will be marked ready and auto-merge will be enabled if the repository setting "Allow auto-merge" is enabled.'
+      "Completion behavior: this task pull request starts as a draft. After the agent run completes successfully, it will be marked ready and the pull request will be merged directly. If the base branch is protected or required checks are not satisfied, the pull request will be left open and a notice posted instead."
     );
   });
 
@@ -70,7 +70,7 @@ describe("task messaging helpers", () => {
     );
   });
 
-  it("includes pending auto-merge context in Slack pull request actions", () => {
+  it("includes merge result and branch deletion in Slack pull request actions", () => {
     expect(
       buildAgentTaskFinishedSlackMessage({
         owner: "file-diff",
@@ -82,11 +82,29 @@ describe("task messaging helpers", () => {
         pullRequestUrl: "https://github.com/file-diff/file-diff-engine/pull/42",
         pullRequestActions: [
           "Marked pull request #42 as ready for review.",
-          "Requested auto-merge for pull request #42; GitHub has not merged it yet because required checks, approvals, or branch protection requirements may still be pending.",
+          "Merged pull request #42 (abcdef1).",
+          "Deleted branch 'fd-agent/test' after successful merge.",
+        ],
+      })
+    ).toContain("- Deleted branch 'fd-agent/test' after successful merge.");
+  });
+
+  it("includes the protected-branch notice in Slack pull request actions", () => {
+    expect(
+      buildAgentTaskFinishedSlackMessage({
+        owner: "file-diff",
+        repoName: "file-diff-engine",
+        taskId: "task-123",
+        status: "completed",
+        branch: "fd-agent/test",
+        durationMs: 12_000,
+        pullRequestUrl: "https://github.com/file-diff/file-diff-engine/pull/42",
+        pullRequestActions: [
+          "Pull request #42 could not be merged because the base branch 'main' is protected or required checks are not satisfied: At least 1 approving review is required by reviewers with write access.. Pull request was left open.",
         ],
       })
     ).toContain(
-      "- Requested auto-merge for pull request #42; GitHub has not merged it yet because required checks, approvals, or branch protection requirements may still be pending."
+      "- Pull request #42 could not be merged because the base branch 'main' is protected or required checks are not satisfied: At least 1 approving review is required by reviewers with write access.. Pull request was left open."
     );
   });
 });
