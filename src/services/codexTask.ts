@@ -4,12 +4,19 @@ import path from "path";
 import {
   AgentCliExecutionError,
   buildAgentTaskPrompt,
-  executeAgentCliOnPreparedBranch,
   parsePositiveInteger,
+  runAgentCli,
+  type AgentCliRunnerConfig,
+  type AgentCliSessionState,
   type OpencodeCapturedLogs,
-  type OpencodeExecutionCallbacks, buildCodexTaskPrompt,
+  type OpencodeExecutionCallbacks,
 } from "./agentCliTask";
-import type { OpencodeTaskOptions } from "./opencodeTask";
+import { AgentTaskCanceledError } from "./agentTaskControl";
+import {
+  commitAndPushFinalChanges,
+  getOpencodeTaskCloneDir,
+  type OpencodeTaskOptions,
+} from "./opencodeTask";
 
 const TWO_HOURS_IN_SECONDS = 2 * 60 * 60;
 const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
@@ -21,29 +28,40 @@ const CODEX_SESSION_TEST_PATTERN =
 
 export class CodexExecutionError extends AgentCliExecutionError {}
 
+type CodexPhaseLabel = "plan" | "implement" | "summary";
+
+interface CodexPhase {
+  label: CodexPhaseLabel;
+  args: AgentCliRunnerConfig["args"];
+  prompt: string;
+}
+
 export async function executeCodexOnPreparedBranch(
   options: OpencodeTaskOptions,
   branch: string,
   pullRequestNumber: number,
   callbacks?: OpencodeExecutionCallbacks
 ): Promise<OpencodeCapturedLogs> {
-  const prompt = buildCodexPrompt(options.problemStatement, branch, pullRequestNumber);
+  const cloneDir = getOpencodeTaskCloneDir(options);
   const model = resolveCodexModel(options.model);
+
   let codexSessionId: string | null = null;
   let codexSessionFilePath: string | null = null;
   let codexSessionExport: unknown = undefined;
   let lastSerializedSessionExport: string | undefined;
+
+  let priorOutput = "";
+  let priorStdout = "";
+  let priorStderr = "";
+
   const detectSessionIdFromOutput = (output: string): void => {
     if (codexSessionId) {
       return;
     }
-
     const detectedSessionId = parseCodexSessionId(output);
-    if (!detectedSessionId) {
-      return;
+    if (detectedSessionId) {
+      codexSessionId = detectedSessionId;
     }
-
-    codexSessionId = detectedSessionId;
   };
 
   const syncSessionState = async (): Promise<void> => {
@@ -52,7 +70,7 @@ export async function executeCodexOnPreparedBranch(
     }
 
     const sessionFilePath =
-      codexSessionFilePath ?? await findCodexSessionJsonlPath(codexSessionId);
+      codexSessionFilePath ?? (await findCodexSessionJsonlPath(codexSessionId));
     if (sessionFilePath && sessionFilePath !== codexSessionFilePath) {
       codexSessionFilePath = sessionFilePath;
     }
@@ -61,22 +79,87 @@ export async function executeCodexOnPreparedBranch(
       codexSessionId,
       sessionFilePath ?? codexSessionFilePath
     );
-    const serializedSession = JSON.stringify(exportedSession);
-    if (serializedSession !== lastSerializedSessionExport) {
+    const serialized = JSON.stringify(exportedSession);
+    if (serialized !== lastSerializedSessionExport) {
       codexSessionExport = exportedSession;
-      lastSerializedSessionExport = serializedSession;
+      lastSerializedSessionExport = serialized;
     }
   };
 
-  return executeAgentCliOnPreparedBranch(
-    options,
+  const getSessionState = (): AgentCliSessionState => ({
+    codexSessionId: codexSessionId ?? undefined,
+    codexSessionFilePath: codexSessionFilePath ?? undefined,
+    codexSessionExport,
+  });
+
+  const buildCumulativeLogs = (
+    phaseLogs?: Pick<OpencodeCapturedLogs, "output" | "stdout" | "stderr">
+  ): OpencodeCapturedLogs => ({
+    output: priorOutput + (phaseLogs?.output ?? ""),
+    stdout: priorStdout + (phaseLogs?.stdout ?? ""),
+    stderr: priorStderr + (phaseLogs?.stderr ?? ""),
+    ...getSessionState(),
+  });
+
+  const wrappedCallbacks: OpencodeExecutionCallbacks | undefined = callbacks
+    ? {
+        isCancellationRequested: callbacks.isCancellationRequested,
+        onLogsUpdated: callbacks.onLogsUpdated
+          ? async (logs) => {
+              await callbacks.onLogsUpdated!(buildCumulativeLogs(logs));
+            }
+          : undefined,
+      }
+    : undefined;
+
+  const baseLogContext = {
+    model,
+    reasoningEffort: options.reasoningEffort,
+    reasoningSummary: options.reasoningSummary,
+    verbosity: options.verbosity,
+    codexWebSearch: options.codexWebSearch === true,
+  };
+
+  const phases: CodexPhase[] = [
     {
-      runner: "codex",
-      commandLabel: "codex",
-      bin: getCodexBin(),
+      label: "plan",
       args: (cwd) => buildCodexArgs(options, model, cwd),
-      prompt,
-      cwd: "",
+      prompt: buildCodexPlanPrompt(
+        options.problemStatement,
+        branch,
+        pullRequestNumber
+      ),
+    },
+    {
+      label: "implement",
+      args: () => buildCodexResumeArgs(options, model, codexSessionId ?? ""),
+      prompt: buildCodexImplementationPrompt(branch, pullRequestNumber),
+    },
+    {
+      label: "summary",
+      args: () => buildCodexResumeArgs(options, model, codexSessionId ?? ""),
+      prompt: buildCodexSummaryPrompt(branch, pullRequestNumber),
+    },
+  ];
+
+  for (let index = 0; index < phases.length; index += 1) {
+    const phase = phases[index];
+    const isFirstPhase = index === 0;
+
+    if (!isFirstPhase && !codexSessionId) {
+      throw new CodexExecutionError(
+        `Cannot start codex ${phase.label} phase: session id was not captured from the plan phase output.`,
+        buildCumulativeLogs()
+      );
+    }
+
+    const phaseConfig: AgentCliRunnerConfig = {
+      runner: "codex",
+      commandLabel: `codex (${phase.label})`,
+      bin: getCodexBin(),
+      args: phase.args,
+      prompt: phase.prompt,
+      cwd: cloneDir,
       branch,
       defaultTimeoutMs: DEFAULT_CODEX_TIMEOUT_MS,
       timeoutEnvVar: "CODEX_TIMEOUT_MS",
@@ -87,21 +170,60 @@ export async function executeCodexOnPreparedBranch(
       loggerName: "codex-task",
       onOutputUpdated: detectSessionIdFromOutput,
       syncSessionState,
-      getSessionState: () => ({
-        codexSessionId: codexSessionId ?? undefined,
-        codexSessionFilePath: codexSessionFilePath ?? undefined,
-        codexSessionExport,
-      }),
-      logContext: {
-        model,
-        reasoningEffort: options.reasoningEffort,
-        reasoningSummary: options.reasoningSummary,
-        verbosity: options.verbosity,
-        codexWebSearch: options.codexWebSearch === true,
-      },
-    },
-    callbacks
-  );
+      getSessionState,
+      logContext: { ...baseLogContext, phase: phase.label },
+      skipBootstrap: !isFirstPhase,
+    };
+
+    let phaseLogs: OpencodeCapturedLogs;
+    try {
+      phaseLogs = await runAgentCli(options, phaseConfig, wrappedCallbacks);
+    } catch (error) {
+      if (error instanceof AgentTaskCanceledError) {
+        throw new AgentTaskCanceledError(
+          error.message,
+          buildCumulativeLogs(error.logs)
+        );
+      }
+      if (error instanceof AgentCliExecutionError) {
+        throw new CodexExecutionError(
+          error.message,
+          buildCumulativeLogs(error.logs)
+        );
+      }
+      throw error;
+    }
+
+    priorOutput += phaseLogs.output;
+    priorStdout += phaseLogs.stdout;
+    priorStderr += phaseLogs.stderr;
+
+    if (await wrappedCallbacks?.isCancellationRequested?.()) {
+      throw new AgentTaskCanceledError(
+        "Task canceled by request.",
+        buildCumulativeLogs()
+      );
+    }
+
+    if (isFirstPhase && !codexSessionId) {
+      throw new CodexExecutionError(
+        "Failed to detect codex session id from the plan phase output. Cannot resume the session for the implementation phase.",
+        buildCumulativeLogs()
+      );
+    }
+  }
+
+  try {
+    await commitAndPushFinalChanges(cloneDir, options, branch);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to commit and push final agent changes.";
+    throw new CodexExecutionError(message, buildCumulativeLogs());
+  }
+
+  return buildCumulativeLogs();
 }
 
 function getCodexBin(): string {
@@ -131,19 +253,7 @@ export function buildCodexArgs(
   cwd: string
 ): string[] {
   const args = ["exec", "--model", model];
-
-  if (options.reasoningEffort) {
-    args.push("--config", `model_reasoning_effort=${options.reasoningEffort}`);
-  }
-
-  if (options.reasoningSummary) {
-    args.push("--config", `model_reasoning_summary=${options.reasoningSummary}`);
-  }
-
-  if (options.verbosity) {
-    args.push("--config", `model_verbosity=${options.verbosity}`);
-  }
-
+  appendCodexConfigFlags(args, options);
   args.push("--cd", cwd, "--dangerously-bypass-approvals-and-sandbox");
 
   if (options.codexWebSearch) {
@@ -155,12 +265,99 @@ export function buildCodexArgs(
   return args;
 }
 
+export function buildCodexResumeArgs(
+  options: Pick<
+    OpencodeTaskOptions,
+    "reasoningEffort" | "reasoningSummary" | "verbosity" | "codexWebSearch"
+  >,
+  model: string,
+  sessionId: string
+): string[] {
+  const args = ["exec", "resume", sessionId, "--model", model];
+  appendCodexConfigFlags(args, options);
+  args.push("--dangerously-bypass-approvals-and-sandbox");
+
+  if (options.codexWebSearch) {
+    args.push("--search");
+  }
+
+  args.push("-");
+
+  return args;
+}
+
+function appendCodexConfigFlags(
+  args: string[],
+  options: Pick<
+    OpencodeTaskOptions,
+    "reasoningEffort" | "reasoningSummary" | "verbosity"
+  >
+): void {
+  if (options.reasoningEffort) {
+    args.push("--config", `model_reasoning_effort=${options.reasoningEffort}`);
+  }
+
+  if (options.reasoningSummary) {
+    args.push("--config", `model_reasoning_summary=${options.reasoningSummary}`);
+  }
+
+  if (options.verbosity) {
+    args.push("--config", `model_verbosity=${options.verbosity}`);
+  }
+}
+
 export function buildCodexPrompt(
   problemStatement: string,
   branch: string,
   pullRequestNumber: number
 ): string {
-  return buildCodexTaskPrompt(problemStatement, branch, pullRequestNumber);
+  return buildAgentTaskPrompt(problemStatement, branch, pullRequestNumber);
+}
+
+export function buildCodexPlanPrompt(
+  problemStatement: string,
+  branch: string,
+  pullRequestNumber: number
+): string {
+  return [
+    `You are already on branch '${branch}' with pull request #${pullRequestNumber} created.`,
+    "This is step 1 of 3 (PLAN). Read the user's task carefully and produce a concrete plan.",
+    `Then post the plan as a comment on pull request #${pullRequestNumber}.`,
+    "Do NOT start implementing in this step — only create and post the plan.",
+    "Do not create another branch or pull request.",
+    "Be maximally proactive and make your own decisions; do not ask the user for help.",
+    "User instructions starts here:",
+    problemStatement,
+  ].join("\n");
+}
+
+export function buildCodexImplementationPrompt(
+  branch: string,
+  pullRequestNumber: number
+): string {
+  return [
+    "This is step 2 of 3 (IMPLEMENT). The same codex session is being resumed; you have just posted a plan.",
+    `You are on branch '${branch}' for pull request #${pullRequestNumber}.`,
+    "Now follow that plan. Edit files, run tests as needed, and commit and push your changes as you go.",
+    "Do not create another branch or pull request.",
+    "Do not post a final summary in this step — that is step 3.",
+    "Be maximally proactive, do your own research, and make your own decisions.",
+    "Make sure all your changes are committed and pushed before you finish — do not leave work uncommitted.",
+  ].join("\n");
+}
+
+export function buildCodexSummaryPrompt(
+  branch: string,
+  pullRequestNumber: number
+): string {
+  return [
+    "This is step 3 of 3 (SUMMARY). The same codex session is being resumed; the implementation is complete.",
+    `You are on branch '${branch}' for pull request #${pullRequestNumber}.`,
+    `Post a detailed summary report as a comment on pull request #${pullRequestNumber}.`,
+    "Cover: what changed, why, the key files touched, and any tests run with their results.",
+    "Do not edit code or create new commits in this step — only post the summary comment.",
+    "Do not create another branch or pull request.",
+  ].join("\n");
 }
 
 export function parseCodexSessionId(output: string): string | null {

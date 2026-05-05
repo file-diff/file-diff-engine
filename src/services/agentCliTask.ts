@@ -55,6 +55,10 @@ export interface AgentCliRunnerConfig {
   syncSessionState?: () => Promise<void>;
   getSessionState?: () => AgentCliSessionState;
   logContext?: Record<string, unknown>;
+  // When true, skip running the .fd-agent/agent-bootstrap.sh hook before
+  // launching the CLI. Used by multi-phase runners (e.g. codex) so the
+  // bootstrap only runs once per task rather than once per phase.
+  skipBootstrap?: boolean;
 }
 
 export async function executeAgentCliOnPreparedBranch(
@@ -112,12 +116,14 @@ export async function runAgentCli(
     DEFAULT_CANCELLATION_POLL_INTERVAL_MS
   );
 
-  await runAgentBootstrapIfAvailable(config.cwd, process.env, {
-    jobId: options.jobId,
-    repo: options.repo,
-    branch: config.branch,
-    taskRunner: config.runner,
-  });
+  if (!config.skipBootstrap) {
+    await runAgentBootstrapIfAvailable(config.cwd, process.env, {
+      jobId: options.jobId,
+      repo: options.repo,
+      branch: config.branch,
+      taskRunner: config.runner,
+    });
+  }
 
   logger.info(`Starting ${config.commandLabel} task`, {
     args,
@@ -416,22 +422,6 @@ export function buildAgentTaskPrompt(
     problemStatement,
   ].join("\n");
 }
-
-export function buildCodexTaskPrompt(
-  problemStatement: string,
-  branch: string,
-  pullRequestNumber: number
-): string {
-  return [
-    problemStatement,
-    ". For these instructions above: 1. Create plan and push it into a pull request for current branch. ",
-    `  You are already on branch '${branch}' with pull request #${pullRequestNumber} created.`,
-    "  2. After done comment on pull request with detailed summary report. ",
-    "  Remember, you are on your own, do not ask user for help, do your own research, be maximally proactive and make your own decisions. ",
-    "  Make sure to push all your changes to the pull request, do not leave any work uncommited. Don't forget about summary report."
-  ].join("\n");
-}
-
 
 export function parsePositiveInteger(value: string | undefined, fallback: number): number {
   if (!value) {
