@@ -10,6 +10,7 @@ import type {
 import { getCommitShort } from "../../utils/commit";
 import {
   isValidRepo,
+  logger,
   normalizeRepo,
   POSTGRES_UNIQUE_VIOLATION,
   requireViewerBearerToken,
@@ -63,7 +64,17 @@ export function registerJobManagementRoutes(
       if (existingJob.status === "failed") {
         await jobRepo.resetJobForRetry(jobId);
         await removeQueuedJob(queue, jobId);
-        await enqueueJob(queue, existingJob.id, existingJob.repo, existingJob.commit);
+        // Use a unique BullMQ jobId for retries so the worker always picks
+        // up a fresh job even if the prior failed job could not be removed
+        // from BullMQ (e.g. stale lock, Redis cleanup race). DB-level
+        // dedup on the commit-keyed row prevents duplicate processing.
+        await enqueueJob(
+          queue,
+          existingJob.id,
+          existingJob.repo,
+          existingJob.commit,
+          { bullJobId: `${existingJob.id}:retry-${Date.now()}` }
+        );
 
         const response: JobSummary = {
           id: existingJob.id,
@@ -191,7 +202,8 @@ async function enqueueJob(
   queue: Queue,
   jobId: string,
   repoName: string,
-  commit: string
+  commit: string,
+  options: { bullJobId?: string } = {}
 ): Promise<void> {
   await queue.add(
     "process-repo",
@@ -201,14 +213,35 @@ async function enqueueJob(
       commit,
     },
     {
-      jobId,
+      jobId: options.bullJobId ?? jobId,
     }
   );
 }
 
 async function removeQueuedJob(queue: Queue, jobId: string): Promise<void> {
-  const queuedJob = await queue.getJob(jobId);
-  if (queuedJob) {
+  let queuedJob;
+  try {
+    queuedJob = await queue.getJob(jobId);
+  } catch (error) {
+    logger.warn(
+      `Failed to look up queued job ${jobId} during retry; proceeding with enqueue: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return;
+  }
+
+  if (!queuedJob) {
+    return;
+  }
+
+  try {
     await queuedJob.remove();
+  } catch (error) {
+    logger.warn(
+      `Failed to remove queued job ${jobId} during retry; proceeding with enqueue: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   }
 }
