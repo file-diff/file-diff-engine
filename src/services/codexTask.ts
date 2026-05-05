@@ -7,7 +7,7 @@ import {
   executeAgentCliOnPreparedBranch,
   parsePositiveInteger,
   type OpencodeCapturedLogs,
-  type OpencodeExecutionCallbacks,
+  type OpencodeExecutionCallbacks, buildCodexTaskPrompt,
 } from "./agentCliTask";
 import type { OpencodeTaskOptions } from "./opencodeTask";
 
@@ -160,7 +160,7 @@ export function buildCodexPrompt(
   branch: string,
   pullRequestNumber: number
 ): string {
-  return buildAgentTaskPrompt(problemStatement, branch, pullRequestNumber);
+  return buildCodexTaskPrompt(problemStatement, branch, pullRequestNumber);
 }
 
 export function parseCodexSessionId(output: string): string | null {

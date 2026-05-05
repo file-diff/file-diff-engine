@@ -1,4 +1,4 @@
-import { spawn } from "child_process";
+import {spawn} from "child_process";
 import {
   AgentTaskCanceledError,
   signalChildProcessTree,
@@ -11,9 +11,9 @@ import {
   type OpencodeTaskOptions,
   runAgentBootstrapIfAvailable,
 } from "./opencodeTask";
-import { createLogger } from "../utils/logger";
+import {createLogger} from "../utils/logger";
 
-export type { OpencodeCapturedLogs, OpencodeExecutionCallbacks };
+export type {OpencodeCapturedLogs, OpencodeExecutionCallbacks};
 
 const DEFAULT_OUTPUT_LIMIT = 1_000_000;
 const DEFAULT_LOG_FLUSH_INTERVAL_MS = 15_000;
@@ -63,7 +63,7 @@ export async function executeAgentCliOnPreparedBranch(
   callbacks?: OpencodeExecutionCallbacks
 ): Promise<OpencodeCapturedLogs> {
   const cloneDir = getOpencodeTaskCloneDir(options);
-  const logs = await runAgentCli(options, { ...config, cwd: cloneDir }, callbacks);
+  const logs = await runAgentCli(options, {...config, cwd: cloneDir}, callbacks);
   if (await callbacks?.isCancellationRequested?.()) {
     throw new AgentTaskCanceledError("Task canceled by request.", logs);
   }
@@ -126,13 +126,13 @@ export async function runAgentCli(
     branch: config.branch,
     timeout,
     logFlushIntervalMs,
-    ...(config.syncSessionState ? { sessionSyncIntervalMs } : {}),
+    ...(config.syncSessionState ? {sessionSyncIntervalMs} : {}),
     ...config.logContext,
   });
 
   const child = spawn(config.bin, args, {
     cwd: config.cwd,
-    env: { ...process.env },
+    env: {...process.env},
     stdio: ["pipe", "pipe", "pipe"],
     detached: true,
   });
@@ -259,15 +259,15 @@ export async function runAgentCli(
 
   const sessionSyncInterval = config.syncSessionState
     ? setInterval(() => {
-        if (sessionSyncPending || flushError) {
-          return;
-        }
+      if (sessionSyncPending || flushError) {
+        return;
+      }
 
-        sessionSyncPending = true;
-        void queueSessionSync().finally(() => {
-          sessionSyncPending = false;
-        });
-      }, sessionSyncIntervalMs)
+      sessionSyncPending = true;
+      void queueSessionSync().finally(() => {
+        sessionSyncPending = false;
+      });
+    }, sessionSyncIntervalMs)
     : undefined;
   sessionSyncInterval?.unref?.();
 
@@ -347,7 +347,7 @@ export async function runAgentCli(
   const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
     (resolve) => {
       child.once("close", (code, signal) => {
-        resolve({ code, signal });
+        resolve({code, signal});
       });
     }
   );
@@ -416,6 +416,22 @@ export function buildAgentTaskPrompt(
     problemStatement,
   ].join("\n");
 }
+
+export function buildCodexTaskPrompt(
+  problemStatement: string,
+  branch: string,
+  pullRequestNumber: number
+): string {
+  return [
+    problemStatement,
+    ". For these instructions above: 1. Create plan and push it into a pull request for current branch. ",
+    `  You are already on branch '${branch}' with pull request #${pullRequestNumber} created.`,
+    "  2. After done comment on pull request with detailed summary report. ",
+    "  Remember, you are on your own, do not ask user for help, do your own research, be maximally proactive and make your own decisions. ",
+    "  Make sure to push all your changes to the pull request, do not leave any work uncommited. Don't forget about summary report."
+  ].join("\n");
+}
+
 
 export function parsePositiveInteger(value: string | undefined, fallback: number): number {
   if (!value) {
