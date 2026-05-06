@@ -3,6 +3,7 @@ import { type Queue } from "bullmq";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDatabase } from "../../__tests__/helpers/testDatabase";
 import { JobRepository } from "../../db/repository";
+import * as githubApi from "../../services/githubApi";
 import { registerDiscoveryRoutes } from "./discoveryRoutes";
 
 describe("registerDiscoveryRoutes", () => {
@@ -175,6 +176,158 @@ describe("registerDiscoveryRoutes", () => {
       );
     } finally {
       process.env.CLAUDE_MODEL = originalClaudeModel;
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("queues a pull request review task from a pull request number", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Queue;
+    vi.spyOn(githubApi, "getPullRequestReviewTarget").mockResolvedValue({
+      number: 155,
+      title: "Add review mode",
+      url: "https://github.com/file-diff/file-diff-engine/pull/155",
+      state: "open",
+      draft: false,
+      baseRef: "main",
+      baseSha: "a".repeat(40),
+      baseRepo: "file-diff/file-diff-engine",
+      baseRepositoryUrl: "https://github.com/file-diff/file-diff-engine",
+      headRef: "fd-agent/generate-pr-review-from-number",
+      headSha: "b".repeat(40),
+      headRepo: "file-diff/file-diff-engine",
+      headRepositoryUrl: "https://github.com/file-diff/file-diff-engine",
+    });
+
+    try {
+      registerDiscoveryRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-review",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          pull_request_number: 155,
+          task: "codex",
+          model: "gpt-5.2-codex",
+          verbosity: "medium",
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      const body = response.json() as { id: string };
+
+      await expect(jobRepo.getAgentTaskJob(body.id)).resolves.toMatchObject({
+        id: body.id,
+        branch: "fd-agent/generate-pr-review-from-number",
+        baseRef: "main",
+        pullRequestUrl: "https://github.com/file-diff/file-diff-engine/pull/155",
+        pullRequestNumber: 155,
+        taskRunner: "codex",
+        model: "gpt-5.2-codex",
+      });
+
+      expect(queue.add).toHaveBeenCalledWith(
+        "create-codex-task",
+        expect.objectContaining({
+          task: "codex",
+          taskMode: "review",
+          baseRef: "main",
+          branch: "fd-agent/generate-pr-review-from-number",
+          pullRequestNumber: 155,
+          pullRequestUrl: "https://github.com/file-diff/file-diff-engine/pull/155",
+          pullRequestTitle: "Add review mode",
+          pullRequestHeadRepo: "file-diff/file-diff-engine",
+          pullRequestHeadSha: "b".repeat(40),
+          problemStatement: expect.stringContaining(
+            "Do the review of the code changes on branch fd-agent/generate-pr-review-from-number"
+          ),
+        }),
+        expect.objectContaining({
+          jobId: body.id,
+          delay: 0,
+        })
+      );
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("rejects an invalid pull request number for review tasks", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Queue;
+
+    try {
+      registerDiscoveryRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-review",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          pull_request_number: 0,
+          task: "codex",
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: "Field 'pull_request_number' must be a positive integer.",
+      });
+      expect(queue.add).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("rejects task-creation-only fields for review tasks", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Queue;
+
+    try {
+      registerDiscoveryRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-review",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          pull_request_number: 155,
+          branch: "fd-agent/other",
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error:
+          "Fields 'branch', 'branch_title', 'create_pull_request', 'auto_ready', 'auto_merge', and 'pull_request_completion_mode' are not supported for pull request review tasks.",
+      });
+      expect(queue.add).not.toHaveBeenCalled();
+    } finally {
       await app.close();
       await database.end();
     }

@@ -13,6 +13,7 @@ import {
 } from "./agentCliTask";
 import { AgentTaskCanceledError } from "./agentTaskControl";
 import {
+  buildAgentReviewPrompt,
   commitAndPushFinalChanges,
   getOpencodeTaskCloneDir,
   type OpencodeTaskOptions,
@@ -44,7 +45,7 @@ export interface CodexSessionExport {
   tokenUsage?: CodexSessionTokenUsage;
 }
 
-type CodexPhaseLabel = "plan" | "implement" | "summary";
+type CodexPhaseLabel = "plan" | "implement" | "summary" | "review";
 
 interface CodexPhase {
   label: CodexPhaseLabel;
@@ -136,27 +137,39 @@ export async function executeCodexOnPreparedBranch(
     codexWebSearch: options.codexWebSearch === true,
   };
 
-  const phases: CodexPhase[] = [
-    {
-      label: "plan",
-      args: (cwd) => buildCodexArgs(options, model, cwd),
-      prompt: buildCodexPlanPrompt(
-        options.problemStatement,
-        branch,
-        pullRequestNumber
-      ),
-    },
-    {
-      label: "implement",
-      args: () => buildCodexResumeArgs(options, model, codexSessionId ?? ""),
-      prompt: buildCodexImplementationPrompt(branch, pullRequestNumber),
-    },
-    {
-      label: "summary",
-      args: () => buildCodexResumeArgs(options, model, codexSessionId ?? ""),
-      prompt: buildCodexSummaryPrompt(branch, pullRequestNumber),
-    },
-  ];
+  const phases: CodexPhase[] = options.taskMode === "review"
+    ? [
+        {
+          label: "review",
+          args: (cwd) => buildCodexArgs(options, model, cwd),
+          prompt: buildCodexReviewPrompt(
+            options.problemStatement,
+            branch,
+            pullRequestNumber
+          ),
+        },
+      ]
+    : [
+        {
+          label: "plan",
+          args: (cwd) => buildCodexArgs(options, model, cwd),
+          prompt: buildCodexPlanPrompt(
+            options.problemStatement,
+            branch,
+            pullRequestNumber
+          ),
+        },
+        {
+          label: "implement",
+          args: () => buildCodexResumeArgs(options, model, codexSessionId ?? ""),
+          prompt: buildCodexImplementationPrompt(branch, pullRequestNumber),
+        },
+        {
+          label: "summary",
+          args: () => buildCodexResumeArgs(options, model, codexSessionId ?? ""),
+          prompt: buildCodexSummaryPrompt(branch, pullRequestNumber),
+        },
+      ];
 
   for (let index = 0; index < phases.length; index += 1) {
     const phase = phases[index];
@@ -221,12 +234,16 @@ export async function executeCodexOnPreparedBranch(
       );
     }
 
-    if (isFirstPhase && !codexSessionId) {
+    if (isFirstPhase && options.taskMode !== "review" && !codexSessionId) {
       throw new CodexExecutionError(
         "Failed to detect codex session id from the plan phase output. Cannot resume the session for the implementation phase.",
         buildCumulativeLogs()
       );
     }
+  }
+
+  if (options.taskMode === "review") {
+    return buildCumulativeLogs();
   }
 
   try {
@@ -345,6 +362,14 @@ export function buildCodexPlanPrompt(
     "User instructions starts here:",
     problemStatement,
   ].join("\n");
+}
+
+export function buildCodexReviewPrompt(
+  problemStatement: string,
+  branch: string,
+  pullRequestNumber: number
+): string {
+  return buildAgentReviewPrompt(problemStatement, branch, pullRequestNumber);
 }
 
 export function buildCodexImplementationPrompt(

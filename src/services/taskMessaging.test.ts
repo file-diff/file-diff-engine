@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildCodexPrompt } from "./codexTask";
+import { buildCodexPrompt, buildCodexReviewPrompt } from "./codexTask";
 import { buildAgentTaskFinishedSlackMessage } from "./slack";
-import { buildOpencodePrompt, buildPullRequestBody } from "./opencodeTask";
+import {
+  buildOpencodePrompt,
+  buildPullRequestBody,
+  buildPullRequestReviewProblemStatement,
+} from "./opencodeTask";
 
 describe("task messaging helpers", () => {
   it("includes the pull request report instruction in codex prompts", () => {
@@ -23,6 +27,37 @@ describe("task messaging helpers", () => {
     expect(buildOpencodePrompt("Fix the bug", "fd-agent/test", 42)).toBe(
       buildCodexPrompt("Fix the bug", "fd-agent/test", 42)
     );
+  });
+
+  it("builds a review problem statement from the branch and pull request number", () => {
+    expect(
+      buildPullRequestReviewProblemStatement("feature/review-me", 155)
+    ).toBe(
+      "Do the review of the code changes on branch feature/review-me with the pull request 155. Put your findings in the pull request comment."
+    );
+  });
+
+  it("uses review-specific prompts that forbid edits and pushes", () => {
+    const problemStatement = buildPullRequestReviewProblemStatement(
+      "feature/review-me",
+      155
+    );
+    const codexPrompt = buildCodexReviewPrompt(
+      problemStatement,
+      "feature/review-me",
+      155
+    );
+    const opencodePrompt = buildOpencodePrompt(
+      problemStatement,
+      "feature/review-me",
+      155,
+      "review"
+    );
+
+    expect(codexPrompt).toBe(opencodePrompt);
+    expect(codexPrompt).toContain("pull request #155");
+    expect(codexPrompt).toContain("Post your findings as a pull request comment.");
+    expect(codexPrompt).toMatch(/Do not edit files, commit changes, push changes/);
   });
 
   it("includes all task options in the initial pull request body when present", () => {

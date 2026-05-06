@@ -7,6 +7,7 @@ import {
   buildCodexImplementationPrompt,
   buildCodexPlanPrompt,
   buildCodexResumeArgs,
+  buildCodexReviewPrompt,
   buildCodexSummaryPrompt,
   findCodexSessionJsonlPath,
   parseCodexSessionId,
@@ -215,5 +216,19 @@ session id: 019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf`)
     expect(prompt).toContain("#42");
     expect(prompt).toMatch(/summary/i);
     expect(prompt).toMatch(/do not edit code|do not edit/i);
+  });
+
+  it("review prompt asks for findings only and forbids code changes", () => {
+    const prompt = buildCodexReviewPrompt(
+      "Do the review of the code changes on branch fd-agent/test with the pull request 42. Put your findings in the pull request comment.",
+      "fd-agent/test",
+      42
+    );
+
+    expect(prompt).toContain("fd-agent/test");
+    expect(prompt).toContain("#42");
+    expect(prompt).toMatch(/Review the code changes/i);
+    expect(prompt).toMatch(/Post your findings as a pull request comment/i);
+    expect(prompt).toMatch(/Do not edit files, commit changes, push changes/i);
   });
 });

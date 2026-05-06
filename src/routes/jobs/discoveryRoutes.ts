@@ -28,7 +28,9 @@ import type {
   ResolvePullRequestRequest,
   ResolvePullRequestResponse,
   CreateTaskRequest,
+  CreatePullRequestReviewRequest,
   CreateTaskResponse,
+  AgentTaskMode,
   CodexReasoningEffort,
   CodexReasoningSummary,
   CodexVerbosity,
@@ -62,7 +64,10 @@ import {
   cancelAgentTaskJob,
   deleteAgentTaskJob,
 } from "../../services/agentTaskActions";
-import { normalizeGitRef } from "../../services/opencodeTask";
+import {
+  buildPullRequestReviewProblemStatement,
+  normalizeGitRef,
+} from "../../services/opencodeTask";
 import * as repoProcessor from "../../services/repoProcessor";
 import { getCommitShort } from "../../utils/commit";
 import {
@@ -1620,6 +1625,265 @@ export function registerDiscoveryRoutes(
   );
 
   /**
+   * POST /api/jobs/create-review
+   * Body: { "repo": "owner/repo", "pull_request_number": 123, ... }
+   * Creates a local agent task that reviews an existing pull request.
+   */
+  app.post<{ Body: CreatePullRequestReviewRequest }>(
+    "/create-review",
+    {
+      preHandler: requireAdminBearerToken,
+      config: {
+        rateLimit: {
+          max: CREATE_TASK_ROUTE_RATE_LIMIT_MAX,
+          timeWindow: CREATE_TASK_ROUTE_RATE_LIMIT_WINDOW_MS,
+        },
+      },
+    },
+    async (request, reply) => {
+      let { repo } = request.body ?? {};
+      const {
+        model,
+        task,
+        reasoning_effort,
+        reasoning_summary,
+        verbosity,
+        codex_web_search,
+        task_delay_ms,
+        deepseek_api_key,
+        githubKey,
+      } = request.body ?? {};
+      const pullRequestNumber =
+        request.body?.pull_request_number ?? request.body?.pullRequestNumber;
+
+      if (!repo || pullRequestNumber === undefined) {
+        const response: ErrorResponse = {
+          error: "'repo' and 'pull_request_number' are required.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      repo = normalizeRepo(repo);
+
+      if (!isValidRepo(repo)) {
+        const response: ErrorResponse = {
+          error:
+            "Invalid repo format. Expected 'owner/repo' (e.g. 'facebook/react').",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (!Number.isInteger(pullRequestNumber) || pullRequestNumber <= 0) {
+        const response: ErrorResponse = {
+          error: "Field 'pull_request_number' must be a positive integer.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        request.body?.branch !== undefined ||
+        request.body?.branch_title !== undefined ||
+        request.body?.create_pull_request !== undefined ||
+        request.body?.auto_ready !== undefined ||
+        request.body?.auto_merge !== undefined ||
+        request.body?.pull_request_completion_mode !== undefined
+      ) {
+        const response: ErrorResponse = {
+          error:
+            "Fields 'branch', 'branch_title', 'create_pull_request', 'auto_ready', 'auto_merge', and 'pull_request_completion_mode' are not supported for pull request review tasks.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      const taskRunner = task === undefined ? DEFAULT_AGENT_TASK_RUNNER : task;
+      if (!isSupportedAgentTaskRunner(taskRunner)) {
+        const response: ErrorResponse = {
+          error: "Field 'task' must be one of: codex, opencode, claude.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        taskRunner === "opencode" &&
+        model !== undefined &&
+        !isSupportedDeepSeekModel(model)
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'model' must be one of: deepseek-v4-flash, deepseek-v4-pro.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        (taskRunner === "codex" || taskRunner === "claude") &&
+        model !== undefined &&
+        (typeof model !== "string" || !model.trim())
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'model' must be a non-empty string.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        reasoning_effort !== undefined &&
+        !isSupportedCodexReasoningEffort(reasoning_effort)
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'reasoning_effort' must be one of: low, medium, high, xhigh.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        reasoning_summary !== undefined &&
+        !isSupportedCodexReasoningSummary(reasoning_summary)
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'reasoning_summary' must be one of: none, auto, concise, detailed.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        verbosity !== undefined &&
+        !isSupportedCodexVerbosity(verbosity)
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'verbosity' must be one of: low, medium, high.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        codex_web_search !== undefined &&
+        typeof codex_web_search !== "boolean"
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'codex_web_search' must be a boolean.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        taskRunner !== "codex" &&
+        (
+          reasoning_effort !== undefined ||
+          reasoning_summary !== undefined ||
+          verbosity !== undefined ||
+          codex_web_search !== undefined
+        )
+      ) {
+        const response: ErrorResponse = {
+          error:
+            "Fields 'reasoning_effort', 'reasoning_summary', 'verbosity', and 'codex_web_search' are only supported for codex tasks.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        task_delay_ms !== undefined &&
+        (!Number.isInteger(task_delay_ms) || task_delay_ms < 0)
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'task_delay_ms' must be a non-negative integer.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      const reasoningEffort =
+        taskRunner === "codex"
+          ? reasoning_effort ?? DEFAULT_CODEX_REASONING_EFFORT
+          : undefined;
+      const reasoningSummary =
+        taskRunner === "codex"
+          ? reasoning_summary ?? DEFAULT_CODEX_REASONING_SUMMARY
+          : undefined;
+      const taskDelayMs = task_delay_ms ?? 0;
+      const taskModel =
+        model?.trim() ||
+        (taskRunner === "opencode"
+          ? DEFAULT_DEEPSEEK_MODEL
+          : taskRunner === "claude"
+            ? process.env.CLAUDE_MODEL?.trim() || DEFAULT_CLAUDE_MODEL
+            : process.env.CODEX_MODEL?.trim() || DEFAULT_CODEX_MODEL);
+      const jobId = randomUUID();
+      const scheduledAt = taskDelayMs > 0
+        ? new Date(Date.now() + taskDelayMs)
+        : null;
+
+      try {
+        const token = githubKey?.trim() || undefined;
+        const pullRequest = await githubApi.getPullRequestReviewTarget(
+          repo,
+          pullRequestNumber,
+          token
+        );
+        const problemStatement = buildPullRequestReviewProblemStatement(
+          pullRequest.headRef,
+          pullRequest.number
+        );
+
+        logger.info(`AgentTask: Scheduling ${taskRunner} review job=${jobId} repo=${repo} pr=${pullRequest.number} model=${taskModel} delay_ms=${taskDelayMs}`);
+        await jobRepo.createAgentTaskJob(
+          {
+            id: jobId,
+            repo,
+            taskDelayMs,
+            scheduledAt,
+            taskRunner,
+            model: taskModel,
+            reasoningEffort,
+            reasoningSummary,
+            verbosity,
+            codexWebSearch: codex_web_search,
+            baseRef: pullRequest.baseRef,
+            branchName: pullRequest.headRef,
+            pullRequestUrl: pullRequest.url,
+            pullRequestNumber: pullRequest.number,
+          }
+        );
+        await enqueueAgentTaskJob(
+          queue,
+          jobId,
+          repo,
+          pullRequest.baseRef,
+          pullRequest.headRef,
+          problemStatement,
+          taskRunner,
+          taskModel,
+          reasoningEffort,
+          reasoningSummary,
+          verbosity,
+          codex_web_search,
+          undefined,
+          taskDelayMs,
+          token,
+          deepseek_api_key?.trim() || undefined,
+          "review",
+          {
+            number: pullRequest.number,
+            url: pullRequest.url,
+            title: pullRequest.title,
+            headRepo: pullRequest.headRepo,
+            headSha: pullRequest.headSha,
+          }
+        );
+        logger.info(`AgentTask ${jobId}: Enqueued review for repo=${repo} pr=${pullRequest.number}`);
+        return reply.code(201).send({ id: jobId } satisfies CreateTaskResponse);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to schedule review.";
+        logger.warn(`AgentTask: Failed to schedule review for repo=${repo}: ${message}`);
+        const response: ErrorResponse = { error: message };
+        const statusCode =
+          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
+        return reply.code(statusCode).send(response);
+      }
+    }
+  );
+
+  /**
    * GET /api/jobs/create-task/pending
    * Lists local agent task jobs that are queued locally and have not started the remote task yet.
    */
@@ -1703,7 +1967,15 @@ async function enqueueAgentTaskJob(
   pullRequestCompletionMode: PullRequestCompletionMode | undefined,
   delayMs = 0,
   githubKey?: string,
-  deepseekApiKey?: string
+  deepseekApiKey?: string,
+  taskMode: AgentTaskMode = "task",
+  pullRequest?: {
+    number: number;
+    url: string;
+    title: string;
+    headRepo: string;
+    headSha: string;
+  }
 ): Promise<void> {
   await queue.add(
     task === "opencode"
@@ -1718,12 +1990,22 @@ async function enqueueAgentTaskJob(
       ...(branch ? { branch } : {}),
       problemStatement,
       task,
+      taskMode,
       model,
       ...(reasoningEffort ? { reasoningEffort } : {}),
       ...(reasoningSummary ? { reasoningSummary } : {}),
       ...(verbosity ? { verbosity } : {}),
       ...(codexWebSearch !== undefined ? { codexWebSearch } : {}),
       ...(pullRequestCompletionMode ? { pullRequestCompletionMode } : {}),
+      ...(pullRequest
+        ? {
+            pullRequestNumber: pullRequest.number,
+            pullRequestUrl: pullRequest.url,
+            pullRequestTitle: pullRequest.title,
+            pullRequestHeadRepo: pullRequest.headRepo,
+            pullRequestHeadSha: pullRequest.headSha,
+          }
+        : {}),
       ...(githubKey ? { githubKey } : {}),
       ...(task === "opencode" && deepseekApiKey ? { deepseekApiKey } : {}),
     },

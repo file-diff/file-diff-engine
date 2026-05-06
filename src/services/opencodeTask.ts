@@ -9,6 +9,7 @@ import {
 import { createPullRequest } from "./githubApi";
 import type {
   AgentTaskModel,
+  AgentTaskMode,
   AgentTaskRunner,
   CodexReasoningEffort,
   CodexReasoningSummary,
@@ -59,6 +60,12 @@ export interface OpencodeTaskOptions {
   verbosity?: CodexVerbosity;
   codexWebSearch?: boolean;
   pullRequestCompletionMode?: PullRequestCompletionMode;
+  taskMode?: AgentTaskMode;
+  pullRequestNumber?: number;
+  pullRequestUrl?: string;
+  pullRequestTitle?: string;
+  pullRequestHeadRepo?: string;
+  pullRequestHeadSha?: string;
   githubKey?: string;
   deepseekApiKey?: string;
   workDir?: string;
@@ -119,6 +126,10 @@ export async function executeOpencodeOnPreparedBranch(
   );
   if (await callbacks?.isCancellationRequested?.()) {
     throw new AgentTaskCanceledError("Task canceled by request.", logs);
+  }
+
+  if (options.taskMode === "review") {
+    return logs;
   }
 
   try {
@@ -206,6 +217,74 @@ export async function prepareOpencodeTaskBranch(
   };
 }
 
+export async function preparePullRequestReviewTaskBranch(
+  options: OpencodeTaskOptions
+): Promise<OpencodePreparedTask> {
+  const repo = options.repo.trim();
+  const branch = options.branch?.trim()
+    ? normalizeGitRef(options.branch, "pull_request_branch")
+    : "";
+  const baseRef = normalizeGitRef(options.baseRef, "base_ref");
+  const headRepo = options.pullRequestHeadRepo?.trim() || repo;
+  const pullRequestNumber = options.pullRequestNumber;
+  const pullRequestUrl = options.pullRequestUrl?.trim() || "";
+  const pullRequestTitle = options.pullRequestTitle?.trim() || "";
+  const githubKey = resolveGitHubToken(options.githubKey);
+
+  if (!branch || !pullRequestNumber || !pullRequestUrl) {
+    throw new Error(
+      "Pull request review tasks require a branch, pull request number, and pull request URL."
+    );
+  }
+
+  if (!githubKey) {
+    throw new Error(
+      "GitHub token is required. Set PRIVATE_GITHUB_TOKEN or pass githubKey."
+    );
+  }
+
+  const workDir = getOpencodeTaskWorkDir(options);
+  const cloneDir = getOpencodeTaskCloneDir(options);
+  const repoUrl = getRepositoryUrl(headRepo);
+  const gitEnv = getGitCommandEnv(githubKey);
+
+  fs.rmSync(workDir, { recursive: true, force: true });
+  fs.mkdirSync(workDir, { recursive: true });
+
+  await runGit(
+    workDir,
+    [
+      "clone",
+      "--no-checkout",
+      "--depth=1",
+      "--single-branch",
+      "--branch",
+      branch,
+      "--",
+      repoUrl,
+      cloneDir,
+    ],
+    gitEnv
+  );
+  await runGit(cloneDir, ["checkout", "-B", branch, `origin/${branch}`], gitEnv);
+  await runGit(cloneDir, ["remote", "add", "base", getRepositoryUrl(repo)], gitEnv);
+  await runGit(
+    cloneDir,
+    ["fetch", "--depth=1", "base", `${baseRef}:refs/remotes/base/${baseRef}`],
+    gitEnv
+  );
+  await configureCommitAuthor(cloneDir, gitEnv);
+
+  return {
+    branch,
+    pullRequest: {
+      number: pullRequestNumber,
+      title: pullRequestTitle,
+      url: pullRequestUrl,
+    },
+  };
+}
+
 export function getOpencodeTaskWorkDir(options: OpencodeTaskOptions): string {
   const taskRunner = options.taskRunner ?? "opencode";
   return path.resolve(
@@ -234,7 +313,8 @@ async function runOpencode(
   const prompt = buildOpencodePrompt(
     options.problemStatement,
     branch,
-    pullRequestNumber
+    pullRequestNumber,
+    options.taskMode
   );
   // Write prompt to .opencode/commands/command.md in the repository so the
   // opencode CLI can pick it up from the working directory instead of passing
@@ -983,8 +1063,13 @@ export function buildPullRequestBody(
 export function buildOpencodePrompt(
   problemStatement: string,
   branch: string,
-  pullRequestNumber: number
+  pullRequestNumber: number,
+  taskMode: AgentTaskMode = "task"
 ): string {
+  if (taskMode === "review") {
+    return buildAgentReviewPrompt(problemStatement, branch, pullRequestNumber);
+  }
+
   return [
     `You are already on branch '${branch}' with pull request #${pullRequestNumber} created.`,
     "1. Create plan of the given instructions.",
@@ -992,6 +1077,30 @@ export function buildOpencodePrompt(
     "3. Follow the plan, commit and push the changes as you go.",
     "4. Do not create another branch or pull request.",
     "5. After done comment on pull request with detailed summary report",
+    "User instructions starts here:",
+    problemStatement,
+  ].join("\n");
+}
+
+export function buildPullRequestReviewProblemStatement(
+  branch: string,
+  pullRequestNumber: number
+): string {
+  return `Do the review of the code changes on branch ${branch} with the pull request ${pullRequestNumber}. Put your findings in the pull request comment.`;
+}
+
+export function buildAgentReviewPrompt(
+  problemStatement: string,
+  branch: string,
+  pullRequestNumber: number
+): string {
+  return [
+    `You are already on branch '${branch}' with pull request #${pullRequestNumber} created.`,
+    "Review the code changes for this pull request.",
+    "The pull request base branch is fetched under the 'base' git remote when available.",
+    "Post your findings as a pull request comment.",
+    "If you find no issues, post a concise pull request comment saying that no issues were found.",
+    "Do not edit files, commit changes, push changes, create another branch, or create another pull request.",
     "User instructions starts here:",
     problemStatement,
   ].join("\n");

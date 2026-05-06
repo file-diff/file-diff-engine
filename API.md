@@ -1116,6 +1116,62 @@ curl -X POST https://your-host.example.com/api/jobs/create-task \
 
 ---
 
+### `POST /api/jobs/create-review`
+
+Creates a local agent-task job that reviews an existing GitHub pull request. The service resolves the pull request number to its head branch, checks out that branch, and prompts the selected local agent to post review findings as a comment on the existing pull request. Unlike `create-task`, this endpoint does not create a new branch or draft pull request.
+
+This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
+
+#### Request arguments
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `repo` | `string` | Yes | Repository in `owner/repo` format. GitHub URLs such as `https://github.com/owner/repo.git` are also accepted and normalized. |
+| `pull_request_number` | `integer` | Yes | Existing pull request number to review. `pullRequestNumber` is also accepted for camelCase clients. |
+| `task` | `"codex" \| "opencode" \| "claude"` | No | Local agent implementation. Defaults to `codex`. |
+| `model` | `string` | No | Model for the selected task runner. Codex defaults to `CODEX_MODEL` or `gpt-5.2-codex`; Claude defaults to `CLAUDE_MODEL` or `sonnet`; opencode defaults to `deepseek-v4-flash` and only accepts `deepseek-v4-flash` or `deepseek-v4-pro`. |
+| `reasoning_effort` | `"low" \| "medium" \| "high" \| "xhigh"` | No | Codex-only reasoning effort override. Defaults to `medium`. |
+| `reasoning_summary` | `"none" \| "auto" \| "concise" \| "detailed"` | No | Codex-only reasoning summary setting. Defaults to `auto`. |
+| `verbosity` | `"low" \| "medium" \| "high"` | No | Codex-only output verbosity override. |
+| `codex_web_search` | `boolean` | No | Codex-only flag to enable the Codex web search tool. |
+| `task_delay_ms` | `integer` | No | Optional non-negative delay in milliseconds before the queued worker starts processing the review. |
+| `githubKey` | `string` | No | Per-request GitHub token override used for PR lookup and repository checkout. Defaults to `PRIVATE_GITHUB_TOKEN`. |
+| `deepseek_api_key` | `string` | No | Per-request DeepSeek API key override for opencode review tasks. Defaults to `DEEPSEEK_API_KEY`. |
+
+The fields `branch`, `branch_title`, `create_pull_request`, `auto_ready`, `auto_merge`, and `pull_request_completion_mode` are not supported for review tasks because the branch and pull request come from the existing GitHub pull request.
+
+#### Success response
+
+Status: `201 Created`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Created local agent-task job ID. Use this value with the existing `GET /api/jobs/create-task/:id` endpoint to query status and captured output. |
+
+#### Common statuses
+
+- `400 Bad Request` when any required field is missing or invalid
+- `401 Unauthorized` when the bearer token is missing or invalid
+- `404 Not Found` when the pull request does not exist
+- `500 Internal Server Error` when the local job cannot be recorded or queued
+
+#### Example
+
+```bash
+curl -X POST https://your-host.example.com/api/jobs/create-review \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "facebook/react",
+    "pull_request_number": 123,
+    "task": "codex",
+    "model": "gpt-5.2-codex",
+    "verbosity": "medium"
+  }'
+```
+
+---
+
 ### `GET /api/jobs/create-task/pending`
 
 Lists local agent-task jobs that are queued and have not yet been picked up by a worker.

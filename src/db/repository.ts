@@ -124,6 +124,8 @@ export interface CreateAgentTaskJobParams {
   codexWebSearch?: boolean;
   baseRef?: string;
   pullRequestCompletionMode?: PullRequestCompletionMode;
+  pullRequestUrl?: string;
+  pullRequestNumber?: number;
 }
 
 export class JobRepository {
@@ -146,12 +148,14 @@ export class JobRepository {
          verbosity,
          codex_web_search,
          pull_request_completion_mode,
+         pull_request_url,
+         pull_request_number,
          task_delay_ms,
          scheduled_at,
          created_at,
          updated_at
         )
-       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [
         params.id,
         params.repo,
@@ -166,6 +170,8 @@ export class JobRepository {
         params.verbosity ?? null,
         params.codexWebSearch ?? null,
         params.pullRequestCompletionMode ?? null,
+        params.pullRequestUrl ?? null,
+        params.pullRequestNumber ?? null,
         params.taskDelayMs ?? 0,
         params.scheduledAt ?? null,
       ]
