@@ -2,6 +2,21 @@ import { createLogger } from "../utils/logger";
 
 const logger = createLogger("slack");
 
+export interface CodexSessionSlackTokenUsage {
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  reasoningOutputTokens?: number;
+  totalTokens?: number;
+  modelContextWindow?: number;
+}
+
+export interface CodexSessionSlackInfo {
+  sessionId?: string;
+  sessionFilePath?: string;
+  tokenUsage?: CodexSessionSlackTokenUsage;
+}
+
 export interface AgentTaskSlackNotification {
   owner: string;
   repoName: string;
@@ -12,6 +27,7 @@ export interface AgentTaskSlackNotification {
   pullRequestUrl?: string;
   pullRequestActions?: string[];
   details?: string;
+  codexSession?: CodexSessionSlackInfo;
 }
 
 export async function sendAgentTaskFinishedSlackNotification(
@@ -69,6 +85,7 @@ export function buildAgentTaskFinishedSlackMessage(
 
   lines.push(`Duration: ${formatDuration(notification.durationMs)}`);
   lines.push(`${linkLabel}: ${linkUrl}`);
+  appendCodexSessionLines(lines, notification.codexSession);
 
   if (notification.pullRequestActions?.length) {
     lines.push("Pull request actions:");
@@ -78,6 +95,62 @@ export function buildAgentTaskFinishedSlackMessage(
   }
 
   return lines.join("\n");
+}
+
+function appendCodexSessionLines(
+  lines: string[],
+  codexSession: CodexSessionSlackInfo | undefined
+): void {
+  if (!codexSession || !hasCodexSessionInfo(codexSession)) {
+    return;
+  }
+
+  lines.push("Codex session:");
+  if (codexSession.sessionId) {
+    lines.push(`- ID: ${codexSession.sessionId}`);
+  }
+
+  if (codexSession.sessionFilePath) {
+    lines.push(`- Session file: cached (${codexSession.sessionFilePath})`);
+  } else if (codexSession.sessionId) {
+    lines.push("- Session file: not found");
+  }
+
+  const tokenUsage = formatCodexTokenUsage(codexSession.tokenUsage);
+  if (tokenUsage) {
+    lines.push(`- Token usage: ${tokenUsage}`);
+  }
+}
+
+function hasCodexSessionInfo(codexSession: CodexSessionSlackInfo): boolean {
+  return Boolean(
+    codexSession.sessionId ||
+      codexSession.sessionFilePath ||
+      formatCodexTokenUsage(codexSession.tokenUsage)
+  );
+}
+
+function formatCodexTokenUsage(
+  tokenUsage: CodexSessionSlackTokenUsage | undefined
+): string | null {
+  if (!tokenUsage) {
+    return null;
+  }
+
+  const parts = [
+    formatTokenCount("total", tokenUsage.totalTokens),
+    formatTokenCount("input", tokenUsage.inputTokens),
+    formatTokenCount("cached input", tokenUsage.cachedInputTokens),
+    formatTokenCount("output", tokenUsage.outputTokens),
+    formatTokenCount("reasoning output", tokenUsage.reasoningOutputTokens),
+    formatTokenCount("context window", tokenUsage.modelContextWindow),
+  ].filter((part): part is string => part !== null);
+
+  return parts.length > 0 ? parts.join("; ") : null;
+}
+
+function formatTokenCount(label: string, value: number | undefined): string | null {
+  return value === undefined ? null : `${label} ${value.toLocaleString("en-US")}`;
 }
 
 function buildAgentTaskHeadline(repo: string, status: string): string {

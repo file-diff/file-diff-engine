@@ -10,6 +10,7 @@ import {
   buildCodexSummaryPrompt,
   findCodexSessionJsonlPath,
   parseCodexSessionId,
+  parseCodexSessionTokenUsage,
 } from "./codexTask";
 
 const tempDirs: string[] = [];
@@ -61,6 +62,71 @@ session id: 019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf`)
         rootDir
       )
     ).resolves.toMatch(/rollout-2026-04-29T15-39-37-.+\.jsonl$/);
+  });
+
+  it("extracts the latest token usage from codex rollout events", () => {
+    const usage = parseCodexSessionTokenUsage(
+      [
+        "not json",
+        JSON.stringify({
+          timestamp: "2026-04-29T23:40:12.206Z",
+          type: "event_msg",
+          payload: {
+            type: "token_count",
+            info: {
+              total_token_usage: {
+                input_tokens: 100,
+                cached_input_tokens: 80,
+                output_tokens: 20,
+                reasoning_output_tokens: 5,
+                total_tokens: 120,
+              },
+              model_context_window: 121600,
+            },
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-04-29T23:40:19.257Z",
+          type: "event_msg",
+          payload: {
+            type: "token_count",
+            info: {
+              total_token_usage: {
+                input_tokens: 150,
+                cached_input_tokens: 120,
+                output_tokens: 30,
+                reasoning_output_tokens: 10,
+                total_tokens: 180,
+              },
+              model_context_window: 121600,
+            },
+          },
+        }),
+      ].join("\n")
+    );
+
+    expect(usage).toEqual({
+      inputTokens: 150,
+      cachedInputTokens: 120,
+      outputTokens: 30,
+      reasoningOutputTokens: 10,
+      totalTokens: 180,
+      modelContextWindow: 121600,
+    });
+  });
+
+  it("returns undefined when codex rollout token usage is unavailable", () => {
+    expect(
+      parseCodexSessionTokenUsage(
+        JSON.stringify({
+          type: "event_msg",
+          payload: {
+            type: "agent_message",
+            message: "No token usage here",
+          },
+        })
+      )
+    ).toBeUndefined();
   });
 
   it("builds first-phase codex args that read the prompt from stdin", () => {

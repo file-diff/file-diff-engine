@@ -28,6 +28,22 @@ const CODEX_SESSION_TEST_PATTERN =
 
 export class CodexExecutionError extends AgentCliExecutionError {}
 
+export interface CodexSessionTokenUsage {
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  reasoningOutputTokens?: number;
+  totalTokens?: number;
+  modelContextWindow?: number;
+}
+
+export interface CodexSessionExport {
+  sessionId: string;
+  sessionFilePath: string | null;
+  testDetails: string[];
+  tokenUsage?: CodexSessionTokenUsage;
+}
+
 type CodexPhaseLabel = "plan" | "implement" | "summary";
 
 interface CodexPhase {
@@ -387,7 +403,7 @@ export async function findCodexSessionJsonlPath(
 async function exportCodexSessionDetails(
   sessionId: string,
   sessionFilePath: string | null
-): Promise<unknown> {
+): Promise<CodexSessionExport> {
   if (!sessionFilePath) {
     return {
       sessionId,
@@ -396,17 +412,17 @@ async function exportCodexSessionDetails(
     };
   }
 
+  const contents = await fs.promises.readFile(sessionFilePath, "utf8");
+  const tokenUsage = parseCodexSessionTokenUsage(contents);
   return {
     sessionId,
     sessionFilePath,
-    testDetails: await grepCodexSessionTestDetails(sessionFilePath),
+    testDetails: grepCodexSessionTestDetails(contents),
+    ...(tokenUsage ? { tokenUsage } : {}),
   };
 }
 
-async function grepCodexSessionTestDetails(
-  sessionFilePath: string
-): Promise<string[]> {
-  const contents = await fs.promises.readFile(sessionFilePath, "utf8");
+function grepCodexSessionTestDetails(contents: string): string[] {
   const limit = parsePositiveInteger(
     process.env.CODEX_SESSION_TEST_DETAIL_LIMIT,
     DEFAULT_CODEX_SESSION_TEST_DETAIL_LIMIT
@@ -425,6 +441,92 @@ async function grepCodexSessionTestDetails(
   }
 
   return matches;
+}
+
+export function parseCodexSessionTokenUsage(
+  contents: string
+): CodexSessionTokenUsage | undefined {
+  let latestUsage: CodexSessionTokenUsage | undefined;
+
+  for (const line of contents.split(/\r?\n/)) {
+    if (!line) {
+      continue;
+    }
+
+    const event = parseJsonRecord(line);
+    const payload = asRecord(event?.payload);
+    if (payload?.type !== "token_count") {
+      continue;
+    }
+
+    const info = asRecord(payload.info);
+    const totalTokenUsage = asRecord(info?.total_token_usage);
+    const usage = buildCodexSessionTokenUsage(
+      totalTokenUsage,
+      readFiniteNumber(info, "model_context_window")
+    );
+    if (usage) {
+      latestUsage = usage;
+    }
+  }
+
+  return latestUsage;
+}
+
+function buildCodexSessionTokenUsage(
+  usage: Record<string, unknown> | null,
+  modelContextWindow: number | undefined
+): CodexSessionTokenUsage | undefined {
+  if (!usage) {
+    return modelContextWindow === undefined
+      ? undefined
+      : { modelContextWindow };
+  }
+
+  const summary: CodexSessionTokenUsage = {
+    ...(readFiniteNumber(usage, "input_tokens") !== undefined
+      ? { inputTokens: readFiniteNumber(usage, "input_tokens") }
+      : {}),
+    ...(readFiniteNumber(usage, "cached_input_tokens") !== undefined
+      ? { cachedInputTokens: readFiniteNumber(usage, "cached_input_tokens") }
+      : {}),
+    ...(readFiniteNumber(usage, "output_tokens") !== undefined
+      ? { outputTokens: readFiniteNumber(usage, "output_tokens") }
+      : {}),
+    ...(readFiniteNumber(usage, "reasoning_output_tokens") !== undefined
+      ? { reasoningOutputTokens: readFiniteNumber(usage, "reasoning_output_tokens") }
+      : {}),
+    ...(readFiniteNumber(usage, "total_tokens") !== undefined
+      ? { totalTokens: readFiniteNumber(usage, "total_tokens") }
+      : {}),
+    ...(modelContextWindow !== undefined ? { modelContextWindow } : {}),
+  };
+
+  return Object.keys(summary).length > 0 ? summary : undefined;
+}
+
+function parseJsonRecord(value: string): Record<string, unknown> | null {
+  try {
+    return asRecord(JSON.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readFiniteNumber(
+  record: Record<string, unknown> | null | undefined,
+  key: string
+): number | undefined {
+  const value = record?.[key];
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 async function listCodexRolloutFiles(rootDir: string): Promise<string[]> {

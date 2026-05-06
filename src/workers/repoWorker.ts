@@ -21,7 +21,10 @@ import {
 } from "../services/opencodeTask";
 import { applyPullRequestCompletionMode } from "../services/pullRequestCompletion";
 import { QUEUE_NAME } from "../services/queue";
-import { sendAgentTaskFinishedSlackNotification } from "../services/slack";
+import {
+  sendAgentTaskFinishedSlackNotification,
+  type AgentTaskSlackNotification,
+} from "../services/slack";
 import { isAgentTaskCanceledError } from "../services/agentTaskControl";
 import { createLogger } from "../utils/logger";
 
@@ -246,7 +249,8 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       Date.now() - taskCreatedAt,
       undefined,
       pullRequestActions,
-      lastKnownPullRequestUrl
+      lastKnownPullRequestUrl,
+      logs
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -275,7 +279,8 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
         Date.now() - taskCreatedAt,
         cancelMessage,
         pullRequestActions,
-        lastKnownPullRequestUrl
+        lastKnownPullRequestUrl,
+        logs
       );
       return;
     }
@@ -297,7 +302,8 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       Date.now() - taskCreatedAt,
       message,
       pullRequestActions,
-      lastKnownPullRequestUrl
+      lastKnownPullRequestUrl,
+      logs
     );
     throw err;
   }
@@ -362,7 +368,8 @@ async function sendTerminalTaskNotification(
   durationMs: number,
   details?: string,
   pullRequestActions?: string[],
-  pullRequestUrl?: string
+  pullRequestUrl?: string,
+  logs?: OpencodeCapturedLogs | null
 ): Promise<void> {
   try {
     logger.info(`AgentTask ${taskId}: Sending Slack notification status=${status} branch=${branch ?? "none"} duration=${Math.round(durationMs / 1000)}s`);
@@ -376,9 +383,70 @@ async function sendTerminalTaskNotification(
       pullRequestUrl,
       pullRequestActions,
       details,
+      codexSession: buildCodexSessionSlackInfo(logs),
     });
     logger.info(`AgentTask ${taskId}: Slack notification sent`);
   } catch (error) {
     logger.warn(`AgentTask ${taskId}: Failed to send Slack notification for status=${status}: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+function buildCodexSessionSlackInfo(
+  logs: OpencodeCapturedLogs | null | undefined
+): AgentTaskSlackNotification["codexSession"] {
+  if (!logs) {
+    return undefined;
+  }
+
+  const tokenUsage = extractCodexTokenUsage(logs.codexSessionExport);
+  if (!logs.codexSessionId && !logs.codexSessionFilePath && !tokenUsage) {
+    return undefined;
+  }
+
+  return {
+    ...(logs.codexSessionId ? { sessionId: logs.codexSessionId } : {}),
+    ...(logs.codexSessionFilePath
+      ? { sessionFilePath: logs.codexSessionFilePath }
+      : {}),
+    ...(tokenUsage ? { tokenUsage } : {}),
+  };
+}
+
+function extractCodexTokenUsage(
+  codexSessionExport: unknown
+): NonNullable<AgentTaskSlackNotification["codexSession"]>["tokenUsage"] {
+  const tokenUsage = asRecord(codexSessionExport)?.tokenUsage;
+  const tokenUsageRecord = asRecord(tokenUsage);
+  if (!tokenUsageRecord) {
+    return undefined;
+  }
+
+  const summary = {
+    inputTokens: readFiniteNumber(tokenUsageRecord, "inputTokens"),
+    cachedInputTokens: readFiniteNumber(tokenUsageRecord, "cachedInputTokens"),
+    outputTokens: readFiniteNumber(tokenUsageRecord, "outputTokens"),
+    reasoningOutputTokens: readFiniteNumber(tokenUsageRecord, "reasoningOutputTokens"),
+    totalTokens: readFiniteNumber(tokenUsageRecord, "totalTokens"),
+    modelContextWindow: readFiniteNumber(tokenUsageRecord, "modelContextWindow"),
+  };
+
+  return Object.values(summary).some((value) => value !== undefined)
+    ? summary
+    : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readFiniteNumber(
+  record: Record<string, unknown>,
+  key: string
+): number | undefined {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
