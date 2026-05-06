@@ -16,7 +16,8 @@ describe("claude task helpers", () => {
       "sonnet",
       "--output-format",
       "text",
-      "--dangerously-skip-permissions",
+      "--permission-mode",
+      "bypassPermissions",
     ]);
   });
 

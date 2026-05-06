@@ -72,6 +72,10 @@ export async function executeAgentCliOnPreparedBranch(
     throw new AgentTaskCanceledError("Task canceled by request.", logs);
   }
 
+  if (options.taskMode === "review") {
+    return logs;
+  }
+
   try {
     await commitAndPushFinalChanges(cloneDir, options, config.branch);
   } catch (error) {

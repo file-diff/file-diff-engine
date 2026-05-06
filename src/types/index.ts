@@ -109,6 +109,9 @@ export type AgentTaskJobStatus = JobStatus | "canceled";
 /** Local agent implementation used to execute task instructions. */
 export type AgentTaskRunner = "codex" | "opencode" | "claude";
 
+/** Agent task mode. Normal tasks create a PR; reviews inspect an existing PR. */
+export type AgentTaskMode = "task" | "review";
+
 /** Model identifier for a locally-managed agent task. */
 export type AgentTaskModel = string;
 
@@ -426,6 +429,41 @@ export interface CreateTaskRequest {
   deepseek_api_key?: string;
   /** Optional GitHub token override used for branch, commit, push, and PR creation. */
   githubKey?: string;
+}
+
+/** Payload sent when creating a local code review task for an existing pull request. */
+export interface CreatePullRequestReviewRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Existing pull request number to review */
+  pull_request_number?: number;
+  /** Existing pull request number to review, accepted from camelCase clients */
+  pullRequestNumber?: number;
+  /** The model to use for this task */
+  model?: AgentTaskModel;
+  /** Local agent implementation to run. Defaults to codex. */
+  task?: AgentTaskRunner;
+  /** Optional reasoning effort for Codex tasks. Defaults to medium. */
+  reasoning_effort?: CodexReasoningEffort;
+  /** Optional reasoning summary setting for Codex tasks. Defaults to auto. */
+  reasoning_summary?: CodexReasoningSummary;
+  /** Optional output verbosity for Codex tasks. */
+  verbosity?: CodexVerbosity;
+  /** Enable Codex web search tool support for this task. */
+  codex_web_search?: boolean;
+  /** Optional delay in milliseconds before starting the review task */
+  task_delay_ms?: number;
+  /** Optional DeepSeek API key override for this task. Prefer DEEPSEEK_API_KEY in production. */
+  deepseek_api_key?: string;
+  /** Optional GitHub token override used for PR lookup and repository checkout. */
+  githubKey?: string;
+  /** Task-creation fields are not supported for review tasks. */
+  create_pull_request?: boolean;
+  auto_ready?: boolean;
+  auto_merge?: boolean;
+  pull_request_completion_mode?: PullRequestCompletionMode;
+  branch?: string;
+  branch_title?: string;
 }
 
 /** Response payload after creating a local agent task job. */

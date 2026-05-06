@@ -5,7 +5,10 @@ import {
   type OpencodeCapturedLogs,
   type OpencodeExecutionCallbacks,
 } from "./agentCliTask";
-import type { OpencodeTaskOptions } from "./opencodeTask";
+import {
+  buildAgentReviewPrompt,
+  type OpencodeTaskOptions,
+} from "./opencodeTask";
 
 const TWO_HOURS_IN_SECONDS = 2 * 60 * 60;
 const DEFAULT_CLAUDE_MODEL = "sonnet";
@@ -27,7 +30,12 @@ export async function executeClaudeOnPreparedBranch(
       commandLabel: "claude",
       bin: getClaudeBin(),
       args: buildClaudeArgs(model),
-      prompt: buildClaudePrompt(options.problemStatement, branch, pullRequestNumber),
+      prompt: buildClaudePrompt(
+        options.problemStatement,
+        branch,
+        pullRequestNumber,
+        options.taskMode
+      ),
       cwd: "",
       branch,
       defaultTimeoutMs: DEFAULT_CLAUDE_TIMEOUT_MS,
@@ -75,7 +83,12 @@ export function buildClaudeArgs(model: string): string[] {
 export function buildClaudePrompt(
   problemStatement: string,
   branch: string,
-  pullRequestNumber: number
+  pullRequestNumber: number,
+  taskMode: OpencodeTaskOptions["taskMode"] = "task"
 ): string {
+  if (taskMode === "review") {
+    return buildAgentReviewPrompt(problemStatement, branch, pullRequestNumber);
+  }
+
   return buildAgentTaskPrompt(problemStatement, branch, pullRequestNumber);
 }

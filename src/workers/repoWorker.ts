@@ -5,6 +5,7 @@ import { getDatabase, type DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
 import type {
   AgentTaskModel,
+  AgentTaskMode,
   AgentTaskRunner,
   CodexReasoningEffort,
   CodexReasoningSummary,
@@ -17,6 +18,7 @@ import { processRepository } from "../services/repoProcessor";
 import {
   executeOpencodeOnPreparedBranch,
   prepareOpencodeTaskBranch,
+  preparePullRequestReviewTaskBranch,
   type OpencodeCapturedLogs,
 } from "../services/opencodeTask";
 import { applyPullRequestCompletionMode } from "../services/pullRequestCompletion";
@@ -122,6 +124,12 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     reasoningSummary,
     verbosity,
     codexWebSearch,
+    taskMode = "task",
+    pullRequestNumber,
+    pullRequestUrl,
+    pullRequestTitle,
+    pullRequestHeadRepo,
+    pullRequestHeadSha,
     pullRequestCompletionMode,
     githubKey,
     deepseekApiKey,
@@ -137,6 +145,12 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     reasoningSummary?: CodexReasoningSummary;
     verbosity?: CodexVerbosity;
     codexWebSearch?: boolean;
+    taskMode?: AgentTaskMode;
+    pullRequestNumber?: number;
+    pullRequestUrl?: string;
+    pullRequestTitle?: string;
+    pullRequestHeadRepo?: string;
+    pullRequestHeadSha?: string;
     pullRequestCompletionMode?: PullRequestCompletionMode;
     githubKey?: string;
     deepseekApiKey?: string;
@@ -177,11 +191,19 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       reasoningSummary,
       verbosity,
       codexWebSearch,
+      taskMode,
+      pullRequestNumber,
+      pullRequestUrl,
+      pullRequestTitle,
+      pullRequestHeadRepo,
+      pullRequestHeadSha,
       pullRequestCompletionMode,
       githubKey,
       deepseekApiKey,
     };
-    const prepared = await prepareOpencodeTaskBranch(taskOptions);
+    const prepared = taskMode === "review"
+      ? await preparePullRequestReviewTaskBranch(taskOptions)
+      : await prepareOpencodeTaskBranch(taskOptions);
     lastKnownBranchName = prepared.branch;
     lastKnownPullRequestUrl = prepared.pullRequest.url;
     if (await repo.isAgentTaskCancellationRequested(jobId)) {
@@ -229,13 +251,15 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     if (await repo.isAgentTaskCancellationRequested(jobId)) {
       throw new Error("Task canceled by request.");
     }
-    pullRequestActions = await applyPullRequestCompletionMode({
-      repo: repoName,
-      branch: prepared.branch,
-      pullNumber: prepared.pullRequest.number,
-      mode: pullRequestCompletionMode ?? existingJob?.pullRequestCompletionMode,
-      token: githubKey,
-    });
+    if (taskMode !== "review") {
+      pullRequestActions = await applyPullRequestCompletionMode({
+        repo: repoName,
+        branch: prepared.branch,
+        pullNumber: prepared.pullRequest.number,
+        mode: pullRequestCompletionMode ?? existingJob?.pullRequestCompletionMode,
+        token: githubKey,
+      });
+    }
     await repo.updateAgentTaskStatus(jobId, "completed", prepared.branch);
     await repo.updateAgentTaskLogs(jobId, logs);
     await repo.updateAgentTaskJobStatus(jobId, "completed");

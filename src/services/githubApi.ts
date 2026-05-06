@@ -27,16 +27,43 @@ export class GitHubApiError extends Error {
 }
 
 interface GitHubPullRequestApiResponse {
+  number?: number;
+  title?: string;
+  html_url?: string;
+  state?: string;
+  draft?: boolean;
   head?: {
+    ref?: string;
     sha?: string;
+    repo?: {
+      full_name?: string;
+      html_url?: string;
+    } | null;
   };
   base?: {
+    ref?: string;
     sha?: string;
     repo?: {
       full_name?: string;
       html_url?: string;
     };
   };
+}
+
+export interface PullRequestReviewTarget {
+  number: number;
+  title: string;
+  url: string;
+  state: string;
+  draft: boolean;
+  baseRef: string;
+  baseSha: string;
+  baseRepo: string;
+  baseRepositoryUrl: string;
+  headRef: string;
+  headSha: string;
+  headRepo: string;
+  headRepositoryUrl: string;
 }
 
 interface GitHubRepositoryApiResponse {
@@ -138,6 +165,66 @@ export async function resolvePullRequest(
     sourceCommitShort: getCommitShort(sourceCommit),
     targetCommit,
     targetCommitShort: getCommitShort(targetCommit),
+  };
+}
+
+export async function getPullRequestReviewTarget(
+  repo: string,
+  pullNumber: number,
+  token?: string
+): Promise<PullRequestReviewTarget> {
+  const [owner, repoName] = repo.split("/", 2);
+  const response = await getJson<GitHubPullRequestApiResponse>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/pulls/${pullNumber}`,
+    {
+      notFoundMessage: `Pull request #${pullNumber} was not found in repository '${repo}'.`,
+      token,
+    }
+  );
+
+  const number = response.number;
+  const title = response.title?.trim() || "";
+  const url = response.html_url?.trim() || "";
+  const baseRef = response.base?.ref?.trim() || "";
+  const baseSha = response.base?.sha?.trim().toLowerCase() || "";
+  const baseRepo = response.base?.repo?.full_name?.trim() || repo;
+  const baseRepositoryUrl =
+    response.base?.repo?.html_url?.trim() || `https://${GITHUB_HOSTNAME}/${baseRepo}`;
+  const headRef = response.head?.ref?.trim() || "";
+  const headSha = response.head?.sha?.trim().toLowerCase() || "";
+  const headRepo = response.head?.repo?.full_name?.trim() || "";
+  const headRepositoryUrl = response.head?.repo?.html_url?.trim() || "";
+
+  if (
+    number !== pullNumber ||
+    !url ||
+    !baseRef ||
+    !baseSha ||
+    !baseRepo ||
+    !headRef ||
+    !headSha ||
+    !headRepo
+  ) {
+    throw new GitHubApiError(
+      `Pull request #${pullNumber} in repository '${repo}' did not include complete head and base metadata.`,
+      502
+    );
+  }
+
+  return {
+    number,
+    title,
+    url,
+    state: response.state?.trim() || "",
+    draft: response.draft === true,
+    baseRef,
+    baseSha,
+    baseRepo,
+    baseRepositoryUrl,
+    headRef,
+    headSha,
+    headRepo,
+    headRepositoryUrl: headRepositoryUrl || `https://${GITHUB_HOSTNAME}/${headRepo}`,
   };
 }
 
