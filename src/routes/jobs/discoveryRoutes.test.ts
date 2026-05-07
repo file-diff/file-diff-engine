@@ -1,9 +1,9 @@
 import Fastify from "fastify";
-import { type Queue } from "bullmq";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDatabase } from "../../__tests__/helpers/testDatabase";
 import { JobRepository } from "../../db/repository";
 import * as githubApi from "../../services/githubApi";
+import type { ManagedQueue } from "../../services/queue";
 import { registerDiscoveryRoutes } from "./discoveryRoutes";
 
 describe("registerDiscoveryRoutes", () => {
@@ -24,7 +24,7 @@ describe("registerDiscoveryRoutes", () => {
     const jobRepo = new JobRepository(database);
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerDiscoveryRoutes(app, queue, jobRepo);
@@ -82,7 +82,7 @@ describe("registerDiscoveryRoutes", () => {
     const jobRepo = new JobRepository(database);
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerDiscoveryRoutes(app, queue, jobRepo);
@@ -133,7 +133,7 @@ describe("registerDiscoveryRoutes", () => {
     const jobRepo = new JobRepository(database);
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
     const originalClaudeModel = process.env.CLAUDE_MODEL;
     process.env.CLAUDE_MODEL = "opus";
 
@@ -187,7 +187,7 @@ describe("registerDiscoveryRoutes", () => {
     const jobRepo = new JobRepository(database);
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
     vi.spyOn(githubApi, "getPullRequestReviewTarget").mockResolvedValue({
       number: 155,
       title: "Add review mode",
@@ -268,7 +268,7 @@ describe("registerDiscoveryRoutes", () => {
     const jobRepo = new JobRepository(database);
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerDiscoveryRoutes(app, queue, jobRepo);
@@ -303,7 +303,7 @@ describe("registerDiscoveryRoutes", () => {
     const jobRepo = new JobRepository(database);
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerDiscoveryRoutes(app, queue, jobRepo);
@@ -339,7 +339,7 @@ describe("registerDiscoveryRoutes", () => {
     const jobRepo = new JobRepository(database);
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerDiscoveryRoutes(app, queue, jobRepo);
@@ -378,7 +378,7 @@ describe("registerDiscoveryRoutes", () => {
     const jobRepo = new JobRepository(database);
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerDiscoveryRoutes(app, queue, jobRepo);
@@ -427,7 +427,7 @@ describe("registerDiscoveryRoutes", () => {
     const jobRepo = new JobRepository(database);
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerDiscoveryRoutes(app, queue, jobRepo);
@@ -476,7 +476,7 @@ describe("registerDiscoveryRoutes", () => {
     const jobRepo = new JobRepository(database);
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerDiscoveryRoutes(app, queue, jobRepo);
@@ -514,7 +514,7 @@ describe("registerDiscoveryRoutes", () => {
     const jobRepo = new JobRepository(database);
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerDiscoveryRoutes(app, queue, jobRepo);
