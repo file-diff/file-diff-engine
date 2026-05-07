@@ -68,13 +68,20 @@ export function registerJobManagementRoutes(
         // up a fresh job even if the prior failed job could not be removed
         // from BullMQ (e.g. stale lock, Redis cleanup race). DB-level
         // dedup on the commit-keyed row prevents duplicate processing.
-        await enqueueJob(
-          queue,
-          existingJob.id,
-          existingJob.repo,
-          existingJob.commit,
-          { bullJobId: `${existingJob.id}:retry-${Date.now()}` }
-        );
+        try {
+          await enqueueJob(
+            queue,
+            existingJob.id,
+            existingJob.repo,
+            existingJob.commit,
+            { bullJobId: `${existingJob.id}:retry-${Date.now()}` }
+          );
+        } catch (error) {
+          // Without this rollback the row would sit in 'waiting' forever
+          // because no BullMQ counterpart exists to consume it.
+          await markEnqueueFailure(jobRepo, existingJob.id, error);
+          throw error;
+        }
 
         const response: JobSummary = {
           id: existingJob.id,
@@ -113,7 +120,12 @@ export function registerJobManagementRoutes(
       throw error;
     }
 
-    await enqueueJob(queue, jobId, repo, commit);
+    try {
+      await enqueueJob(queue, jobId, repo, commit);
+    } catch (error) {
+      await markEnqueueFailure(jobRepo, jobId, error);
+      throw error;
+    }
 
     const response: JobSummary = {
       id: jobId,
@@ -216,6 +228,24 @@ async function enqueueJob(
       jobId: options.bullJobId ?? jobId,
     }
   );
+}
+
+async function markEnqueueFailure(
+  jobRepo: JobRepository,
+  jobId: string,
+  error: unknown
+): Promise<void> {
+  const reason =
+    error instanceof Error ? error.message : "Unknown enqueue failure";
+  try {
+    await jobRepo.updateJobStatus(jobId, "failed", `Failed to enqueue job: ${reason}`);
+  } catch (rollbackError) {
+    logger.error(
+      `Failed to mark job ${jobId} as failed after enqueue error: ${
+        rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+      }`
+    );
+  }
 }
 
 async function removeQueuedJob(queue: Queue, jobId: string): Promise<void> {

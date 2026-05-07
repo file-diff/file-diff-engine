@@ -1,4 +1,4 @@
-import { Worker, Job } from "bullmq";
+import { Worker, Job, Queue } from "bullmq";
 import path from "path";
 import fs from "fs";
 import { getDatabase, type DatabaseClient } from "../db/database";
@@ -108,7 +108,80 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
     }
   );
 
+  // Surface BullMQ-level problems that would otherwise be silently swallowed
+  // and leave operators wondering why jobs sit in 'waiting'.
+  worker.on("error", (error) => {
+    logger.error("Worker emitted error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  worker.on("failed", (job, error) => {
+    logger.warn("Worker reported job failure", {
+      jobId: job?.id,
+      jobName: job?.name,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  worker.on("stalled", (jobId) => {
+    logger.warn("Worker reported stalled job", { jobId });
+  });
+
   return worker;
+}
+
+export async function recoverOrphanedWaitingJobs(
+  db: DatabaseClient,
+  queue: Queue
+): Promise<number> {
+  const repo = new JobRepository(db);
+  const waiting = await repo.listWaitingJobs();
+  if (waiting.length === 0) {
+    return 0;
+  }
+
+  let recovered = 0;
+  for (const job of waiting) {
+    let queuedJob;
+    try {
+      queuedJob = await queue.getJob(job.id);
+    } catch (error) {
+      logger.warn("Failed to look up BullMQ job during recovery; skipping", {
+        jobId: job.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+
+    if (queuedJob) {
+      continue;
+    }
+
+    // The DB row says 'waiting' but no BullMQ counterpart exists. This happens
+    // when queue.add() failed after the row was inserted, or when Redis state
+    // was lost (restart with ephemeral Redis, manual flush). Re-enqueue with a
+    // fresh BullMQ jobId so an old completed/failed entry with the same id
+    // cannot dedupe us out.
+    const recoveryId = `${job.id}:recover-${Date.now()}`;
+    try {
+      await queue.add(
+        "process-repo",
+        { jobId: job.id, repoName: job.repo, commit: job.commit },
+        { jobId: recoveryId }
+      );
+      recovered += 1;
+      logger.warn("Recovered orphaned waiting job", {
+        jobId: job.id,
+        recoveryBullJobId: recoveryId,
+      });
+    } catch (error) {
+      logger.error("Failed to re-enqueue orphaned waiting job", {
+        jobId: job.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return recovered;
 }
 
 async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> {
