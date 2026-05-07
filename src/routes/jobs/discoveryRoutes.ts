@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import type { FastifyInstance } from "fastify";
-import { Queue } from "bullmq";
 import { JobRepository } from "../../db/repository";
 import type {
   AgentTaskJobInfo,
@@ -68,6 +67,7 @@ import {
   buildPullRequestReviewProblemStatement,
   normalizeGitRef,
 } from "../../services/opencodeTask";
+import type { ManagedQueue } from "../../services/queue";
 import * as repoProcessor from "../../services/repoProcessor";
 import { getCommitShort } from "../../utils/commit";
 import {
@@ -189,7 +189,7 @@ function resolvePullRequestCompletionMode(body: CreateTaskRequest): {
 
 export function registerDiscoveryRoutes(
   app: FastifyInstance,
-  queue: Queue,
+  queue: ManagedQueue,
   jobRepo: JobRepository
 ): void {
   /**
@@ -1575,6 +1575,7 @@ export function registerDiscoveryRoutes(
         ? new Date(Date.now() + taskDelayMs)
         : null;
 
+      let agentTaskJobCreated = false;
       try {
         logger.info(`AgentTask: Scheduling ${taskRunner} task job=${jobId} repo=${repo} model=${taskModel} delay_ms=${taskDelayMs}`);
         await jobRepo.createAgentTaskJob(
@@ -1594,6 +1595,7 @@ export function registerDiscoveryRoutes(
             pullRequestCompletionMode,
           }
         );
+        agentTaskJobCreated = true;
         await enqueueAgentTaskJob(
           queue,
           jobId,
@@ -1617,6 +1619,11 @@ export function registerDiscoveryRoutes(
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Unable to schedule task.";
+        if (agentTaskJobCreated) {
+          // Without this rollback the row would sit in 'waiting' forever
+          // because no BullMQ counterpart exists to consume it.
+          await markAgentTaskEnqueueFailure(jobRepo, jobId, message);
+        }
         logger.warn(`AgentTask: Failed to schedule task for repo=${repo}: ${message}`);
         const response: ErrorResponse = { error: message };
         return reply.code(500).send(response);
@@ -1812,6 +1819,7 @@ export function registerDiscoveryRoutes(
         ? new Date(Date.now() + taskDelayMs)
         : null;
 
+      let agentTaskJobCreated = false;
       try {
         const token = githubKey?.trim() || undefined;
         const pullRequest = await githubApi.getPullRequestReviewTarget(
@@ -1843,6 +1851,7 @@ export function registerDiscoveryRoutes(
             pullRequestNumber: pullRequest.number,
           }
         );
+        agentTaskJobCreated = true;
         await enqueueAgentTaskJob(
           queue,
           jobId,
@@ -1874,6 +1883,9 @@ export function registerDiscoveryRoutes(
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Unable to schedule review.";
+        if (agentTaskJobCreated) {
+          await markAgentTaskEnqueueFailure(jobRepo, jobId, message);
+        }
         logger.warn(`AgentTask: Failed to schedule review for repo=${repo}: ${message}`);
         const response: ErrorResponse = { error: message };
         const statusCode =
@@ -1951,8 +1963,28 @@ export function registerDiscoveryRoutes(
   );
 }
 
+async function markAgentTaskEnqueueFailure(
+  jobRepo: JobRepository,
+  jobId: string,
+  reason: string
+): Promise<void> {
+  try {
+    await jobRepo.updateAgentTaskJobStatus(
+      jobId,
+      "failed",
+      `Failed to enqueue task job: ${reason}`
+    );
+  } catch (rollbackError) {
+    logger.error(
+      `Failed to mark agent task job ${jobId} as failed after enqueue error: ${
+        rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+      }`
+    );
+  }
+}
+
 async function enqueueAgentTaskJob(
-  queue: Queue,
+  queue: ManagedQueue,
   jobId: string,
   repoName: string,
   baseRef: string,

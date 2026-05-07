@@ -22,7 +22,12 @@ import {
   type OpencodeCapturedLogs,
 } from "../services/opencodeTask";
 import { applyPullRequestCompletionMode } from "../services/pullRequestCompletion";
-import { QUEUE_NAME } from "../services/queue";
+import {
+  MAX_CONCURRENCY_PER_TASK_KIND,
+  QUEUE_NAMES,
+  type ManagedQueue,
+  type QueueJobName,
+} from "../services/queue";
 import {
   sendAgentTaskFinishedSlackNotification,
   type AgentTaskSlackNotification,
@@ -36,67 +41,56 @@ const REDIS_PORT = parseInt(process.env.REDIS_PORT || "6379", 10);
 const TMP_DIR = process.env.TMP_DIR || "tmp";
 const logger = createLogger("repo-worker");
 
-export async function createWorker(db?: DatabaseClient): Promise<Worker> {
+export interface WorkerManager {
+  workers: Worker[];
+  close(): Promise<void>;
+}
+
+export async function createWorker(db?: DatabaseClient): Promise<WorkerManager> {
   const database = db ?? (await getDatabase());
   const repo = new JobRepository(database);
   logger.info("Worker connected to database, ready to process jobs.");
 
+  const workers = [
+    createNamedWorker(QUEUE_NAMES.repo, repo, "process-repo", true),
+    createNamedWorker(QUEUE_NAMES.opencode, repo, "create-opencode-task"),
+    createNamedWorker(QUEUE_NAMES.codex, repo, "create-codex-task"),
+    createNamedWorker(QUEUE_NAMES.claude, repo, "create-claude-task"),
+  ];
+
+  return {
+    workers,
+    async close() {
+      await Promise.all(workers.map((worker) => worker.close()));
+    },
+  };
+}
+
+function createNamedWorker(
+  queueName: string,
+  repo: JobRepository,
+  expectedJobName: QueueJobName,
+  allowLegacyAgentTasks = false
+): Worker {
   const worker = new Worker(
-    QUEUE_NAME,
+    queueName,
     async (job: Job) => {
-      if (
-        job.name === "create-opencode-task" ||
-        job.name === "create-codex-task" ||
-        job.name === "create-claude-task"
-      ) {
-        await handleAgentTaskJob(job, repo);
-        return;
+      if (job.name !== expectedJobName) {
+        if (!allowLegacyAgentTasks || !isAgentTaskJobName(job.name)) {
+          throw new Error(
+            `Worker for '${expectedJobName}' received unexpected job '${job.name}'.`
+          );
+        }
+
+        logger.warn("Processing legacy agent task from repo queue", {
+          queueName,
+          expectedJobName,
+          jobName: job.name,
+          jobId: job.id,
+        });
       }
 
-      logger.debug("Job started", { jobId: job.id });
-      const { jobId, repoName, commit } = job.data as {
-        jobId: string;
-        repoName: string;
-        commit: string;
-      };
-
-      const workDir = path.join(TMP_DIR, `fde-${jobId}`);
-      fs.mkdirSync(workDir, { recursive: true });
-      logger.debug("Prepared work directory", { jobId, workDir });
-
-      try {
-        await repo.updateJobStatus(jobId, "active");
-        logger.info("Job marked as active", { jobId, repoName, commit });
-
-        const files = await processRepository(
-          repoName,
-          commit,
-          workDir,
-          {
-            onFilesDiscovered: async (files) => {
-              await repo.insertFiles(jobId, files);
-              await repo.updateJobProgress(jobId, 0, files.length);
-            },
-            onFileProcessed: async (file, processed, total) => {
-              await repo.updateFile(jobId, file);
-              logger.debug("Job progress updated", { jobId, processed, total });
-              await repo.updateJobProgress(jobId, processed, total);
-            },
-          }
-        );
-
-        await repo.updateJobStatus(jobId, "completed");
-        logger.info("Job completed", { jobId, processedFiles: files.length });
-      } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : "Unknown error";
-        logger.error("Job failed", { jobId, repoName, commit, error: message });
-        await repo.updateJobStatus(jobId, "failed", message);
-        throw err;
-      } finally {
-        //fs.rmSync(workDir, { recursive: true, force: true });
-        //logger.debug("Cleaned up work directory", { jobId, workDir });
-      }
+      await processQueuedJob(job, repo);
     },
     {
       connection: {
@@ -104,11 +98,145 @@ export async function createWorker(db?: DatabaseClient): Promise<Worker> {
         port: REDIS_PORT,
         maxRetriesPerRequest: null,
       },
-      concurrency: 2,
+      concurrency: MAX_CONCURRENCY_PER_TASK_KIND,
     }
   );
 
+  registerWorkerEventHandlers(worker);
   return worker;
+}
+
+function registerWorkerEventHandlers(worker: Worker): void {
+  worker.on("error", (error) => {
+    logger.error("Worker emitted error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  worker.on("failed", (job, error) => {
+    logger.warn("Worker reported job failure", {
+      jobId: job?.id,
+      jobName: job?.name,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  worker.on("stalled", (jobId) => {
+    logger.warn("Worker reported stalled job", { jobId });
+  });
+}
+
+async function processQueuedJob(job: Job, repo: JobRepository): Promise<void> {
+  if (isAgentTaskJobName(job.name)) {
+    await handleAgentTaskJob(job, repo);
+    return;
+  }
+
+  logger.debug("Job started", { jobId: job.id });
+  const { jobId, repoName, commit } = job.data as {
+    jobId: string;
+    repoName: string;
+    commit: string;
+  };
+
+  const workDir = path.join(TMP_DIR, `fde-${jobId}`);
+  fs.mkdirSync(workDir, { recursive: true });
+  logger.debug("Prepared work directory", { jobId, workDir });
+
+  try {
+    await repo.updateJobStatus(jobId, "active");
+    logger.info("Job marked as active", { jobId, repoName, commit });
+
+    const files = await processRepository(
+      repoName,
+      commit,
+      workDir,
+      {
+        onFilesDiscovered: async (files) => {
+          await repo.insertFiles(jobId, files);
+          await repo.updateJobProgress(jobId, 0, files.length);
+        },
+        onFileProcessed: async (file, processed, total) => {
+          await repo.updateFile(jobId, file);
+          logger.debug("Job progress updated", { jobId, processed, total });
+          await repo.updateJobProgress(jobId, processed, total);
+        },
+      }
+    );
+
+    await repo.updateJobStatus(jobId, "completed");
+    logger.info("Job completed", { jobId, processedFiles: files.length });
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Unknown error";
+    logger.error("Job failed", { jobId, repoName, commit, error: message });
+    await repo.updateJobStatus(jobId, "failed", message);
+    throw err;
+  } finally {
+    //fs.rmSync(workDir, { recursive: true, force: true });
+    //logger.debug("Cleaned up work directory", { jobId, workDir });
+  }
+}
+
+function isAgentTaskJobName(name: string): boolean {
+  return (
+    name === "create-opencode-task" ||
+    name === "create-codex-task" ||
+    name === "create-claude-task"
+  );
+}
+
+export async function recoverOrphanedWaitingJobs(
+  db: DatabaseClient,
+  queue: ManagedQueue
+): Promise<number> {
+  const repo = new JobRepository(db);
+  const waiting = await repo.listWaitingJobs();
+  if (waiting.length === 0) {
+    return 0;
+  }
+
+  let recovered = 0;
+  for (const job of waiting) {
+    let queuedJob;
+    try {
+      queuedJob = await queue.getJob(job.id, "process-repo");
+    } catch (error) {
+      logger.warn("Failed to look up BullMQ job during recovery; skipping", {
+        jobId: job.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+
+    if (queuedJob) {
+      continue;
+    }
+
+    // The DB row says 'waiting' but no BullMQ counterpart exists. This happens
+    // when queue.add() failed after the row was inserted, or when Redis state
+    // was lost (restart with ephemeral Redis, manual flush). Re-enqueue with a
+    // fresh BullMQ jobId so an old completed/failed entry with the same id
+    // cannot dedupe us out.
+    const recoveryId = `${job.id}:recover-${Date.now()}`;
+    try {
+      await queue.add(
+        "process-repo",
+        { jobId: job.id, repoName: job.repo, commit: job.commit },
+        { jobId: recoveryId }
+      );
+      recovered += 1;
+      logger.warn("Recovered orphaned waiting job", {
+        jobId: job.id,
+        recoveryBullJobId: recoveryId,
+      });
+    } catch (error) {
+      logger.error("Failed to re-enqueue orphaned waiting job", {
+        jobId: job.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return recovered;
 }
 
 async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> {

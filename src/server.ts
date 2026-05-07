@@ -1,5 +1,5 @@
 import { createApp } from "./app";
-import { createWorker } from "./workers/repoWorker";
+import { createWorker, recoverOrphanedWaitingJobs } from "./workers/repoWorker";
 import { createLogger } from "./utils/logger";
 
 const PORT = parseInt(process.env.PORT || "12986", 10);
@@ -9,6 +9,23 @@ const logger = createLogger("server");
 async function main() {
   const { app, queue, db } = await createApp();
   const worker = await createWorker(db);
+
+  queue.on("error", (error) => {
+    logger.error("Queue connection error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+
+  try {
+    const recovered = await recoverOrphanedWaitingJobs(db, queue);
+    if (recovered > 0) {
+      logger.warn(`Recovered ${recovered} orphaned waiting job(s) on startup.`);
+    }
+  } catch (error) {
+    logger.error("Failed to recover orphaned waiting jobs on startup", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   await app.listen({ port: PORT, host: HOST });
   logger.info(`File-diff-engine API listening on ${HOST}:${PORT}`);

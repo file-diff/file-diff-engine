@@ -2,7 +2,6 @@ import fs from "fs";
 import readline from "readline";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
-import { Queue } from "bullmq";
 import { zstdCompressSync } from "node:zlib";
 import {
   getDatabase,
@@ -16,7 +15,7 @@ import { createJobRoutes } from "./routes/jobs";
 import { registerPromptRoutes } from "./routes/promptRoutes";
 import { createTaskRoutes } from "./routes/taskRoutes";
 import { getGitHubRateLimit } from "./services/githubApi";
-import { createQueue } from "./services/queue";
+import { createQueue, type ManagedQueue } from "./services/queue";
 import type {
   CommitGrepMatch,
   CommitGrepResponse,
@@ -35,14 +34,14 @@ import {
 } from "./routes/jobs/shared";
 
 export interface AppDependencies {
-  queue: Queue;
+  queue: ManagedQueue;
   db: DatabaseClient;
   dbConfig?: DatabaseConfig;
 }
 
 export interface AppContext {
   app: FastifyInstance;
-  queue: Queue;
+  queue: ManagedQueue;
   db: DatabaseClient;
   jobRepo: JobRepository;
 }

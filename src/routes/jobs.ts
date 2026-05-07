@@ -1,13 +1,13 @@
-import { Queue } from "bullmq";
 import rateLimit from "@fastify/rate-limit";
 import type { FastifyPluginAsync } from "fastify";
 import { JobRepository } from "../db/repository";
+import type { ManagedQueue } from "../services/queue";
 import { registerDiscoveryRoutes } from "./jobs/discoveryRoutes";
 import { registerDownloadRoutes } from "./jobs/downloadRoutes";
 import { registerJobManagementRoutes } from "./jobs/jobManagementRoutes";
 
 export function createJobRoutes(
-  queue: Queue,
+  queue: ManagedQueue,
   jobRepo: JobRepository
 ): FastifyPluginAsync {
   return async function registerJobRoutes(app) {

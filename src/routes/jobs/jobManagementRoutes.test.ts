@@ -1,8 +1,9 @@
 import Fastify from "fastify";
-import { type Job, type Queue } from "bullmq";
+import { type Job } from "bullmq";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDatabase } from "../../__tests__/helpers/testDatabase";
 import { JobRepository } from "../../db/repository";
+import type { ManagedQueue } from "../../services/queue";
 import { registerJobManagementRoutes } from "./jobManagementRoutes";
 
 const COMMIT_A = "a".repeat(40);
@@ -31,7 +32,7 @@ describe("registerJobManagementRoutes POST /", () => {
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
       getJob: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerJobManagementRoutes(app, queue, jobRepo);
@@ -95,7 +96,7 @@ describe("registerJobManagementRoutes POST /", () => {
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
       getJob: vi.fn().mockResolvedValue(oldQueuedJob),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerJobManagementRoutes(app, queue, jobRepo);
@@ -124,7 +125,7 @@ describe("registerJobManagementRoutes POST /", () => {
       const files = await jobRepo.getFiles(COMMIT_A);
       expect(files).toHaveLength(0);
 
-      expect(queue.getJob).toHaveBeenCalledWith(COMMIT_A);
+      expect(queue.getJob).toHaveBeenCalledWith(COMMIT_A, "process-repo");
       expect(removedJobs).toEqual([COMMIT_A]);
       expect(queue.add).toHaveBeenCalledTimes(1);
       const [addName, addData, addOptions] = (queue.add as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -148,7 +149,7 @@ describe("registerJobManagementRoutes POST /", () => {
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
       getJob: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerJobManagementRoutes(app, queue, jobRepo);
@@ -187,7 +188,7 @@ describe("registerJobManagementRoutes POST /", () => {
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
       getJob: vi.fn().mockResolvedValue(oldQueuedJob),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       registerJobManagementRoutes(app, queue, jobRepo);
@@ -211,6 +212,70 @@ describe("registerJobManagementRoutes POST /", () => {
     }
   });
 
+  it("marks the job as failed when queue.add throws so it does not sit in 'waiting' forever", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockRejectedValue(new Error("Redis connection lost")),
+      getJob: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      registerJobManagementRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/",
+        headers: { authorization: `Bearer ${VIEWER_TOKEN}` },
+        payload: { repo: REPO, commit: COMMIT_A },
+      });
+
+      expect(response.statusCode).toBe(500);
+
+      const persisted = await jobRepo.getJob(COMMIT_A);
+      expect(persisted?.status).toBe("failed");
+      expect(persisted?.error).toMatch(/Redis connection lost/);
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("marks a retried job as failed when queue.add throws on the retry path", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+
+    await jobRepo.createJob(COMMIT_A, REPO, COMMIT_A);
+    await jobRepo.updateJobStatus(COMMIT_A, "failed", "boom");
+
+    const queue = {
+      add: vi.fn().mockRejectedValue(new Error("Redis connection lost")),
+      getJob: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      registerJobManagementRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/",
+        headers: { authorization: `Bearer ${VIEWER_TOKEN}` },
+        payload: { repo: REPO, commit: COMMIT_A },
+      });
+
+      expect(response.statusCode).toBe(500);
+
+      const persisted = await jobRepo.getJob(COMMIT_A);
+      expect(persisted?.status).toBe("failed");
+      expect(persisted?.error).toMatch(/Redis connection lost/);
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
   it("returns existing status for a non-failed job without resetting or re-enqueuing", async () => {
     const cases: Array<"waiting" | "active" | "completed"> = [
       "waiting",
@@ -225,7 +290,7 @@ describe("registerJobManagementRoutes POST /", () => {
       const queue = {
         add: vi.fn().mockResolvedValue(undefined),
         getJob: vi.fn().mockResolvedValue(undefined),
-      } as unknown as Queue;
+      } as unknown as ManagedQueue;
 
       try {
         await jobRepo.createJob(COMMIT_A, REPO, COMMIT_A);

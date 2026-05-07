@@ -1,9 +1,9 @@
 import rateLimit from "@fastify/rate-limit";
-import type { Queue } from "bullmq";
 import type { FastifyPluginAsync } from "fastify";
 import { JobRepository } from "../db/repository";
 import type { AgentTaskJobInfo, ErrorResponse } from "../types";
 import { deleteAgentTaskJob } from "../services/agentTaskActions";
+import type { ManagedQueue } from "../services/queue";
 import { createLogger } from "../utils/logger";
 import {
   isValidRepo,
@@ -23,7 +23,7 @@ const logger = createLogger("task-routes");
  */
 export function createTaskRoutes(
   jobRepo: JobRepository,
-  queue: Queue
+  queue: ManagedQueue
 ): FastifyPluginAsync {
   return async function registerTaskRoutes(app) {
     await app.register(rateLimit, { global: false });
