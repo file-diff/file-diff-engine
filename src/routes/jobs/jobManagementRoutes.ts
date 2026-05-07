@@ -74,7 +74,7 @@ export function registerJobManagementRoutes(
             existingJob.id,
             existingJob.repo,
             existingJob.commit,
-            { bullJobId: `${existingJob.id}:retry-${Date.now()}` }
+            { bullJobId: `${existingJob.id}-retry-${Date.now()}` }
           );
         } catch (error) {
           // Without this rollback the row would sit in 'waiting' forever

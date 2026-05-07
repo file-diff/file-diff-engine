@@ -14,6 +14,10 @@ describe("queue routing", () => {
     expect(getQueueNameForJobName("create-claude-task")).toBe(QUEUE_NAMES.claude);
   });
 
+  it("uses BullMQ-safe queue names", () => {
+    expect(Object.values(QUEUE_NAMES).every((name) => !name.includes(":"))).toBe(true);
+  });
+
   it("uses five workers per job kind", () => {
     expect(MAX_CONCURRENCY_PER_TASK_KIND).toBe(5);
   });

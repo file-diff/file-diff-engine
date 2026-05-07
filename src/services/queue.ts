@@ -16,9 +16,9 @@ export type QueueKind = "repo" | "opencode" | "codex" | "claude";
 
 export const QUEUE_NAMES: Record<QueueKind, string> = {
   repo: QUEUE_NAME,
-  opencode: `${QUEUE_NAME}:opencode`,
-  codex: `${QUEUE_NAME}:codex`,
-  claude: `${QUEUE_NAME}:claude`,
+  opencode: `${QUEUE_NAME}-opencode`,
+  codex: `${QUEUE_NAME}-codex`,
+  claude: `${QUEUE_NAME}-claude`,
 };
 
 export interface ManagedQueue {

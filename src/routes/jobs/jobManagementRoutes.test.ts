@@ -131,7 +131,8 @@ describe("registerJobManagementRoutes POST /", () => {
       const [addName, addData, addOptions] = (queue.add as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(addName).toBe("process-repo");
       expect(addData).toEqual({ jobId: COMMIT_A, repoName: REPO, commit: COMMIT_A });
-      expect(addOptions.jobId).toMatch(new RegExp(`^${COMMIT_A}:retry-\\d+$`));
+      expect(addOptions.jobId).toMatch(new RegExp(`^${COMMIT_A}-retry-\\d+$`));
+      expect(addOptions.jobId).not.toContain(":");
     } finally {
       await app.close();
       await database.end();
