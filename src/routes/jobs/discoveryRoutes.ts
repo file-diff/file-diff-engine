@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import type { FastifyInstance } from "fastify";
-import { Queue } from "bullmq";
 import { JobRepository } from "../../db/repository";
 import type {
   AgentTaskJobInfo,
@@ -68,6 +67,7 @@ import {
   buildPullRequestReviewProblemStatement,
   normalizeGitRef,
 } from "../../services/opencodeTask";
+import type { ManagedQueue } from "../../services/queue";
 import * as repoProcessor from "../../services/repoProcessor";
 import { getCommitShort } from "../../utils/commit";
 import {
@@ -189,7 +189,7 @@ function resolvePullRequestCompletionMode(body: CreateTaskRequest): {
 
 export function registerDiscoveryRoutes(
   app: FastifyInstance,
-  queue: Queue,
+  queue: ManagedQueue,
   jobRepo: JobRepository
 ): void {
   /**
@@ -1984,7 +1984,7 @@ async function markAgentTaskEnqueueFailure(
 }
 
 async function enqueueAgentTaskJob(
-  queue: Queue,
+  queue: ManagedQueue,
   jobId: string,
   repoName: string,
   baseRef: string,

@@ -1,8 +1,8 @@
 import path from "path";
 import { timingSafeEqual } from "crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { Queue } from "bullmq";
 import { JobRepository } from "../../db/repository";
+import type { ManagedQueue } from "../../services/queue";
 import type { ErrorResponse } from "../../types";
 import { createLogger } from "../../utils/logger";
 
@@ -14,7 +14,7 @@ export const VIEWER_BEARER_TOKEN_ENV = "VIEWER_BEARER_TOKEN";
 export const logger = createLogger("job-routes");
 
 export interface JobRoutesDependencies {
-  queue: Queue;
+  queue: ManagedQueue;
   jobRepo: JobRepository;
 }
 

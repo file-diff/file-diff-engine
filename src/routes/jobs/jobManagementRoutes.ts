@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { Queue } from "bullmq";
 import { JobRepository, AmbiguousHashError } from "../../db/repository";
+import type { ManagedQueue } from "../../services/queue";
 import type {
   ErrorResponse,
   JobFilesResponse,
@@ -18,7 +18,7 @@ import {
 
 export function registerJobManagementRoutes(
   app: FastifyInstance,
-  queue: Queue,
+  queue: ManagedQueue,
   jobRepo: JobRepository
 ): void {
   /**
@@ -211,7 +211,7 @@ export function registerJobManagementRoutes(
 }
 
 async function enqueueJob(
-  queue: Queue,
+  queue: ManagedQueue,
   jobId: string,
   repoName: string,
   commit: string,
@@ -248,10 +248,13 @@ async function markEnqueueFailure(
   }
 }
 
-async function removeQueuedJob(queue: Queue, jobId: string): Promise<void> {
+async function removeQueuedJob(
+  queue: ManagedQueue,
+  jobId: string
+): Promise<void> {
   let queuedJob;
   try {
-    queuedJob = await queue.getJob(jobId);
+    queuedJob = await queue.getJob(jobId, "process-repo");
   } catch (error) {
     logger.warn(
       `Failed to look up queued job ${jobId} during retry; proceeding with enqueue: ${

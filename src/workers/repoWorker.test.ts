@@ -1,7 +1,8 @@
-import type { Job, Queue } from "bullmq";
+import type { Job } from "bullmq";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTestDatabase } from "../__tests__/helpers/testDatabase";
 import { JobRepository } from "../db/repository";
+import type { ManagedQueue } from "../services/queue";
 import { recoverOrphanedWaitingJobs } from "./repoWorker";
 
 const COMMIT_A = "a".repeat(40);
@@ -22,12 +23,12 @@ describe("recoverOrphanedWaitingJobs", () => {
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
       getJob: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       const recovered = await recoverOrphanedWaitingJobs(database, queue);
       expect(recovered).toBe(1);
-      expect(queue.getJob).toHaveBeenCalledWith(COMMIT_A);
+      expect(queue.getJob).toHaveBeenCalledWith(COMMIT_A, "process-repo");
       expect(queue.add).toHaveBeenCalledTimes(1);
       const [name, payload, options] = (queue.add as ReturnType<typeof vi.fn>)
         .mock.calls[0];
@@ -51,7 +52,7 @@ describe("recoverOrphanedWaitingJobs", () => {
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
       getJob: vi.fn().mockResolvedValue(existing),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       const recovered = await recoverOrphanedWaitingJobs(database, queue);
@@ -74,7 +75,7 @@ describe("recoverOrphanedWaitingJobs", () => {
     const queue = {
       add: vi.fn().mockResolvedValue(undefined),
       getJob: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       const recovered = await recoverOrphanedWaitingJobs(database, queue);
@@ -99,7 +100,7 @@ describe("recoverOrphanedWaitingJobs", () => {
     const queue = {
       add,
       getJob: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Queue;
+    } as unknown as ManagedQueue;
 
     try {
       const recovered = await recoverOrphanedWaitingJobs(database, queue);
