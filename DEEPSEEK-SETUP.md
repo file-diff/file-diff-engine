@@ -1,6 +1,6 @@
 ﻿# Codex + opencode + Claude task setup
 
-This service starts Codex-backed agent tasks by default through `POST /api/jobs/create-task`. Clients can also request opencode-backed tasks with `"task": "opencode"` or Claude-backed tasks with `"task": "claude"`. Task progress/output is exposed through `GET /api/jobs/create-task/:id`.
+This service starts Codex-backed agent tasks by default through `POST /api/agents/create-task`. Clients can also request opencode-backed tasks with `"task": "opencode"` or Claude-backed tasks with `"task": "claude"`. Task progress/output is exposed through `GET /api/agents/create-task/:id`.
 
 ## Required configuration
 
@@ -42,7 +42,7 @@ For opencode tasks, you can explicitly choose:
 ## Start a task
 
 ```bash
-curl -X POST http://127.0.0.1:12986/api/jobs/create-task \
+curl -X POST http://127.0.0.1:12986/api/agents/create-task \
   -H "Authorization: Bearer $ADMIN_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -82,7 +82,7 @@ Optional request fields:
 ## Check progress and output
 
 ```bash
-curl http://127.0.0.1:12986/api/jobs/create-task/task-job-id \
+curl http://127.0.0.1:12986/api/agents/create-task/task-job-id \
   -H "Authorization: Bearer $VIEWER_BEARER_TOKEN"
 ```
 
