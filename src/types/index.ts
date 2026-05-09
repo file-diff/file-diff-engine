@@ -24,6 +24,16 @@ export interface JobRequest {
   commit: string;
 }
 
+/** Payload sent when creating a file/repository indexing task. */
+export interface IndexFilesTaskRequest {
+  /** GitHub repository in owner/repo format */
+  repo: string;
+  /** Git ref to resolve and index, such as a branch, tag, or commit SHA */
+  ref?: string;
+  /** Full 40-character commit SHA. Used directly when provided. */
+  commit?: string;
+}
+
 /** Payload sent when resolving a Git ref to a commit SHA. */
 export interface ResolveCommitRequest {
   /** GitHub repository in owner/repo format */

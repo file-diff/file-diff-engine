@@ -9,8 +9,10 @@ import {
   type DatabaseConfig,
 } from "./db/database";
 import { JobRepository, AmbiguousHashError } from "./db/repository";
+import { createAgentRoutes } from "./routes/agents";
 import { registerClaudeUsageStatsRoutes } from "./routes/claudeUsageStatsRoutes";
 import { registerCodexUsageStatsRoutes } from "./routes/codexUsageStatsRoutes";
+import { createFileRoutes } from "./routes/files";
 import { createJobRoutes } from "./routes/jobs";
 import { registerPromptRoutes } from "./routes/promptRoutes";
 import { createTaskRoutes } from "./routes/taskRoutes";
@@ -166,6 +168,8 @@ export async function createApp(
   }
 
   await app.register(rateLimit, { global: false });
+  await app.register(createAgentRoutes(queue, jobRepo), { prefix: "/api/agents" });
+  await app.register(createFileRoutes(queue, jobRepo), { prefix: "/api/files" });
   await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
   registerPromptRoutes(app);
   registerCodexUsageStatsRoutes(app);
