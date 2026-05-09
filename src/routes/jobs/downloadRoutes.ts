@@ -42,8 +42,8 @@ export const shikiTokenizer = {
 };
 
 export interface DownloadRoutePathOptions {
-  hashBasePath?: string;
-  jobFileBasePath?: string;
+  hashBasePath: string;
+  jobFileBasePath: string;
 }
 
 interface ShikiTokenizationOptions {
@@ -76,10 +76,9 @@ for (const theme of bundledThemesInfo) {
 export function registerDownloadRoutes(
   app: FastifyInstance,
   jobRepo: JobRepository,
-  pathOptions: DownloadRoutePathOptions = {}
+  pathOptions: DownloadRoutePathOptions
 ): void {
-  const hashBasePath = pathOptions.hashBasePath ?? "/files/hash";
-  const jobFileBasePath = pathOptions.jobFileBasePath ?? "/:id/files/hash";
+  const { hashBasePath, jobFileBasePath } = pathOptions;
 
   app.get<{ Params: { hash: string } }>(
     `${hashBasePath}/:hash/download`,

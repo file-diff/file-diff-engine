@@ -170,7 +170,7 @@ export async function createApp(
   await app.register(rateLimit, { global: false });
   await app.register(createAgentRoutes(queue, jobRepo), { prefix: "/api/agents" });
   await app.register(createFileRoutes(queue, jobRepo), { prefix: "/api/files" });
-  await app.register(createJobRoutes(queue, jobRepo), { prefix: "/api/jobs" });
+  await app.register(createJobRoutes(), { prefix: "/api/jobs" });
   registerPromptRoutes(app);
   registerCodexUsageStatsRoutes(app);
   registerClaudeUsageStatsRoutes(app);
