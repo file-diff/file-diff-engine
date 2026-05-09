@@ -41,6 +41,11 @@ export const shikiTokenizer = {
   codeToTokens,
 };
 
+export interface DownloadRoutePathOptions {
+  hashBasePath?: string;
+  jobFileBasePath?: string;
+}
+
 interface ShikiTokenizationOptions {
   language: BundledLanguage | SpecialLanguage;
   theme: BundledTheme;
@@ -70,10 +75,14 @@ for (const theme of bundledThemesInfo) {
 
 export function registerDownloadRoutes(
   app: FastifyInstance,
-  jobRepo: JobRepository
+  jobRepo: JobRepository,
+  pathOptions: DownloadRoutePathOptions = {}
 ): void {
+  const hashBasePath = pathOptions.hashBasePath ?? "/files/hash";
+  const jobFileBasePath = pathOptions.jobFileBasePath ?? "/:id/files/hash";
+
   app.get<{ Params: { hash: string } }>(
-    "/files/hash/:hash/download",
+    `${hashBasePath}/:hash/download`,
     {
       preHandler: requireViewerBearerToken,
       config: {
@@ -101,7 +110,7 @@ export function registerDownloadRoutes(
   );
 
   app.get<{ Params: { id: string; hash: string } }>(
-    "/:id/files/hash/:hash/download",
+    `${jobFileBasePath}/:hash/download`,
     {
       preHandler: requireViewerBearerToken,
       config: {
@@ -182,7 +191,7 @@ export function registerDownloadRoutes(
   );
 
   app.get<{ Params: { leftHash: string; rightHash: string } }>(
-    "/files/hash/:leftHash/diff/:rightHash",
+    `${hashBasePath}/:leftHash/diff/:rightHash`,
     { preHandler: requireViewerBearerToken },
     async (request, reply) => {
       const { leftHash, rightHash } = request.params;
@@ -218,7 +227,7 @@ export function registerDownloadRoutes(
   );
 
   app.get<{ Params: { hash: string }; Querystring: TokenizeQuerystring }>(
-    "/files/hash/:hash/tokenize",
+    `${hashBasePath}/:hash/tokenize`,
     { preHandler: requireViewerBearerToken },
     async (request, reply) => {
       const { hash } = request.params;

@@ -2,7 +2,11 @@
 
 https://filediff.org
 
-API reference: [API.md](./API.md)
+API reference:
+
+- [AGENTS_TASKS_API.md](./AGENTS_TASKS_API.md): background agent task API under `/api/agents`
+- [INDEX_FILES_TASK_API.md](./INDEX_FILES_TASK_API.md): repository/file indexing task API under `/api/files`
+- [API.md](./API.md): legacy and broader service API reference
 
 ## Configuration
 

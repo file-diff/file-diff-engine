@@ -12,6 +12,14 @@ https://your-host.example.com
 
 Most routes are served under the `/api` prefix.
 
+Task APIs are split into focused references:
+
+- [`AGENTS_TASKS_API.md`](./AGENTS_TASKS_API.md) documents background agent tasks under `/api/agents`.
+- [`INDEX_FILES_TASK_API.md`](./INDEX_FILES_TASK_API.md) documents repository/file indexing tasks under `/api/files`.
+
+The older `/api/jobs/create-task*` and `/api/jobs` task endpoints remain legacy
+compatibility routes in this broader reference.
+
 ## Common notes
 
 - Request and response bodies use JSON unless noted otherwise.

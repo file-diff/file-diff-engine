@@ -28,7 +28,16 @@ This document lists every HTTP endpoint currently implemented by the service and
 | POST | `/api/jobs/commits/graph` | Viewer | Returns commit graph items |
 | GET | `/api/jobs/organizations/:organization/repositories` | Viewer | Lists organization repositories |
 | GET | `/api/jobs/cache` | Viewer | Lists on-disk git cache folders |
+| POST | `/api/files/index-task` | Viewer | Creates or reuses a repository/file indexing task |
+| GET | `/api/files/index-task/:id` | Viewer | Returns file indexing task status |
+| GET | `/api/files/index-task/:id/files` | Viewer | Returns processed file metadata for an indexing task |
+| GET | `/api/files/index-task/:id/hash/:hash/download` | Viewer | Downloads a file by index task id and file hash |
+| GET | `/api/files/hash/:hash/download` | Viewer | Downloads the first accessible file matching a hash |
+| GET | `/api/files/hash/:hash/tokenize` | Viewer | Tokenizes a file by hash with Shiki |
+| GET | `/api/files/hash/:leftHash/diff/:rightHash` | Viewer | Returns a `difft` JSON diff between two files |
 | GET | `/api/jobs/create-task/:id` | Viewer | Returns locally tracked Copilot task job status |
+| GET | `/api/agents/create-task/pending` | Viewer | Lists pending agent task jobs |
+| GET | `/api/agents/create-task/:id` | Viewer | Returns locally tracked agent task job status |
 | GET | `/api/commit/:id/files` | Viewer | Returns files for the latest job matching a commit |
 | GET | `/api/commit/:id/grep` | Viewer | Greps stored text files for a processed commit |
 | GET | `/api/jobs/:id/files/hash/:hash/download` | Viewer | Downloads a file by job id and file hash |
@@ -51,18 +60,22 @@ This document lists every HTTP endpoint currently implemented by the service and
 | POST | `/api/jobs/create-task` | Admin | `ADMIN_BEARER_TOKEN` |
 | POST | `/api/jobs/create-task/:id/cancel` | Admin | `ADMIN_BEARER_TOKEN` |
 | DELETE | `/api/jobs/create-task/:id` | Admin | `ADMIN_BEARER_TOKEN` |
+| POST | `/api/agents/create-task` | Admin | `ADMIN_BEARER_TOKEN` |
+| POST | `/api/agents/create-review` | Admin | `ADMIN_BEARER_TOKEN` |
+| POST | `/api/agents/create-task/:id/cancel` | Admin | `ADMIN_BEARER_TOKEN` |
+| DELETE | `/api/agents/create-task/:id` | Admin | `ADMIN_BEARER_TOKEN` |
 | GET | `/api/agents/repos/:owner/:repo/tasks` | Admin | `ADMIN_BEARER_TOKEN` |
 | GET | `/api/agents/repos/:owner/:repo/tasks/:task_id` | Admin | `ADMIN_BEARER_TOKEN` |
 | DELETE | `/api/agents/repos/:owner/:repo/tasks/:task_id` | Admin | `ADMIN_BEARER_TOKEN` |
-| GET | `/api/api/agents/tasks` | Admin | `ADMIN_BEARER_TOKEN` |
-
-`/api/api/agents/tasks` is included exactly as implemented today because the route is currently registered with a double `/api` prefix in code.
+| GET | `/api/agents/tasks` | Admin | `ADMIN_BEARER_TOKEN` |
 
 ## Source of truth
 
 This list was verified against the currently implemented routes in:
 
 - `src/app.ts`
+- `src/routes/agents/createTaskRoutes.ts`
+- `src/routes/files/indexTaskRoutes.ts`
 - `src/routes/jobs/discoveryRoutes.ts`
 - `src/routes/jobs/jobManagementRoutes.ts`
 - `src/routes/jobs/downloadRoutes.ts`
