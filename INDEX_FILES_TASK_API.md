@@ -132,8 +132,3 @@ Authorization: Bearer <VIEWER_BEARER_TOKEN>
 
 Runs `difft --display json` against two indexed files resolved by hash and
 returns the parsed JSON diff.
-
-## Legacy Compatibility
-
-The older mixed `/api/jobs` and `/api/jobs/files/...` endpoints are legacy
-compatibility routes. New clients should use `/api/files/...`.

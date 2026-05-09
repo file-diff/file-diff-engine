@@ -8,7 +8,7 @@ The authoritative reference is [`API.md`](./API.md#get-apicommitidgrep). This do
 
 - The endpoint is **`GET /api/commit/:id/grep?query=<text>`**.
 - `:id` is a **commit SHA** (full 40-character hex, or a short prefix of at least 2 characters). It is **not** a free-form job ID, branch name, ref, repo name, or PR number.
-- The endpoint does **not** create a job. A job for the commit must already exist (created via `POST /api/jobs`) and have processed files on disk. If no job exists for the commit, the endpoint returns `404 Job not found.`
+- The endpoint does **not** create a job. A file index task for the commit must already exist (created via `POST /api/files/index-task`) and have indexed files on disk. If no job exists for the commit, the endpoint returns `404 Job not found.`
 - `query` is a **plain-text substring**, not a regex or glob. It must be URL-encoded.
 - The endpoint requires the viewer bearer token: `Authorization: Bearer <VIEWER_BEARER_TOKEN>`.
 - Only text (`t`) and executable (`x`) files are searched. Binary (`b`), directory (`d`), and symlink (`s`) entries are skipped.
@@ -71,14 +71,14 @@ Notes:
 
 The grep endpoint is a **read-only** lookup. It will not create or trigger a job for you. Before grep can return results, the following must already be true:
 
-1. A job has been created for the commit, via `POST /api/jobs` with the `repo` (`owner/repo`) and the full 40-character `commit` SHA. See [`API.md` → `POST /api/jobs`](./API.md#post-apijobs).
+1. A file index task has been created for the commit, via `POST /api/files/index-task` with the `repo` (`owner/repo`) and the full 40-character `commit` SHA. See [`INDEX_FILES_TASK_API.md`](./INDEX_FILES_TASK_API.md).
 2. The processing worker has run far enough on that job to write file content to disk. (`status` may still be `waiting` or `active` — that is fine, grep will search whatever has been written so far — but if no files have been written yet, `matches` will simply be empty.)
 
 Recommended frontend flow:
 
 ```text
-1. POST /api/jobs           { repo, commit }      → returns { id, status }
-2. (optional) poll GET /api/jobs/:id              → wait for status === "completed"
+1. POST /api/files/index-task               { repo, commit }      → returns { id, status }
+2. (optional) poll GET /api/files/index-task/:id  → wait for status === "completed"
 3. GET /api/commit/:id/grep?query=<encoded text>  → use the same commit SHA from step 1
 ```
 
@@ -88,9 +88,9 @@ If you skip step 1 and call grep directly with a commit SHA the engine has never
 
 The frontend has hit each of the following at least once. Check this list before reporting a backend bug.
 
-1. **Calling grep before creating a job.** The grep endpoint never creates jobs. POST `/api/jobs` first.
+1. **Calling grep before creating an index task.** The grep endpoint never creates index tasks. POST `/api/files/index-task` first.
 2. **Passing a non-SHA value as `:id`.** `:id` must be a hex commit SHA (or a ≥2-character hex prefix of one). Branch names (`main`), tag names (`v1.2.3`), repo names (`owner/repo`), PR numbers, and synthetic IDs will all return `404`.
-3. **Using the wrong URL.** The endpoint lives under `/api/commit/...`, **not** under `/api/jobs/...`. There is no `GET /api/jobs/:id/grep` route — calling that path will return a 404 from the router (no JSON body, or a Fastify default not-found body), which can be mistaken for "job not found".
+3. **Using the wrong URL.** The endpoint lives under `/api/commit/...`, **not** under `/api/files/...`. There is no `GET /api/files/index-task/:id/grep` route — calling that path will return a 404 from the router (no JSON body, or a Fastify default not-found body), which can be mistaken for "job not found".
 4. **Using a short prefix that matches no stored commit.** A 7-character prefix is fine *if* a job exists for a commit starting with those characters. Otherwise you get `404`. Prefer the full 40-character SHA when you have it.
 5. **Using a short prefix that matches multiple commits.** This returns `400` (not `404`) with an ambiguity message. Resolve by sending the full SHA.
 6. **Missing or wrong bearer token.** Without `Authorization: Bearer <VIEWER_BEARER_TOKEN>` you will get `401`/`403` from the auth pre-handler, not `404` — but it is still a common cause of "this endpoint doesn't work" reports. See [`SECURITY.md`](./SECURITY.md) for the token mapping.
@@ -117,9 +117,9 @@ async function grepCommit({ baseUrl, commit, query, viewerToken }) {
   });
 
   if (res.status === 404) {
-    // Most likely cause: no job has been created for `commit` yet.
-    // Trigger one with POST /api/jobs and retry once the job has files.
-    throw new Error(`No job for commit ${commit}. Create one with POST /api/jobs first.`);
+    // Most likely cause: no index task has been created for `commit` yet.
+    // Trigger one with POST /api/files/index-task and retry once the index task has files.
+    throw new Error(`No index task for commit ${commit}. Create one with POST /api/files/index-task first.`);
   }
 
   if (!res.ok) {
@@ -143,6 +143,6 @@ curl -X GET \
 
 ## Related endpoints
 
-- [`POST /api/jobs`](./API.md#post-apijobs) — create or reuse the job whose files grep will search.
-- [`GET /api/jobs/:id`](./API.md#get-apijobsid) — poll job `status` / `progress` before grep.
+- [`POST /api/files/index-task`](./INDEX_FILES_TASK_API.md#create-a-file-index-task) — create or reuse the file index task whose files grep will search.
+- [`GET /api/files/index-task/:id`](./INDEX_FILES_TASK_API.md#get-file-index-task-status) — poll task `status` / `progress` before grep.
 - [`GET /api/commit/:id/files`](./API.md#get-apicommitidfiles) — list the files available for a commit so you can verify which entries grep will/won't search (based on the `t` field).

@@ -135,8 +135,3 @@ GET /api/agents/tasks
 
 `task_id` is the local agent task job id. For Codex tasks, the captured Codex
 session id can also be used where supported.
-
-## Legacy Compatibility
-
-The older mixed `/api/jobs/create-task*` and `/api/jobs/create-review` endpoints
-are legacy compatibility routes. New clients should use `/api/agents/...`.
