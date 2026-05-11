@@ -1821,11 +1821,12 @@ indexing reference; the high-level flow is:
 1. Call `POST /api/jobs/resolve` with a repository and ref such as `main`.
 2. Copy the returned `commit`.
 3. Call `POST /api/files/index-task` with the same repository and the resolved `commit`.
-4. Poll `GET /api/files/index-task/:id` until `status` becomes `completed` or `failed`.
-5. Call `GET /api/files/index-task/:id/files` to inspect indexed file metadata.
-6. Call `GET /api/files/index-task/:id/hash/:hash/download` to download a specific file by hash.
-7. Call `GET /api/files/hash/:hash/tokenize` to fetch Shiki JSON tokens for an indexed file by blob hash.
-8. Call `GET /api/files/hash/:leftHash/diff/:rightHash` to compare two indexed files by blob hash.
+4. Optionally call `GET /api/files/index-task` to list existing indexing tasks.
+5. Poll `GET /api/files/index-task/:id` until `status` becomes `completed` or `failed`.
+6. Call `GET /api/files/index-task/:id/files` to inspect indexed file metadata.
+7. Call `GET /api/files/index-task/:id/hash/:hash/download` to download a specific file by hash.
+8. Call `GET /api/files/hash/:hash/tokenize` to fetch Shiki JSON tokens for an indexed file by blob hash.
+9. Call `GET /api/files/hash/:leftHash/diff/:rightHash` to compare two indexed files by blob hash.
 
 ### Resolve a pull request, then compare source and target commits externally
 

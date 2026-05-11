@@ -419,6 +419,31 @@ export class JobRepository {
     });
   }
 
+  async listIndexJobs(): Promise<JobInfo[]> {
+    const result = await this.db.query(
+      `SELECT *
+       FROM jobs
+       ORDER BY created_at DESC, updated_at DESC, id DESC`
+    );
+
+    return result.rows.map((row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        id: r.id as string,
+        repo: r.repo as string,
+        commit: r.commit as string,
+        commitShort: getCommitShort(r.commit as string),
+        status: r.status as JobStatus,
+        progress: Number(r.progress),
+        totalFiles: Number(r.total_files),
+        processedFiles: Number(r.processed_files),
+        error: (r.error as string | null) ?? undefined,
+        createdAt: toIsoString(r.created_at),
+        updatedAt: toIsoString(r.updated_at),
+      };
+    });
+  }
+
   async createJob(id: string, repo: string, commit: string): Promise<void> {
     await this.db.query(
       `INSERT INTO jobs (id, repo, commit, status, created_at, updated_at)

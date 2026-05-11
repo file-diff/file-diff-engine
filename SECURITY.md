@@ -26,6 +26,7 @@ This document lists every HTTP endpoint currently implemented by the service and
 | GET | `/api/jobs/organizations/:organization/repositories` | Viewer | Lists organization repositories |
 | GET | `/api/jobs/cache` | Viewer | Lists on-disk git cache folders |
 | POST | `/api/files/index-task` | Viewer | Creates or reuses a repository/file indexing task |
+| GET | `/api/files/index-task` | Viewer | Lists repository/file indexing tasks |
 | GET | `/api/files/index-task/:id` | Viewer | Returns file indexing task status |
 | GET | `/api/files/index-task/:id/files` | Viewer | Returns processed file metadata for an indexing task |
 | GET | `/api/files/index-task/:id/hash/:hash/download` | Viewer | Downloads a file by index task id and file hash |

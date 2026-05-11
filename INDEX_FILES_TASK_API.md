@@ -46,12 +46,56 @@ Response:
   "id": "0123456789abcdef0123456789abcdef01234567",
   "status": "waiting",
   "commit": "0123456789abcdef0123456789abcdef01234567",
-  "commitShort": "01234567"
+  "commitShort": "0123456"
 }
 ```
 
 If the same commit already has an indexing task, the existing task status is
 returned. Failed tasks are reset and re-enqueued.
+
+## List File Index Tasks
+
+```http
+GET /api/files/index-task
+Authorization: Bearer <VIEWER_BEARER_TOKEN>
+```
+
+Returns all file indexing tasks, newest first.
+
+Each item contains the same fields returned by the single-task status endpoint:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Index task id. Currently the full commit SHA. |
+| `repo` | `string` | Repository in `owner/repo` format. |
+| `commit` | `string` | Full indexed commit SHA. |
+| `commitShort` | `string` | Short commit SHA. |
+| `status` | `"waiting" \| "active" \| "completed" \| "failed"` | Current task state. |
+| `progress` | `number` | Completion progress value. |
+| `totalFiles` | `number` | Total files discovered. |
+| `processedFiles` | `number` | Files processed so far. |
+| `error` | `string` | Failure reason, when present. |
+| `createdAt` | `string` | Task creation timestamp. |
+| `updatedAt` | `string` | Last task update timestamp. |
+
+Response:
+
+```json
+[
+  {
+    "id": "0123456789abcdef0123456789abcdef01234567",
+    "repo": "facebook/react",
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "commitShort": "0123456",
+    "status": "completed",
+    "progress": 100,
+    "totalFiles": 1200,
+    "processedFiles": 1200,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:03:00.000Z"
+  }
+]
+```
 
 ## Get File Index Task Status
 
