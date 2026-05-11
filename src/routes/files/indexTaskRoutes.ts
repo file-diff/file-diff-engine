@@ -6,6 +6,7 @@ import type {
   ErrorResponse,
   IndexFilesTaskRequest,
   JobFilesResponse,
+  JobInfo,
   JobSummary,
 } from "../../types";
 import { getCommitShort } from "../../utils/commit";
@@ -89,6 +90,19 @@ export function registerIndexTaskRoutes(
       }
 
       return enqueueIndexTask(reply, queue, jobRepo, repo, resolvedCommit);
+    }
+  );
+
+  /**
+   * GET /api/files/index-task
+   * Lists file indexing tasks.
+   */
+  app.get(
+    "/index-task",
+    { preHandler: requireViewerBearerToken },
+    async (_request, reply) => {
+      const jobs = await jobRepo.listIndexJobs();
+      return reply.code(200).send(jobs satisfies JobInfo[]);
     }
   );
 
