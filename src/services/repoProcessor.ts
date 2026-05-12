@@ -16,8 +16,8 @@ import { getCommitPullRequest } from "./githubApi";
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger("repo-processor");
-const CACHE_COLLISION_MAX_ATTEMPTS = 3;
-const CACHE_COLLISION_RETRY_DELAY_MS = 100;
+const CACHE_COLLISION_MAX_ATTEMPTS = 5;
+const CACHE_COLLISION_RETRY_DELAY_MS = 5000;
 const GITHUB_HOSTNAME = "github.com";
 
 /**
@@ -112,7 +112,8 @@ function isRetryableGitLockError(error: unknown): boolean {
   return (
     message.includes(".lock") ||
     message.includes("another git process seems to be running") ||
-    message.includes("cannot lock ref")
+    message.includes("cannot lock ref") ||
+    message.includes("shallow file has changed since we read it")
   );
 }
 
@@ -151,7 +152,7 @@ async function runGitCommandWithRetry(cwd: string, args: string[]): Promise<stri
         attempt,
         maxAttempts: CACHE_COLLISION_MAX_ATTEMPTS,
       });
-      await wait(CACHE_COLLISION_RETRY_DELAY_MS * attempt);
+      await wait(CACHE_COLLISION_RETRY_DELAY_MS);
     }
   }
 
