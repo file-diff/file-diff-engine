@@ -11,8 +11,8 @@ import { createLogger } from "../../utils/logger";
 const execFileAsync = promisify(execFile);
 const logger = createLogger("github-merge-branch");
 const GITHUB_HOSTNAME = "github.com";
-const CACHE_COLLISION_MAX_ATTEMPTS = 3;
-const CACHE_COLLISION_RETRY_DELAY_MS = 100;
+const CACHE_COLLISION_MAX_ATTEMPTS = 5;
+const CACHE_COLLISION_RETRY_DELAY_MS = 5000;
 
 export interface MergeBranchOptions {
   repo: string;
@@ -237,7 +237,7 @@ async function runGitCommandWithRetry(
         attempt,
         maxAttempts: CACHE_COLLISION_MAX_ATTEMPTS,
       });
-      await wait(CACHE_COLLISION_RETRY_DELAY_MS * attempt);
+      await wait(CACHE_COLLISION_RETRY_DELAY_MS);
     }
   }
 
@@ -252,7 +252,8 @@ function isRetryableGitLockError(error: unknown): boolean {
   return (
     message.includes(".lock") ||
     message.includes("another git process seems to be running") ||
-    message.includes("cannot lock ref")
+    message.includes("cannot lock ref") ||
+    message.includes("shallow file has changed since we read it")
   );
 }
 
