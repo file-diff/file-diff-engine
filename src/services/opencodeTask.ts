@@ -59,6 +59,7 @@ export interface OpencodeTaskOptions {
   reasoningSummary?: CodexReasoningSummary;
   verbosity?: CodexVerbosity;
   codexWebSearch?: boolean;
+  systemPrompt?: string;
   pullRequestCompletionMode?: PullRequestCompletionMode;
   taskMode?: AgentTaskMode;
   pullRequestNumber?: number;
@@ -310,12 +311,7 @@ async function runOpencode(
     throw new Error("DEEPSEEK_API_KEY is required to run opencode.");
   }
 
-  const prompt = buildOpencodePrompt(
-    options.problemStatement,
-    branch,
-    pullRequestNumber,
-    options.taskMode
-  );
+  const prompt = resolveOpencodePrompt(options, branch, pullRequestNumber);
   // Write prompt to .opencode/commands/command.md in the repository so the
   // opencode CLI can pick it up from the working directory instead of passing
   // it via the command line. Ensure the directory exists first.
@@ -1080,6 +1076,19 @@ export function buildOpencodePrompt(
     "User instructions starts here:",
     problemStatement,
   ].join("\n");
+}
+
+export function resolveOpencodePrompt(
+  options: Pick<OpencodeTaskOptions, "problemStatement" | "systemPrompt" | "taskMode">,
+  branch: string,
+  pullRequestNumber: number
+): string {
+  return options.systemPrompt ?? buildOpencodePrompt(
+    options.problemStatement,
+    branch,
+    pullRequestNumber,
+    options.taskMode
+  );
 }
 
 export function buildPullRequestReviewProblemStatement(

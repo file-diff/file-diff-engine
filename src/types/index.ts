@@ -417,6 +417,8 @@ export interface CreateTaskRequest {
   verbosity?: CodexVerbosity;
   /** Enable Codex web search tool support for this task. */
   codex_web_search?: boolean;
+  /** Optional full prompt override for Codex and opencode tasks. Empty or "no" keeps the default prompt. */
+  system_prompt?: string;
   /** Custom agent identifier */
   custom_agent?: string;
   /** Compatibility flag; when provided it must be true because tasks always open a draft PR */
@@ -461,6 +463,8 @@ export interface CreatePullRequestReviewRequest {
   verbosity?: CodexVerbosity;
   /** Enable Codex web search tool support for this task. */
   codex_web_search?: boolean;
+  /** Optional full prompt override for Codex and opencode review tasks. Empty or "no" keeps the default prompt. */
+  system_prompt?: string;
   /** Optional delay in milliseconds before starting the review task */
   task_delay_ms?: number;
   /** Optional DeepSeek API key override for this task. Prefer DEEPSEEK_API_KEY in production. */

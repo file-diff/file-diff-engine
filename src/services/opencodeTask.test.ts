@@ -7,6 +7,7 @@ import {
   findNewOpencodeSessionId,
   incrementBranchName,
   parseOpencodeSessionIds,
+  resolveOpencodePrompt,
   runAgentBootstrapIfAvailable,
 } from "./opencodeTask";
 
@@ -74,6 +75,32 @@ ses_227113e87ffe85L4H52wmCHwGg  New session - 2026-04-29T11:10:19.000Z  1:10 PM`
     expect(buildTaskBranchName("12345678-90ab-cdef-1234-567890abcdef")).toMatch(
       /^fd-agent\/\d{8}-\d{6}-12345678$/
     );
+  });
+
+  it("uses a custom system prompt verbatim when provided", () => {
+    expect(
+      resolveOpencodePrompt(
+        {
+          problemStatement: "Fix the bug",
+          systemPrompt: "Only run the exact custom workflow.",
+        },
+        "fd-agent/test",
+        42
+      )
+    ).toBe("Only run the exact custom workflow.");
+  });
+
+  it("falls back to the generated opencode prompt without a custom system prompt", () => {
+    expect(
+      resolveOpencodePrompt(
+        {
+          problemStatement: "Fix the bug",
+          taskMode: "task",
+        },
+        "fd-agent/test",
+        42
+      )
+    ).toContain("User instructions starts here:\nFix the bug");
   });
 
   it("skips the agent bootstrap when the script is unavailable", async () => {
