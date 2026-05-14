@@ -97,6 +97,7 @@ export function registerAgentCreateTaskRoutes(
         reasoning_summary,
         verbosity,
         codex_web_search,
+        system_prompt,
         create_pull_request,
         auto_ready,
         auto_merge,
@@ -144,6 +145,15 @@ export function registerAgentCreateTaskRoutes(
       });
       if (validationError) {
         const response: ErrorResponse = { error: validationError };
+        return reply.code(400).send(response);
+      }
+
+      const systemPromptResolution = resolveSystemPrompt(
+        taskRunner,
+        system_prompt
+      );
+      if (systemPromptResolution.error) {
+        const response: ErrorResponse = { error: systemPromptResolution.error };
         return reply.code(400).send(response);
       }
 
@@ -215,6 +225,7 @@ export function registerAgentCreateTaskRoutes(
           reasoningSummary,
           verbosity,
           codex_web_search,
+          systemPromptResolution.systemPrompt,
           pullRequestCompletionResolution.mode,
           taskDelayMs,
           githubKey?.trim() || undefined,
@@ -259,6 +270,7 @@ export function registerAgentCreateTaskRoutes(
         reasoning_summary,
         verbosity,
         codex_web_search,
+        system_prompt,
         task_delay_ms,
         deepseek_api_key,
         githubKey,
@@ -316,6 +328,15 @@ export function registerAgentCreateTaskRoutes(
       });
       if (validationError) {
         const response: ErrorResponse = { error: validationError };
+        return reply.code(400).send(response);
+      }
+
+      const systemPromptResolution = resolveSystemPrompt(
+        taskRunner,
+        system_prompt
+      );
+      if (systemPromptResolution.error) {
+        const response: ErrorResponse = { error: systemPromptResolution.error };
         return reply.code(400).send(response);
       }
 
@@ -384,6 +405,7 @@ export function registerAgentCreateTaskRoutes(
           reasoningSummary,
           verbosity,
           codex_web_search,
+          systemPromptResolution.systemPrompt,
           undefined,
           taskDelayMs,
           token,
@@ -684,6 +706,32 @@ function validateAgentTaskOptions(options: {
   return undefined;
 }
 
+function resolveSystemPrompt(
+  taskRunner: AgentTaskRunner,
+  systemPrompt: unknown
+): { systemPrompt?: string; error?: string } {
+  if (systemPrompt === undefined) {
+    return {};
+  }
+
+  if (typeof systemPrompt !== "string") {
+    return { error: "Field 'system_prompt' must be a string." };
+  }
+
+  const trimmed = systemPrompt.trim();
+  if (!trimmed || trimmed.toLowerCase() === "no") {
+    return {};
+  }
+
+  if (taskRunner !== "codex" && taskRunner !== "opencode") {
+    return {
+      error: "Field 'system_prompt' is only supported for codex and opencode tasks.",
+    };
+  }
+
+  return { systemPrompt };
+}
+
 function validateTaskDelayMs(taskDelayMs: unknown): string | undefined {
   if (
     taskDelayMs !== undefined &&
@@ -742,6 +790,7 @@ async function enqueueAgentTaskJob(
   reasoningSummary: CodexReasoningSummary | undefined,
   verbosity: CodexVerbosity | undefined,
   codexWebSearch: boolean | undefined,
+  systemPrompt: string | undefined,
   pullRequestCompletionMode: PullRequestCompletionMode | undefined,
   delayMs = 0,
   githubKey?: string,
@@ -774,6 +823,7 @@ async function enqueueAgentTaskJob(
       ...(reasoningSummary ? { reasoningSummary } : {}),
       ...(verbosity ? { verbosity } : {}),
       ...(codexWebSearch !== undefined ? { codexWebSearch } : {}),
+      ...(systemPrompt ? { systemPrompt } : {}),
       ...(pullRequestCompletionMode ? { pullRequestCompletionMode } : {}),
       ...(pullRequest
         ? {

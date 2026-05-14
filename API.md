@@ -1839,6 +1839,6 @@ indexing reference; the high-level flow is:
 See [`AGENTS_TASKS_API.md`](./AGENTS_TASKS_API.md) for the full agent task
 reference; the high-level flow is:
 
-1. Call `POST /api/agents/create-task` with the repo, `base_ref`, `problem_statement`, and the desired `task` runner.
+1. Call `POST /api/agents/create-task` with the repo, `base_ref`, `problem_statement`, and the desired `task` runner. Codex and opencode tasks can also receive `system_prompt` as a full prompt override; empty, whitespace-only, or `no` keeps the default generated prompt.
 2. Poll `GET /api/agents/create-task/:id` (or `GET /api/agents/repos/:owner/:repo/tasks/:task_id`) for `status`, captured `output`, and the draft pull request URL.
 3. Optionally call `POST /api/agents/create-task/:id/cancel` to stop a running task or `DELETE /api/agents/create-task/:id` to soft-delete it.

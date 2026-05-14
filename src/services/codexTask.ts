@@ -137,6 +137,75 @@ export async function executeCodexOnPreparedBranch(
     codexWebSearch: options.codexWebSearch === true,
   };
 
+  if (options.systemPrompt) {
+    const phaseConfig: AgentCliRunnerConfig = {
+      runner: "codex",
+      commandLabel: "codex",
+      bin: getCodexBin(),
+      args: (cwd) => buildCodexArgs(options, model, cwd),
+      prompt: options.systemPrompt,
+      cwd: cloneDir,
+      branch,
+      defaultTimeoutMs: DEFAULT_CODEX_TIMEOUT_MS,
+      timeoutEnvVar: "CODEX_TIMEOUT_MS",
+      outputLimitEnvVar: "CODEX_OUTPUT_LIMIT",
+      logFlushIntervalEnvVar: "CODEX_LOG_FLUSH_INTERVAL_MS",
+      sessionSyncIntervalEnvVar: "CODEX_SESSION_SYNC_INTERVAL_MS",
+      defaultSessionSyncIntervalMs: DEFAULT_CODEX_SESSION_SYNC_INTERVAL_MS,
+      loggerName: "codex-task",
+      onOutputUpdated: detectSessionIdFromOutput,
+      syncSessionState,
+      getSessionState,
+      logContext: { ...baseLogContext, customSystemPrompt: true },
+    };
+
+    let phaseLogs: OpencodeCapturedLogs;
+    try {
+      phaseLogs = await runAgentCli(options, phaseConfig, wrappedCallbacks);
+    } catch (error) {
+      if (error instanceof AgentTaskCanceledError) {
+        throw new AgentTaskCanceledError(
+          error.message,
+          buildCumulativeLogs(error.logs)
+        );
+      }
+      if (error instanceof AgentCliExecutionError) {
+        throw new CodexExecutionError(
+          error.message,
+          buildCumulativeLogs(error.logs)
+        );
+      }
+      throw error;
+    }
+
+    priorOutput += phaseLogs.output;
+    priorStdout += phaseLogs.stdout;
+    priorStderr += phaseLogs.stderr;
+
+    if (await wrappedCallbacks?.isCancellationRequested?.()) {
+      throw new AgentTaskCanceledError(
+        "Task canceled by request.",
+        buildCumulativeLogs()
+      );
+    }
+
+    if (options.taskMode === "review") {
+      return buildCumulativeLogs();
+    }
+
+    try {
+      await commitAndPushFinalChanges(cloneDir, options, branch);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to commit and push final agent changes.";
+      throw new CodexExecutionError(message, buildCumulativeLogs());
+    }
+
+    return buildCumulativeLogs();
+  }
+
   const phases: CodexPhase[] = options.taskMode === "review"
     ? [
         {

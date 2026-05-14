@@ -75,6 +75,7 @@ Optional request fields:
 - `reasoning_summary`: Codex-only override: `none`, `auto`, `concise`, or `detailed` (defaults to `auto`).
 - `verbosity`: Codex-only override: `low`, `medium`, or `high`.
 - `codex_web_search`: Codex-only boolean to enable the Codex web search tool.
+- `system_prompt`: Codex/opencode full prompt override. Empty, whitespace-only, or `no` preserves the generated prompt. Any other string is sent verbatim without the default branch/PR workflow instructions; Codex runs once instead of using the default plan/implement/summary resume flow.
 - `task_delay_ms`: delay before the worker starts.
 - `githubKey`: GitHub token override for this task.
 - `deepseek_api_key`: DeepSeek key override for opencode tasks.

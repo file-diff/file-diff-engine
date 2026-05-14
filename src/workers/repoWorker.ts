@@ -252,6 +252,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     reasoningSummary,
     verbosity,
     codexWebSearch,
+    systemPrompt,
     taskMode = "task",
     pullRequestNumber,
     pullRequestUrl,
@@ -273,6 +274,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     reasoningSummary?: CodexReasoningSummary;
     verbosity?: CodexVerbosity;
     codexWebSearch?: boolean;
+    systemPrompt?: string;
     taskMode?: AgentTaskMode;
     pullRequestNumber?: number;
     pullRequestUrl?: string;
@@ -319,6 +321,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       reasoningSummary,
       verbosity,
       codexWebSearch,
+      systemPrompt,
       taskMode,
       pullRequestNumber,
       pullRequestUrl,

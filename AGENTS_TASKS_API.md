@@ -43,6 +43,7 @@ Optional body fields:
 | `reasoning_summary` | `"none" \| "auto" \| "concise" \| "detailed"` | Codex-only reasoning summary. |
 | `verbosity` | `"low" \| "medium" \| "high"` | Codex-only output verbosity. |
 | `codex_web_search` | `boolean` | Enables Codex web search support. |
+| `system_prompt` | `string` | Codex/opencode full prompt override. Empty, whitespace-only, or `"no"` keeps the default generated prompt. Any other string is sent verbatim without appending `problem_statement` or branch/PR workflow instructions. Codex uses a single one-shot run when this is provided. |
 | `pull_request_completion_mode` | `"None" \| "AutoReady" \| "AutoMerge"` | Follow-up action after successful task completion. |
 | `auto_ready` | `boolean` | Compatibility alias for `AutoReady`. |
 | `auto_merge` | `boolean` | Compatibility alias for `AutoMerge`. |
@@ -76,8 +77,9 @@ Required body fields:
 | `repo` | `string` | Repository in `owner/repo` format. |
 | `pull_request_number` | `integer` | Pull request number to review. |
 
-The `task`, `model`, Codex tuning fields, `task_delay_ms`, `githubKey`, and
-`deepseek_api_key` options match `POST /api/agents/create-task`.
+The `task`, `model`, Codex tuning fields, `system_prompt`, `task_delay_ms`,
+`githubKey`, and `deepseek_api_key` options match
+`POST /api/agents/create-task`.
 
 The fields `branch`, `branch_title`, `create_pull_request`, `auto_ready`,
 `auto_merge`, and `pull_request_completion_mode` are rejected for review tasks.

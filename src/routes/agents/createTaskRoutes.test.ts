@@ -77,6 +77,158 @@ describe("registerAgentCreateTaskRoutes", () => {
     }
   });
 
+  it("passes a custom system prompt through to opencode queue jobs", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      registerAgentCreateTaskRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          base_ref: "main",
+          problem_statement: "Separate task APIs",
+          task: "opencode",
+          system_prompt: "  Run exactly this custom prompt.\n",
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(queue.add).toHaveBeenCalledWith(
+        "create-opencode-task",
+        expect.objectContaining({
+          task: "opencode",
+          systemPrompt: "  Run exactly this custom prompt.\n",
+        }),
+        expect.any(Object)
+      );
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("treats an empty or no system prompt as the default prompt behavior", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      registerAgentCreateTaskRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          base_ref: "main",
+          problem_statement: "Separate task APIs",
+          task: "codex",
+          system_prompt: " no ",
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      const queuedPayload = vi.mocked(queue.add).mock.calls[0]?.[1] as
+        | Record<string, unknown>
+        | undefined;
+      expect(queuedPayload).not.toHaveProperty("systemPrompt");
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("rejects non-string custom system prompts", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      registerAgentCreateTaskRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          base_ref: "main",
+          problem_statement: "Separate task APIs",
+          task: "codex",
+          system_prompt: 123,
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: "Field 'system_prompt' must be a string.",
+      });
+      expect(queue.add).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("rejects custom system prompts for claude tasks", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      registerAgentCreateTaskRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          base_ref: "main",
+          problem_statement: "Separate task APIs",
+          task: "claude",
+          system_prompt: "Run exactly this custom prompt.",
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: "Field 'system_prompt' is only supported for codex and opencode tasks.",
+      });
+      expect(queue.add).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
   it("returns agent task status under the canonical agents scope", async () => {
     const app = Fastify();
     const database = await createTestDatabase();
