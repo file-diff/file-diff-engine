@@ -16,6 +16,7 @@ describe("JobRepository", () => {
       reasoningSummary: "auto",
       verbosity: "medium",
       codexWebSearch: true,
+      previousSession: "previous-job",
       baseRef: "main",
     });
 
@@ -47,6 +48,7 @@ describe("JobRepository", () => {
       reasoningSummary: "auto",
       verbosity: "medium",
       codexWebSearch: true,
+      previousSession: "previous-job",
       opencodeSessionId: "ses_123",
       opencodeSessionExport: {
         title: "Agent session",
@@ -70,6 +72,13 @@ describe("JobRepository", () => {
     ).resolves.toMatchObject({
       id: "job-1",
       codexSessionId: "019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf",
+    });
+
+    await expect(
+      repository.getAgentTaskJobByIdOrCodexSessionId("ses_123")
+    ).resolves.toMatchObject({
+      id: "job-1",
+      opencodeSessionId: "ses_123",
     });
   });
 

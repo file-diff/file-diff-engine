@@ -155,6 +155,110 @@ describe("registerAgentCreateTaskRoutes", () => {
     }
   });
 
+  it("creates a continuation task from a previous codex session without requiring base_ref", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      await jobRepo.createAgentTaskJob({
+        id: "previous-job",
+        repo: "file-diff/file-diff-engine",
+        baseRef: "main",
+        branchName: "fd-agent/previous",
+        taskRunner: "codex",
+        model: "gpt-5.2-codex",
+        pullRequestUrl: "https://github.com/file-diff/file-diff-engine/pull/10",
+        pullRequestNumber: 10,
+      });
+      await jobRepo.updateAgentTaskLogs("previous-job", {
+        output: "done",
+        stdout: "done",
+        stderr: "",
+        codexSessionId: "019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf",
+      });
+      await jobRepo.updateAgentTaskJobStatus("previous-job", "completed");
+      registerAgentCreateTaskRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          problem_statement: "Continue the existing work",
+          task: "codex",
+          previous_session: "019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf",
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      const body = response.json() as { id: string };
+      await expect(jobRepo.getAgentTaskJob(body.id)).resolves.toMatchObject({
+        previousSession: "019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf",
+        baseRef: "main",
+        branch: "fd-agent/previous",
+        pullRequestUrl: "https://github.com/file-diff/file-diff-engine/pull/10",
+        pullRequestNumber: 10,
+      });
+      expect(queue.add).toHaveBeenCalledWith(
+        "create-codex-task",
+        expect.objectContaining({
+          baseRef: "main",
+          branch: "fd-agent/previous",
+          previousSession: "019ddb3e-de18-7122-8c4c-8d6b9b3c4fbf",
+        }),
+        expect.objectContaining({
+          jobId: body.id,
+        })
+      );
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("rejects continuation for claude tasks", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      registerAgentCreateTaskRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          problem_statement: "Continue the existing work",
+          task: "claude",
+          previous_session: "previous-job",
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: "Field 'previous_session' is only supported for codex and opencode tasks.",
+      });
+      expect(queue.add).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
   it("rejects non-string custom system prompts", async () => {
     const app = Fastify();
     const database = await createTestDatabase();
@@ -186,6 +290,62 @@ describe("registerAgentCreateTaskRoutes", () => {
         error: "Field 'system_prompt' must be a string.",
       });
       expect(queue.add).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("infers the task runner when continuing an opencode session", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      await jobRepo.createAgentTaskJob({
+        id: "previous-opencode-job",
+        repo: "file-diff/file-diff-engine",
+        baseRef: "main",
+        branchName: "fd-agent/opencode-previous",
+        taskRunner: "opencode",
+        model: "deepseek-v4-flash",
+        pullRequestUrl: "https://github.com/file-diff/file-diff-engine/pull/11",
+        pullRequestNumber: 11,
+      });
+      await jobRepo.updateAgentTaskLogs("previous-opencode-job", {
+        output: "done",
+        stdout: "done",
+        stderr: "",
+        opencodeSessionId: "ses_123",
+      });
+      await jobRepo.updateAgentTaskJobStatus("previous-opencode-job", "completed");
+      registerAgentCreateTaskRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          problem_statement: "Continue the existing opencode work",
+          previous_session: "ses_123",
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(queue.add).toHaveBeenCalledWith(
+        "create-opencode-task",
+        expect.objectContaining({
+          task: "opencode",
+          previousSession: "ses_123",
+        }),
+        expect.any(Object)
+      );
     } finally {
       await app.close();
       await database.end();

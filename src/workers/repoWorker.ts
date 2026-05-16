@@ -5,6 +5,7 @@ import { getDatabase, type DatabaseClient } from "../db/database";
 import { JobRepository } from "../db/repository";
 import type {
   AgentTaskModel,
+  AgentTaskJobInfo,
   AgentTaskMode,
   AgentTaskRunner,
   CodexReasoningEffort,
@@ -17,9 +18,12 @@ import { executeCodexOnPreparedBranch } from "../services/codexTask";
 import { processRepository } from "../services/repoProcessor";
 import {
   executeOpencodeOnPreparedBranch,
+  getOpencodeTaskWorkDir,
+  prepareContinuedAgentTaskBranch,
   prepareOpencodeTaskBranch,
   preparePullRequestReviewTaskBranch,
   type OpencodeCapturedLogs,
+  type PreviousAgentTaskSession,
 } from "../services/opencodeTask";
 import { applyPullRequestCompletionMode } from "../services/pullRequestCompletion";
 import {
@@ -253,6 +257,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     verbosity,
     codexWebSearch,
     systemPrompt,
+    previousSession,
     taskMode = "task",
     pullRequestNumber,
     pullRequestUrl,
@@ -275,6 +280,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     verbosity?: CodexVerbosity;
     codexWebSearch?: boolean;
     systemPrompt?: string;
+    previousSession?: string;
     taskMode?: AgentTaskMode;
     pullRequestNumber?: number;
     pullRequestUrl?: string;
@@ -309,6 +315,13 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     await repo.updateAgentTaskJobStatus(jobId, "active");
     await repo.updateAgentTaskStatus(jobId, "preparing");
 
+    const continuation = await resolveContinuationTask(
+      repo,
+      jobId,
+      repoName,
+      task,
+      previousSession ?? existingJob?.previousSession
+    );
     const taskOptions = {
       jobId,
       repo: repoName,
@@ -322,6 +335,8 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       verbosity,
       codexWebSearch,
       systemPrompt,
+      previousSession: continuation?.sessionId,
+      workDir: continuation?.workDir,
       taskMode,
       pullRequestNumber,
       pullRequestUrl,
@@ -334,7 +349,9 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     };
     const prepared = taskMode === "review"
       ? await preparePullRequestReviewTaskBranch(taskOptions)
-      : await prepareOpencodeTaskBranch(taskOptions);
+      : continuation
+        ? await prepareContinuedAgentTaskBranch(taskOptions, continuation.previous)
+        : await prepareOpencodeTaskBranch(taskOptions);
     lastKnownBranchName = prepared.branch;
     lastKnownPullRequestUrl = prepared.pullRequest.url;
     if (await repo.isAgentTaskCancellationRequested(jobId)) {
@@ -474,6 +491,97 @@ function resolveAgentTaskRunnerFromJobName(jobName: string): AgentTaskRunner {
   }
 
   return "codex";
+}
+
+async function resolveContinuationTask(
+  repo: JobRepository,
+  jobId: string,
+  repoName: string,
+  task: AgentTaskRunner,
+  previousSession: string | undefined
+): Promise<
+  | {
+      previous: PreviousAgentTaskSession;
+      sessionId: string;
+      workDir: string;
+    }
+  | undefined
+> {
+  const requestedSession = previousSession?.trim();
+  if (!requestedSession) {
+    return undefined;
+  }
+
+  if (task === "claude") {
+    throw new Error("Field 'previous_session' is only supported for codex and opencode tasks.");
+  }
+
+  const previousJob = await repo.getAgentTaskJobByIdOrCodexSessionId(requestedSession);
+  assertContinuationJob(jobId, repoName, task, previousJob);
+
+  const sessionId = task === "codex"
+    ? previousJob.codexSessionId
+    : previousJob.opencodeSessionId;
+  if (!sessionId) {
+    throw new Error(`Previous ${task} task is missing a captured session id.`);
+  }
+
+  return {
+    sessionId,
+    workDir: getOpencodeTaskWorkDir({
+      jobId: previousJob.id,
+      repo: previousJob.repo,
+      baseRef: previousJob.baseRef ?? "",
+      problemStatement: "",
+      model: previousJob.model ?? "",
+      taskRunner: previousJob.taskRunner,
+    }),
+    previous: {
+      jobId: previousJob.id,
+      taskRunner: previousJob.taskRunner,
+      branch: previousJob.branch,
+      baseRef: previousJob.baseRef,
+      pullRequestNumber: previousJob.pullRequestNumber,
+      pullRequestUrl: previousJob.pullRequestUrl,
+    },
+  };
+}
+
+function assertContinuationJob(
+  jobId: string,
+  repoName: string,
+  task: AgentTaskRunner,
+  previousJob: AgentTaskJobInfo | undefined
+): asserts previousJob is AgentTaskJobInfo & {
+  branch: string;
+  pullRequestNumber: number;
+  pullRequestUrl: string;
+} {
+  if (!previousJob) {
+    throw new Error("Previous session task was not found.");
+  }
+
+  if (previousJob.id === jobId) {
+    throw new Error("A task cannot continue itself.");
+  }
+
+  if (previousJob.repo !== repoName) {
+    throw new Error("Previous session task belongs to a different repository.");
+  }
+
+  if (previousJob.status !== "completed") {
+    throw new Error("Previous session task must be completed before it can be continued.");
+  }
+
+  if (previousJob.taskRunner !== task) {
+    throw new Error("Field 'task' must match the previous session task runner.");
+  }
+
+  if (!previousJob.branch || !previousJob.pullRequestNumber || !previousJob.pullRequestUrl) {
+    throw new Error(
+      "Previous session task is missing branch or pull request metadata and cannot be continued."
+    );
+  }
 }
 
 function isOpencodeExecutionError(

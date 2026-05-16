@@ -65,6 +65,7 @@ function mapAgentTaskJobRow(row: Record<string, unknown>): AgentTaskJobInfo {
         : row.codex_web_search === null || row.codex_web_search === undefined
           ? undefined
           : Boolean(row.codex_web_search),
+    previousSession: (row.previous_session as string | null) ?? undefined,
     pullRequestCompletionMode:
       (row.pull_request_completion_mode as PullRequestCompletionMode | null) ?? undefined,
     pullRequestUrl: (row.pull_request_url as string | null) ?? undefined,
@@ -122,6 +123,7 @@ export interface CreateAgentTaskJobParams {
   reasoningSummary?: CodexReasoningSummary;
   verbosity?: CodexVerbosity;
   codexWebSearch?: boolean;
+  previousSession?: string;
   baseRef?: string;
   pullRequestCompletionMode?: PullRequestCompletionMode;
   pullRequestUrl?: string;
@@ -147,6 +149,7 @@ export class JobRepository {
          reasoning_summary,
          verbosity,
          codex_web_search,
+         previous_session,
          pull_request_completion_mode,
          pull_request_url,
          pull_request_number,
@@ -155,7 +158,7 @@ export class JobRepository {
          created_at,
          updated_at
         )
-       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [
         params.id,
         params.repo,
@@ -169,6 +172,7 @@ export class JobRepository {
         params.reasoningSummary ?? null,
         params.verbosity ?? null,
         params.codexWebSearch ?? null,
+        params.previousSession ?? null,
         params.pullRequestCompletionMode ?? null,
         params.pullRequestUrl ?? null,
         params.pullRequestNumber ?? null,
@@ -197,8 +201,12 @@ export class JobRepository {
     const result = await this.db.query(
       `SELECT *
        FROM agent_task_jobs
-       WHERE id = $1 OR codex_session_id = $1
-       ORDER BY CASE WHEN id = $1 THEN 0 ELSE 1 END
+       WHERE id = $1 OR codex_session_id = $1 OR opencode_session_id = $1
+       ORDER BY CASE
+         WHEN id = $1 THEN 0
+         WHEN codex_session_id = $1 THEN 1
+         ELSE 2
+       END
        LIMIT 1`,
       [value]
     );
