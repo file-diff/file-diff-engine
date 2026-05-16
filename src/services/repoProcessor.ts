@@ -1,4 +1,3 @@
-import os from "os";
 import fs from "fs";
 import path from "path";
 import { createHash } from "crypto";
@@ -9,6 +8,7 @@ import {
   type BranchSummary,
   type CommitSummary,
   type GitRefSummary,
+  type TagSummary,
 } from "../types";
 import { getCommitShort } from "../utils/commit";
 import { createLogger } from "../utils/logger";
@@ -215,41 +215,52 @@ export async function resolveRefToCommitHash(
 
 export async function listRepositoryRefs(repoUrl: string): Promise<GitRefSummary[]> {
   assertSafeGitRepositoryUrl(repoUrl);
-  const output = await runGitCommand(
-    process.cwd(),
-    withRepoArg(["ls-remote", "--heads", "--tags"], repoUrl)
-  );
+  const cacheDir = await getRepositoryMetadataCache(repoUrl, {
+    refreshRefs: true,
+    fetchDepth: 1,
+  });
+
+  return listRepositoryRefsFromCache(cacheDir);
+}
+
+async function listRepositoryRefsFromCache(cacheDir: string): Promise<GitRefSummary[]> {
+  const output = await runGitCommand(cacheDir, [
+    "for-each-ref",
+    `--format=%(refname)\x1f%(objectname)\x1f%(*objectname)`,
+    "refs/remotes/origin",
+    "refs/tags",
+  ]);
   const refsByName = new Map<string, GitRefSummary>();
 
   for (const line of output.split("\n").filter(Boolean)) {
-    const [hash, rawRef] = line.trim().split(/\s+/, 2);
-    if (!hash || !rawRef) {
+    const [rawRef, objectHash, peeledHash = ""] = line.split("\x1f");
+    if (!objectHash || !rawRef || rawRef === "refs/remotes/origin/HEAD") {
       continue;
     }
 
-    const ref = rawRef.endsWith("^{}") ? rawRef.slice(0, -3) : rawRef;
-    const commit = hash.toLowerCase();
+    const commit = (peeledHash || objectHash).toLowerCase();
     let type: GitRefSummary["type"];
     let name: string;
+    let ref: string;
 
-    if (ref.startsWith("refs/heads/")) {
+    if (rawRef.startsWith("refs/remotes/origin/")) {
       type = "branch";
-      name = ref.slice("refs/heads/".length);
-    } else if (ref.startsWith("refs/tags/")) {
+      name = rawRef.slice("refs/remotes/origin/".length);
+      ref = `refs/heads/${name}`;
+    } else if (rawRef.startsWith("refs/tags/")) {
       type = "tag";
-      name = ref.slice("refs/tags/".length);
+      name = rawRef.slice("refs/tags/".length);
+      ref = rawRef;
     } else {
       continue;
     }
 
-    const existing = refsByName.get(ref);
-    const resolvedCommit = rawRef.endsWith("^{}") || !existing ? commit : existing.commit;
     refsByName.set(ref, {
       name,
       ref,
       type,
-      commit: resolvedCommit,
-      commitShort: getCommitShort(resolvedCommit),
+      commit,
+      commitShort: getCommitShort(commit),
     });
   }
 
@@ -262,12 +273,53 @@ export async function listRepositoryRefs(repoUrl: string): Promise<GitRefSummary
   });
 }
 
+export async function listRepositoryTags(
+  repoUrl: string,
+  limit: number
+): Promise<TagSummary[]> {
+  assertSafeGitRepositoryUrl(repoUrl);
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error("Field 'limit' must be a positive integer.");
+  }
+
+  const cacheDir = await getRepositoryMetadataCache(repoUrl, {
+    refreshRefs: true,
+    fetchDepth: 1,
+  });
+  const output = await runGitCommand(cacheDir, [
+    "for-each-ref",
+    "--sort=-creatordate",
+    `--format=%(refname)\x1f%(objectname)\x1f%(*objectname)`,
+    `--count=${limit}`,
+    "refs/tags",
+  ]);
+
+  return output
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [ref, objectHash, peeledHash = ""] = line.split("\x1f");
+      const name = ref.slice("refs/tags/".length);
+      const commit = (peeledHash || objectHash).toLowerCase();
+      return {
+        name,
+        ref,
+        commit,
+        commitShort: getCommitShort(commit),
+      } satisfies TagSummary;
+    });
+}
+
 export async function listRepositoryBranches(repoUrl: string): Promise<BranchSummary[]> {
   assertSafeGitRepositoryUrl(repoUrl);
-  const { branchRef } = await getHeadReference(repoUrl);
+  const cacheDir = await getRepositoryMetadataCache(repoUrl, {
+    refreshRefs: true,
+    fetchDepth: 1,
+  });
+  const { branchRef } = await getHeadReferenceFromCache(cacheDir);
   const defaultBranch =
     branchRef?.startsWith("refs/heads/") ? branchRef.slice("refs/heads/".length) : null;
-  const refs = await listRepositoryRefs(repoUrl);
+  const refs = await listRepositoryRefsFromCache(cacheDir);
   const branches = refs.filter((ref) => ref.type === "branch");
 
   if (branches.length === 0) {
@@ -285,19 +337,8 @@ export async function listRepositoryBranches(repoUrl: string): Promise<BranchSum
     tagsByCommit.set(ref.commit, tags);
   }
 
-  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-branch-list-"));
-
-  try {
-    await runGitCommand(process.cwd(), [
-      "clone",
-      "--depth=1",
-      "--no-single-branch",
-      "--",
-      repoUrl,
-      repoDir,
-    ]);
-
-    const output = await runGitCommand(repoDir, [
+  {
+    const output = await runGitCommand(cacheDir, [
       "for-each-ref",
       `--format=%(refname)\x1f%(objectname)\x1f%(committerdate:iso-strict)\x1f%(authorname)\x1f%(subject)`,
       "refs/remotes/origin",
@@ -354,8 +395,6 @@ export async function listRepositoryBranches(repoUrl: string): Promise<BranchSum
         } satisfies BranchSummary;
       })
     );
-  } finally {
-    fs.rmSync(repoDir, { recursive: true, force: true });
   }
 }
 
@@ -368,10 +407,14 @@ export async function listRepositoryCommits(
     throw new Error("Field 'limit' must be a positive integer.");
   }
 
-  const { branchRef } = await getHeadReference(repoUrl);
+  const cacheDir = await getRepositoryMetadataCache(repoUrl, {
+    refreshRefs: true,
+    fetchDepth: limit,
+  });
+  const { branchRef } = await getHeadReferenceFromCache(cacheDir);
   const defaultBranch =
     branchRef?.startsWith("refs/heads/") ? branchRef.slice("refs/heads/".length) : null;
-  const refs = await listRepositoryRefs(repoUrl);
+  const refs = await listRepositoryRefsFromCache(cacheDir);
   const refsByCommit = new Map<
     string,
     {
@@ -390,16 +433,10 @@ export async function listRepositoryCommits(
     refsByCommit.set(ref.commit, current);
   }
 
-  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "fde-commit-list-"));
-
-  try {
-    const cloneArgs = ["clone", `--depth=${limit}`, "--no-single-branch"];
-    cloneArgs.push("--", repoUrl, repoDir);
-    await runGitCommand(process.cwd(), cloneArgs);
-
-    const output = await runGitCommand(repoDir, [
+  {
+    const output = await runGitCommand(cacheDir, [
       "log",
-      "--all",
+      "--remotes=origin",
       "--date=iso-strict",
       "--pretty=format:%H%x1f%cI%x1f%an%x1f%s%x1f%P",
     ]);
@@ -443,8 +480,6 @@ export async function listRepositoryCommits(
         }
       })
     );
-  } finally {
-    fs.rmSync(repoDir, { recursive: true, force: true });
   }
 }
 
@@ -598,9 +633,12 @@ export async function processRepository(
   return records;
 }
 
-function getRepositoryCacheDir(repoUrl: string, workDir: string): string {
+function getRepositoryCacheDir(repoUrl: string, workDir?: string): string {
   const cacheKey = createHash("sha256").update(repoUrl).digest("hex");
-  return path.join(path.dirname(path.resolve(workDir)), "repo-cache", cacheKey);
+  const cacheRoot = workDir
+    ? path.dirname(path.resolve(workDir))
+    : path.resolve(process.env.TMP_DIR || "tmp");
+  return path.join(cacheRoot, "repo-cache", cacheKey);
 }
 
 interface EntryInfo {
@@ -688,31 +726,107 @@ async function getTrackedGitEntries(repoDir: string): Promise<Map<string, GitEnt
   return entries;
 }
 
-async function getHeadReference(
-  repoUrl: string
+async function getHeadReferenceFromCache(
+  cacheDir: string
 ): Promise<{ branchRef: string | null; commit: string | null }> {
-  assertSafeGitRepositoryUrl(repoUrl);
-  const output = await runGitCommand(
-    process.cwd(),
-    withRepoArg(["ls-remote", "--symref"], repoUrl, ["HEAD"])
-  );
   let branchRef: string | null = null;
   let commit: string | null = null;
 
-  for (const line of output.split("\n").filter(Boolean)) {
-    const symrefMatch = line.match(/^ref:\s+(\S+)\s+HEAD$/);
-    if (symrefMatch) {
-      branchRef = symrefMatch[1];
-      continue;
+  try {
+    const output = await runGitCommand(cacheDir, [
+      "symbolic-ref",
+      "refs/remotes/origin/HEAD",
+    ]);
+    if (output.startsWith("refs/remotes/origin/")) {
+      branchRef = `refs/heads/${output.slice("refs/remotes/origin/".length)}`;
     }
+  } catch {
+    branchRef = null;
+  }
 
-    const [hash, ref] = line.trim().split(/\s+/, 2);
-    if (ref === "HEAD" && hash) {
-      commit = hash.toLowerCase();
-    }
+  try {
+    commit = (
+      await runGitCommand(cacheDir, ["rev-parse", "refs/remotes/origin/HEAD"])
+    ).toLowerCase();
+  } catch {
+    commit = null;
   }
 
   return { branchRef, commit };
+}
+
+async function getRepositoryMetadataCache(
+  repoUrl: string,
+  options: { refreshRefs?: boolean; fetchDepth?: number } = {}
+): Promise<string> {
+  assertSafeGitRepositoryUrl(repoUrl);
+  const cacheDir = getRepositoryCacheDir(repoUrl);
+  fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
+
+  if (!fs.existsSync(path.join(cacheDir, ".git"))) {
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+    await runGitCommandWithRetry(path.dirname(cacheDir), [
+      "clone",
+      "--no-checkout",
+      "--",
+      repoUrl,
+      cacheDir,
+    ]);
+  }
+
+  if (options.refreshRefs) {
+    await refreshRepositoryCacheRefs(cacheDir, options.fetchDepth);
+  }
+
+  return cacheDir;
+}
+
+async function refreshRepositoryCacheRefs(
+  cacheDir: string,
+  fetchDepth?: number
+): Promise<void> {
+  await deleteLocalTags(cacheDir);
+
+  const depthArgs =
+    typeof fetchDepth === "number" && Number.isInteger(fetchDepth) && fetchDepth > 0
+      ? [`--depth=${fetchDepth}`]
+      : [];
+
+  await runGitCommandWithRetry(cacheDir, [
+    "fetch",
+    "--prune",
+    ...depthArgs,
+    "origin",
+    "+refs/heads/*:refs/remotes/origin/*",
+  ]);
+  await runGitCommandWithRetry(cacheDir, [
+    "fetch",
+    "--force",
+    ...depthArgs,
+    "--tags",
+    "origin",
+  ]);
+
+  try {
+    await runGitCommandWithRetry(cacheDir, ["remote", "set-head", "origin", "--auto"]);
+  } catch (error) {
+    logger.warn("Failed to refresh cached origin HEAD", {
+      cacheDir,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function deleteLocalTags(cacheDir: string): Promise<void> {
+  const output = await runGitCommandWithRetry(cacheDir, [
+    "for-each-ref",
+    "--format=%(refname)",
+    "refs/tags",
+  ]);
+
+  for (const ref of output.split("\n").filter(Boolean)) {
+    await runGitCommandWithRetry(cacheDir, ["update-ref", "-d", ref]);
+  }
 }
 
 function getGitHubRepoName(repoUrl: string): string | null {
