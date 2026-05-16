@@ -881,8 +881,7 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
   /**
    * POST /api/jobs/tags
    * Body: { "repo": "owner/repo", "limit": 50 }
-   * Lists tags for a repository. The API does not paginate; the server
-   * iterates GitHub pages until `limit` tags have been collected.
+   * Lists tags for a repository from the local git metadata cache.
    */
   app.post<{ Body: ListTagsRequest }>(
     "/tags",
@@ -914,10 +913,9 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
       }
 
       try {
-        const tags = await githubApi.listTags(
-          repo,
-          limit,
-          githubApi.getBackendGitHubToken()
+        const tags = await repoProcessor.listRepositoryTags(
+          repoProcessor.getRepositoryUrl(repo),
+          limit
         );
         const response: ListTagsResponse = { repo, tags };
         return reply.code(200).send(response);
@@ -925,9 +923,7 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
         const message =
           error instanceof Error ? error.message : "Unable to list repository tags.";
         const response: ErrorResponse = { error: message };
-        const statusCode =
-          error instanceof githubApi.GitHubApiError ? error.statusCode : 500;
-        return reply.code(statusCode).send(response);
+        return reply.code(500).send(response);
       }
     }
   );

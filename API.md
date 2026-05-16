@@ -718,7 +718,7 @@ curl -X POST https://your-host.example.com/api/jobs/delete-repository \
 
 ### `POST /api/jobs/tags`
 
-Lists tags for a repository, newest first as returned by GitHub. The API itself does not paginate &mdash; the server iterates over GitHub's pages internally until at least `limit` tags have been collected (or the repository runs out of tags).
+Lists tags for a repository from the local git metadata cache, newest first by git creator date. Before reading tags, the server refreshes the repository cache, deletes locally cached tags, and fetches tags again so stale or moved tags are not reused.
 
 #### Request arguments
 
