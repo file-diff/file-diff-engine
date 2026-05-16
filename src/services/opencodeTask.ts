@@ -60,6 +60,7 @@ export interface OpencodeTaskOptions {
   verbosity?: CodexVerbosity;
   codexWebSearch?: boolean;
   systemPrompt?: string;
+  previousSession?: string;
   pullRequestCompletionMode?: PullRequestCompletionMode;
   taskMode?: AgentTaskMode;
   pullRequestNumber?: number;
@@ -79,6 +80,16 @@ export interface OpencodePreparedTask {
     url: string;
     title: string;
   };
+}
+
+export interface PreviousAgentTaskSession {
+  jobId: string;
+  taskRunner?: AgentTaskRunner;
+  branch: string;
+  baseRef?: string;
+  pullRequestNumber: number;
+  pullRequestUrl: string;
+  pullRequestTitle?: string;
 }
 
 export interface OpencodeTaskResult extends OpencodePreparedTask {
@@ -218,6 +229,44 @@ export async function prepareOpencodeTaskBranch(
   };
 }
 
+export async function prepareContinuedAgentTaskBranch(
+  options: OpencodeTaskOptions,
+  previous: PreviousAgentTaskSession
+): Promise<OpencodePreparedTask> {
+  const githubKey = resolveGitHubToken(options.githubKey);
+  if (!githubKey) {
+    throw new Error(
+      "GitHub token is required. Set PRIVATE_GITHUB_TOKEN or pass githubKey."
+    );
+  }
+
+  const cloneDir = getOpencodeTaskCloneDir({
+    ...options,
+    jobId: previous.jobId,
+    taskRunner: previous.taskRunner ?? options.taskRunner,
+  });
+  const gitDir = path.join(cloneDir, ".git");
+  if (!fs.existsSync(gitDir)) {
+    throw new Error(
+      `Previous session workspace was not found at ${cloneDir}.`
+    );
+  }
+
+  const gitEnv = getGitCommandEnv(githubKey);
+  await configureCommitAuthor(cloneDir, gitEnv);
+  await runGit(cloneDir, ["checkout", previous.branch], gitEnv);
+  await runGit(cloneDir, ["pull", "--ff-only"], gitEnv);
+
+  return {
+    branch: previous.branch,
+    pullRequest: {
+      number: previous.pullRequestNumber,
+      title: previous.pullRequestTitle ?? "",
+      url: previous.pullRequestUrl,
+    },
+  };
+}
+
 export async function preparePullRequestReviewTaskBranch(
   options: OpencodeTaskOptions
 ): Promise<OpencodePreparedTask> {
@@ -327,7 +376,7 @@ async function runOpencode(
     model = "deepseek/deepseek-v4-pro";
   }
 
-  const args = ["run", "--model", model, "--dangerously-skip-permissions", "--command", "command"];
+  const args = buildOpencodeRunArgs(model, options.previousSession);
   const timeout = parsePositiveInteger(
     process.env.OPENCODE_TIMEOUT_MS,
     DEFAULT_OPENCODE_TIMEOUT_MS
@@ -397,7 +446,7 @@ async function runOpencode(
   let timedOut = false;
   let cancellationRequested = false;
   let terminationStarted = false;
-  let opencodeSessionId: string | null = null;
+  let opencodeSessionId: string | null = options.previousSession?.trim() || null;
   let opencodeSessionExport: unknown = undefined;
   let lastSerializedSessionExport: string | null = null;
   let lastObservedSessionCount = sessionIdsBefore.length;
@@ -1089,6 +1138,18 @@ export function resolveOpencodePrompt(
     pullRequestNumber,
     options.taskMode
   );
+}
+
+export function buildOpencodeRunArgs(
+  model: string,
+  previousSession?: string
+): string[] {
+  const args = ["run", "--model", model, "--dangerously-skip-permissions"];
+  if (previousSession?.trim()) {
+    args.push("--session", previousSession.trim());
+  }
+  args.push("--command", "command");
+  return args;
 }
 
 export function buildPullRequestReviewProblemStatement(

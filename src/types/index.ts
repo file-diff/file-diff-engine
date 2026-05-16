@@ -419,6 +419,8 @@ export interface CreateTaskRequest {
   codex_web_search?: boolean;
   /** Optional full prompt override for Codex and opencode tasks. Empty or "no" keeps the default prompt. */
   system_prompt?: string;
+  /** Optional previous task/session id to continue. Supported for Codex and opencode tasks only. */
+  previous_session?: string;
   /** Custom agent identifier */
   custom_agent?: string;
   /** Compatibility flag; when provided it must be true because tasks always open a draft PR */
@@ -499,6 +501,7 @@ export interface AgentTaskJobSummary {
   reasoningSummary?: CodexReasoningSummary;
   verbosity?: CodexVerbosity;
   codexWebSearch?: boolean;
+  previousSession?: string;
   pullRequestCompletionMode?: PullRequestCompletionMode;
   pullRequestUrl?: string;
   pullRequestNumber?: number;

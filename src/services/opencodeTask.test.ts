@@ -1,12 +1,15 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { execFileSync } from "child_process";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildOpencodeRunArgs,
   buildTaskBranchName,
   findNewOpencodeSessionId,
   incrementBranchName,
   parseOpencodeSessionIds,
+  prepareContinuedAgentTaskBranch,
   resolveOpencodePrompt,
   runAgentBootstrapIfAvailable,
 } from "./opencodeTask";
@@ -101,6 +104,94 @@ ses_227113e87ffe85L4H52wmCHwGg  New session - 2026-04-29T11:10:19.000Z  1:10 PM`
         42
       )
     ).toContain("User instructions starts here:\nFix the bug");
+  });
+
+  it("builds opencode run args that resume a previous session", () => {
+    expect(buildOpencodeRunArgs("deepseek/deepseek-v4-flash", " ses_123 ")).toEqual([
+      "run",
+      "--model",
+      "deepseek/deepseek-v4-flash",
+      "--dangerously-skip-permissions",
+      "--session",
+      "ses_123",
+      "--command",
+      "command",
+    ]);
+  });
+
+  it("prepares a continued task by reusing the previous workspace and pulling updates", async () => {
+    const originalPrivateGithubToken = process.env.PRIVATE_GITHUB_TOKEN;
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "continued-task-"));
+    tempDirs.push(rootDir);
+    process.env.PRIVATE_GITHUB_TOKEN = "test-token";
+
+    try {
+      const remoteDir = path.join(rootDir, "remote.git");
+      const seedDir = path.join(rootDir, "seed");
+      const previousWorkDir = path.join(rootDir, "previous-work");
+      const previousRepoDir = path.join(previousWorkDir, "repo");
+      const updaterDir = path.join(rootDir, "updater");
+
+      execFileSync("git", ["init", "--bare", remoteDir]);
+      execFileSync("git", ["clone", remoteDir, seedDir]);
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: seedDir });
+      execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: seedDir });
+      fs.writeFileSync(path.join(seedDir, "file.txt"), "initial\n", "utf8");
+      execFileSync("git", ["add", "file.txt"], { cwd: seedDir });
+      execFileSync("git", ["commit", "-m", "Initial"], { cwd: seedDir });
+      execFileSync("git", ["branch", "-M", "main"], { cwd: seedDir });
+      execFileSync("git", ["push", "-u", "origin", "main"], { cwd: seedDir });
+
+      execFileSync("git", ["clone", "--branch", "main", remoteDir, previousRepoDir]);
+      execFileSync("git", ["checkout", "-b", "fd-agent/previous"], {
+        cwd: previousRepoDir,
+      });
+      execFileSync("git", ["push", "-u", "origin", "fd-agent/previous"], {
+        cwd: previousRepoDir,
+      });
+
+      execFileSync("git", ["clone", "--branch", "fd-agent/previous", remoteDir, updaterDir]);
+      execFileSync("git", ["checkout", "fd-agent/previous"], { cwd: updaterDir });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: updaterDir });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: updaterDir,
+      });
+      fs.writeFileSync(path.join(updaterDir, "file.txt"), "updated\n", "utf8");
+      execFileSync("git", ["commit", "-am", "Update remote"], { cwd: updaterDir });
+      execFileSync("git", ["push"], { cwd: updaterDir });
+
+      await expect(
+        prepareContinuedAgentTaskBranch(
+          {
+            jobId: "current-job",
+            repo: "file-diff/file-diff-engine",
+            baseRef: "main",
+            problemStatement: "Continue",
+            model: "deepseek-v4-flash",
+            taskRunner: "opencode",
+            workDir: previousWorkDir,
+          },
+          {
+            jobId: "previous-job",
+            taskRunner: "opencode",
+            branch: "fd-agent/previous",
+            pullRequestNumber: 10,
+            pullRequestUrl: "https://github.com/file-diff/file-diff-engine/pull/10",
+          }
+        )
+      ).resolves.toMatchObject({
+        branch: "fd-agent/previous",
+        pullRequest: {
+          number: 10,
+        },
+      });
+
+      expect(fs.readFileSync(path.join(previousRepoDir, "file.txt"), "utf8")).toBe(
+        "updated\n"
+      );
+    } finally {
+      process.env.PRIVATE_GITHUB_TOKEN = originalPrivateGithubToken;
+    }
   });
 
   it("skips the agent bootstrap when the script is unavailable", async () => {

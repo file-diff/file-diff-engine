@@ -98,6 +98,7 @@ export function registerAgentCreateTaskRoutes(
         verbosity,
         codex_web_search,
         system_prompt,
+        previous_session,
         create_pull_request,
         auto_ready,
         auto_merge,
@@ -110,9 +111,10 @@ export function registerAgentCreateTaskRoutes(
         githubKey,
       } = request.body ?? {};
 
-      if (!repo || !base_ref || !problem_statement) {
+      if (!repo || !problem_statement || (!base_ref && !previous_session)) {
         const response: ErrorResponse = {
-          error: "'problem_statement', 'repo' and 'base_ref' are required.",
+          error:
+            "'problem_statement', 'repo' and either 'base_ref' or 'previous_session' are required.",
         };
         return reply.code(400).send(response);
       }
@@ -133,7 +135,26 @@ export function registerAgentCreateTaskRoutes(
         return reply.code(400).send(response);
       }
 
-      const taskRunner = task === undefined ? DEFAULT_AGENT_TASK_RUNNER : task;
+      if (previous_session !== undefined && task === "claude") {
+        const response: ErrorResponse = {
+          error: "Field 'previous_session' is only supported for codex and opencode tasks.",
+        };
+        return reply.code(400).send(response);
+      }
+
+      const previousSessionResult = await resolvePreviousSessionJob(
+        jobRepo,
+        repo,
+        previous_session
+      );
+      if (previousSessionResult.error) {
+        const response: ErrorResponse = { error: previousSessionResult.error };
+        return reply.code(previousSessionResult.statusCode ?? 400).send(response);
+      }
+
+      const taskRunner = task === undefined
+        ? previousSessionResult.job?.taskRunner ?? DEFAULT_AGENT_TASK_RUNNER
+        : task;
       const validationError = validateAgentTaskOptions({
         taskRunner,
         model,
@@ -145,6 +166,16 @@ export function registerAgentCreateTaskRoutes(
       });
       if (validationError) {
         const response: ErrorResponse = { error: validationError };
+        return reply.code(400).send(response);
+      }
+
+      if (
+        previousSessionResult.job?.taskRunner &&
+        previousSessionResult.job.taskRunner !== taskRunner
+      ) {
+        const response: ErrorResponse = {
+          error: "Field 'task' must match the previous session task runner.",
+        };
         return reply.code(400).send(response);
       }
 
@@ -178,6 +209,26 @@ export function registerAgentCreateTaskRoutes(
       }
 
       const [owner, repoName] = repo.split("/", 2);
+      const previousTask = previousSessionResult.job;
+      const effectiveBaseRef = previousTask?.baseRef ?? base_ref;
+      const effectiveBranch = previousTask?.branch ?? requestedBranchResult.branch;
+      if (!effectiveBaseRef) {
+        const response: ErrorResponse = {
+          error: "Field 'base_ref' is required when the previous task has no base ref.",
+        };
+        return reply.code(400).send(response);
+      }
+      if (
+        previousTask?.branch &&
+        requestedBranchResult.branch &&
+        previousTask.branch !== requestedBranchResult.branch
+      ) {
+        const response: ErrorResponse = {
+          error:
+            "Field 'branch' must match the previous task branch when continuing a session.",
+        };
+        return reply.code(400).send(response);
+      }
       const taskDelayMs = task_delay_ms ?? 0;
       const taskModel = resolveTaskModel(taskRunner, model);
       const jobId = randomUUID();
@@ -207,17 +258,20 @@ export function registerAgentCreateTaskRoutes(
           reasoningSummary,
           verbosity,
           codexWebSearch: codex_web_search,
-          baseRef: base_ref,
-          branchName: requestedBranchResult.branch,
+          previousSession: previousSessionResult.previousSession,
+          baseRef: effectiveBaseRef,
+          branchName: effectiveBranch,
           pullRequestCompletionMode: pullRequestCompletionResolution.mode,
+          pullRequestUrl: previousTask?.pullRequestUrl,
+          pullRequestNumber: previousTask?.pullRequestNumber,
         });
         agentTaskJobCreated = true;
         await enqueueAgentTaskJob(
           queue,
           jobId,
           `${owner}/${repoName}`,
-          base_ref,
-          requestedBranchResult.branch,
+          effectiveBaseRef,
+          effectiveBranch,
           problem_statement,
           taskRunner,
           taskModel,
@@ -226,6 +280,7 @@ export function registerAgentCreateTaskRoutes(
           verbosity,
           codex_web_search,
           systemPromptResolution.systemPrompt,
+          previousSessionResult.previousSession,
           pullRequestCompletionResolution.mode,
           taskDelayMs,
           githubKey?.trim() || undefined,
@@ -308,11 +363,12 @@ export function registerAgentCreateTaskRoutes(
         request.body?.create_pull_request !== undefined ||
         request.body?.auto_ready !== undefined ||
         request.body?.auto_merge !== undefined ||
-        request.body?.pull_request_completion_mode !== undefined
+        request.body?.pull_request_completion_mode !== undefined ||
+        (request.body as CreateTaskRequest | undefined)?.previous_session !== undefined
       ) {
         const response: ErrorResponse = {
           error:
-            "Fields 'branch', 'branch_title', 'create_pull_request', 'auto_ready', 'auto_merge', and 'pull_request_completion_mode' are not supported for pull request review tasks.",
+            "Fields 'branch', 'branch_title', 'create_pull_request', 'auto_ready', 'auto_merge', 'pull_request_completion_mode', and 'previous_session' are not supported for pull request review tasks.",
         };
         return reply.code(400).send(response);
       }
@@ -406,6 +462,7 @@ export function registerAgentCreateTaskRoutes(
           verbosity,
           codex_web_search,
           systemPromptResolution.systemPrompt,
+          undefined,
           undefined,
           taskDelayMs,
           token,
@@ -745,6 +802,83 @@ function validateTaskDelayMs(taskDelayMs: unknown): string | undefined {
   return undefined;
 }
 
+async function resolvePreviousSessionJob(
+  jobRepo: JobRepository,
+  repo: string,
+  previousSession: unknown
+): Promise<{
+  previousSession?: string;
+  job?: AgentTaskJobInfo;
+  error?: string;
+  statusCode?: number;
+}> {
+  if (previousSession === undefined) {
+    return {};
+  }
+
+  if (typeof previousSession !== "string" || !previousSession.trim()) {
+    return {
+      error: "Field 'previous_session' must be a non-empty string.",
+    };
+  }
+
+  const normalizedPreviousSession = previousSession.trim();
+  const previousJob = await jobRepo.getAgentTaskJobByIdOrCodexSessionId(
+    normalizedPreviousSession
+  );
+  if (!previousJob) {
+    return {
+      error: "Previous session task was not found.",
+      statusCode: 404,
+    };
+  }
+
+  if (previousJob.repo !== repo) {
+    return {
+      error: "Previous session task belongs to a different repository.",
+    };
+  }
+
+  if (previousJob.status !== "completed") {
+    return {
+      error: "Previous session task must be completed before it can be continued.",
+    };
+  }
+
+  if (
+    previousJob.taskRunner !== "codex" &&
+    previousJob.taskRunner !== "opencode"
+  ) {
+    return {
+      error: "Field 'previous_session' is only supported for codex and opencode tasks.",
+    };
+  }
+
+  if (!previousJob.branch || !previousJob.pullRequestUrl || !previousJob.pullRequestNumber) {
+    return {
+      error:
+        "Previous session task is missing branch or pull request metadata and cannot be continued.",
+    };
+  }
+
+  if (previousJob.taskRunner === "codex" && !previousJob.codexSessionId) {
+    return {
+      error: "Previous codex task is missing a captured codex session id.",
+    };
+  }
+
+  if (previousJob.taskRunner === "opencode" && !previousJob.opencodeSessionId) {
+    return {
+      error: "Previous opencode task is missing a captured opencode session id.",
+    };
+  }
+
+  return {
+    previousSession: normalizedPreviousSession,
+    job: previousJob,
+  };
+}
+
 function resolveTaskModel(
   taskRunner: AgentTaskRunner,
   model: string | undefined
@@ -791,6 +925,7 @@ async function enqueueAgentTaskJob(
   verbosity: CodexVerbosity | undefined,
   codexWebSearch: boolean | undefined,
   systemPrompt: string | undefined,
+  previousSession: string | undefined,
   pullRequestCompletionMode: PullRequestCompletionMode | undefined,
   delayMs = 0,
   githubKey?: string,
@@ -824,6 +959,7 @@ async function enqueueAgentTaskJob(
       ...(verbosity ? { verbosity } : {}),
       ...(codexWebSearch !== undefined ? { codexWebSearch } : {}),
       ...(systemPrompt ? { systemPrompt } : {}),
+      ...(previousSession ? { previousSession } : {}),
       ...(pullRequestCompletionMode ? { pullRequestCompletionMode } : {}),
       ...(pullRequest
         ? {

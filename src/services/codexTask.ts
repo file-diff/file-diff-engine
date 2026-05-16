@@ -62,7 +62,7 @@ export async function executeCodexOnPreparedBranch(
   const cloneDir = getOpencodeTaskCloneDir(options);
   const model = resolveCodexModel(options.model);
 
-  let codexSessionId: string | null = null;
+  let codexSessionId: string | null = options.previousSession?.trim() || null;
   let codexSessionFilePath: string | null = null;
   let codexSessionExport: unknown = undefined;
   let lastSerializedSessionExport: string | undefined;
@@ -142,7 +142,9 @@ export async function executeCodexOnPreparedBranch(
       runner: "codex",
       commandLabel: "codex",
       bin: getCodexBin(),
-      args: (cwd) => buildCodexArgs(options, model, cwd),
+      args: (cwd) => codexSessionId
+        ? buildCodexResumeArgs(options, model, codexSessionId)
+        : buildCodexArgs(options, model, cwd),
       prompt: options.systemPrompt,
       cwd: cloneDir,
       branch,
@@ -221,7 +223,9 @@ export async function executeCodexOnPreparedBranch(
     : [
         {
           label: "plan",
-          args: (cwd) => buildCodexArgs(options, model, cwd),
+          args: (cwd) => codexSessionId
+            ? buildCodexResumeArgs(options, model, codexSessionId)
+            : buildCodexArgs(options, model, cwd),
           prompt: buildCodexPlanPrompt(
             options.problemStatement,
             branch,

@@ -93,6 +93,7 @@ async function initSchema(db: DatabaseClient): Promise<void> {
         reasoning_summary TEXT,
         verbosity TEXT,
         codex_web_search BOOLEAN,
+        previous_session TEXT,
         pull_request_completion_mode TEXT,
         pull_request_url TEXT,
         pull_request_number INTEGER,
@@ -146,6 +147,9 @@ async function initSchema(db: DatabaseClient): Promise<void> {
 
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS codex_web_search BOOLEAN;
+
+      ALTER TABLE agent_task_jobs
+      ADD COLUMN IF NOT EXISTS previous_session TEXT;
 
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS pull_request_completion_mode TEXT;

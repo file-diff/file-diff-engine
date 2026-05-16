@@ -44,6 +44,7 @@ Optional body fields:
 | `verbosity` | `"low" \| "medium" \| "high"` | Codex-only output verbosity. |
 | `codex_web_search` | `boolean` | Enables Codex web search support. |
 | `system_prompt` | `string` | Codex/opencode full prompt override. Empty, whitespace-only, or `"no"` keeps the default generated prompt. Any other string is sent verbatim without appending `problem_statement` or branch/PR workflow instructions. Codex uses a single one-shot run when this is provided. |
+| `previous_session` | `string` | Continues a completed Codex or opencode task. Accepts the previous task id, Codex session id, or opencode session id. When provided, `base_ref` is optional and defaults to the previous task base ref. Claude and review tasks do not support continuation. |
 | `pull_request_completion_mode` | `"None" \| "AutoReady" \| "AutoMerge"` | Follow-up action after successful task completion. |
 | `auto_ready` | `boolean` | Compatibility alias for `AutoReady`. |
 | `auto_merge` | `boolean` | Compatibility alias for `AutoMerge`. |
@@ -58,6 +59,21 @@ Response:
   "id": "7eb718f7-5c92-42d4-a6f8-1caaedfb29dc"
 }
 ```
+
+### Continuing a Previous Agent Task
+
+When `previous_session` is provided for a Codex or opencode task, the worker
+reuses the completed task's persistent checkout instead of cloning a new one.
+Before starting the agent, it checks out the previous task branch and runs:
+
+```bash
+git pull --ff-only
+```
+
+The new prompt is then sent into the previous agent session. Codex resumes the
+captured Codex session id, and opencode runs with the captured opencode session
+id. The new local task row points at the same branch and pull request as the
+previous task, and final changes are committed and pushed to that branch.
 
 ## Create a Pull Request Review Task
 
