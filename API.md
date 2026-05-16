@@ -66,8 +66,12 @@ Status: `200 OK`
 | `status` | `"ok"` | Health status value |
 | `message` | `string` | Human-readable health message |
 | `github.configured` | `boolean` | Whether `PRIVATE_GITHUB_TOKEN` is configured |
+| `github.credentialSource` | `"private_github_token" \| "none"` | Credential source used for backend GitHub checks |
 | `github.status` | `"ok" \| "error"` | Whether the GitHub rate-limit lookup succeeded |
 | `github.rateLimit` | `object` | Present when GitHub rate-limit data was fetched successfully |
+| `github.rateLimit.resources` | `object` | Per-resource GitHub rate-limit buckets returned by `/rate_limit`, keyed by resource name |
+| `github.authenticatedAccount` | `object` | Present when `PRIVATE_GITHUB_TOKEN` is configured and GitHub returns the authenticated account |
+| `github.authenticatedAccountError` | `string` | Present when the rate-limit lookup succeeds but the authenticated account lookup fails |
 | `github.error` | `string` | Present when the GitHub rate-limit lookup failed |
 
 #### Example
@@ -84,13 +88,35 @@ Example response:
   "message": "API is healthy",
   "github": {
     "configured": true,
+    "credentialSource": "private_github_token",
     "status": "ok",
     "rateLimit": {
       "limit": 5000,
       "remaining": 4999,
       "reset": 1712345679,
       "used": 1,
-      "resource": "core"
+      "resource": "core",
+      "resources": {
+        "core": {
+          "limit": 5000,
+          "remaining": 4999,
+          "reset": 1712345679,
+          "used": 1,
+          "resource": "core"
+        },
+        "search": {
+          "limit": 30,
+          "remaining": 30,
+          "reset": 1712345679,
+          "used": 0,
+          "resource": "search"
+        }
+      }
+    },
+    "authenticatedAccount": {
+      "login": "octocat",
+      "id": 1,
+      "type": "User"
     }
   }
 }

@@ -914,7 +914,11 @@ export function registerDiscoveryRoutes(app: FastifyInstance): void {
       }
 
       try {
-        const tags = await githubApi.listTags(repo, limit);
+        const tags = await githubApi.listTags(
+          repo,
+          limit,
+          githubApi.getBackendGitHubToken()
+        );
         const response: ListTagsResponse = { repo, tags };
         return reply.code(200).send(response);
       } catch (error) {
