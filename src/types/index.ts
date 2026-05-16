@@ -357,19 +357,30 @@ export interface StatsResponse {
 }
 
 /** Health endpoint response payload. */
+export interface GitHubRateLimitBucketResponse {
+  limit: number;
+  remaining: number;
+  reset: number;
+  used: number;
+  resource: string;
+}
+
 export interface HealthResponse {
   status: "ok";
   message: string;
   github: {
     configured: boolean;
+    credentialSource: "private_github_token" | "none";
     status: "ok" | "error";
-    rateLimit?: {
-      limit: number;
-      remaining: number;
-      reset: number;
-      used: number;
-      resource: string;
+    rateLimit?: GitHubRateLimitBucketResponse & {
+      resources: Record<string, GitHubRateLimitBucketResponse>;
     };
+    authenticatedAccount?: {
+      login: string;
+      id?: number;
+      type?: string;
+    };
+    authenticatedAccountError?: string;
     error?: string;
   };
 }

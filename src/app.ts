@@ -16,7 +16,12 @@ import { createFileRoutes } from "./routes/files";
 import { createJobRoutes } from "./routes/jobs";
 import { registerPromptRoutes } from "./routes/promptRoutes";
 import { createTaskRoutes } from "./routes/taskRoutes";
-import { getGitHubRateLimit } from "./services/githubApi";
+import {
+  getBackendGitHubCredentialSource,
+  getBackendGitHubToken,
+  getGitHubAuthenticatedAccount,
+  getGitHubRateLimit,
+} from "./services/githubApi";
 import { createQueue, type ManagedQueue } from "./services/queue";
 import type {
   CommitGrepMatch,
@@ -306,18 +311,38 @@ export async function createApp(
   );
 
   app.get("/api/health", { preHandler: requireViewerBearerToken }, async () => {
-    const githubConfigured = Boolean(process.env.PRIVATE_GITHUB_TOKEN?.trim());
+    const githubToken = getBackendGitHubToken();
+    const githubConfigured = Boolean(githubToken);
+    const credentialSource = getBackendGitHubCredentialSource(githubToken);
     let github: HealthResponse["github"];
 
     try {
+      const accountLookup: Promise<{
+        account?: HealthResponse["github"]["authenticatedAccount"];
+        error?: string;
+      }> = githubToken
+        ? getGitHubAuthenticatedAccount(githubToken)
+            .then((account) => ({ account }))
+            .catch((error) => ({
+              error: error instanceof Error ? error.message : String(error),
+            }))
+        : Promise.resolve({});
+      const [rateLimit, accountResult] = await Promise.all([
+        getGitHubRateLimit(githubToken),
+        accountLookup,
+      ]);
       github = {
         configured: githubConfigured,
+        credentialSource,
         status: "ok",
-        rateLimit: await getGitHubRateLimit(),
+        rateLimit,
+        ...(accountResult.account ? { authenticatedAccount: accountResult.account } : {}),
+        ...(accountResult.error ? { authenticatedAccountError: accountResult.error } : {}),
       };
     } catch (error) {
       github = {
         configured: githubConfigured,
+        credentialSource,
         status: "error",
         error: error instanceof Error ? error.message : String(error),
       };

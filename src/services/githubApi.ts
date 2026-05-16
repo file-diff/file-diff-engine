@@ -123,15 +123,44 @@ interface GitHubRateLimitApiBucket {
 }
 
 interface GitHubRateLimitApiResponse {
+  resources?: Record<string, GitHubRateLimitApiBucket | undefined>;
   rate?: GitHubRateLimitApiBucket;
 }
 
-export interface GitHubRateLimitSummary {
+interface GitHubAuthenticatedUserApiResponse {
+  login?: string;
+  id?: number;
+  type?: string;
+}
+
+export interface GitHubRateLimitBucketSummary {
   limit: number;
   remaining: number;
   reset: number;
   used: number;
   resource: string;
+}
+
+export interface GitHubRateLimitSummary extends GitHubRateLimitBucketSummary {
+  resources: Record<string, GitHubRateLimitBucketSummary>;
+}
+
+export interface GitHubAuthenticatedAccountSummary {
+  login: string;
+  id?: number;
+  type?: string;
+}
+
+export type GitHubCredentialSource = "private_github_token" | "none";
+
+export function getBackendGitHubToken(): string | null {
+  return process.env.PRIVATE_GITHUB_TOKEN?.trim() || null;
+}
+
+export function getBackendGitHubCredentialSource(
+  token: string | null = getBackendGitHubToken()
+): GitHubCredentialSource {
+  return token ? "private_github_token" : "none";
 }
 
 export async function resolvePullRequest(
@@ -466,7 +495,8 @@ const GITHUB_WORKFLOW_RUNS_PAGE_SIZE = 100;
 
 export async function listTags(
   repo: string,
-  limit: number
+  limit: number,
+  token?: string | null
 ): Promise<TagSummary[]> {
   const [owner, repoName] = repo.split("/", 2);
   const tags: TagSummary[] = [];
@@ -477,6 +507,7 @@ export async function listTags(
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/tags?per_page=${pageSize}&page=${page}`,
       {
         notFoundMessage: `GitHub repository '${repo}' was not found.`,
+        token,
       }
     );
 
@@ -808,29 +839,88 @@ export async function findOpenPullRequestByHeadBranch(
   };
 }
 
-export async function getGitHubRateLimit(): Promise<GitHubRateLimitSummary> {
+export async function getGitHubRateLimit(
+  token: string | null = getBackendGitHubToken()
+): Promise<GitHubRateLimitSummary> {
   const response = await getJson<GitHubRateLimitApiResponse>("/rate_limit", {
     notFoundMessage: "GitHub rate limit endpoint was not found.",
-    token: process.env.PRIVATE_GITHUB_TOKEN?.trim() || null,
+    token,
     allowEnvironmentFallback: false,
   });
-  const rate = response.rate;
+  const rate = mapRateLimitBucket(response.rate, "core");
 
-  if (
-    typeof rate?.limit !== "number" ||
-    typeof rate.remaining !== "number" ||
-    typeof rate.reset !== "number" ||
-    typeof rate.used !== "number"
-  ) {
+  if (!rate) {
     throw new GitHubApiError("GitHub rate limit response was invalid.", 502);
   }
 
   return {
-    limit: rate.limit,
-    remaining: rate.remaining,
-    reset: rate.reset,
-    used: rate.used,
-    resource: rate.resource?.trim() || "core",
+    ...rate,
+    resources: mapRateLimitResources(response.resources),
+  };
+}
+
+export async function getGitHubAuthenticatedAccount(
+  token: string | null = getBackendGitHubToken()
+): Promise<GitHubAuthenticatedAccountSummary> {
+  if (!token) {
+    throw new GitHubApiError("GitHub token is not configured.", 401);
+  }
+
+  const response = await getJson<GitHubAuthenticatedUserApiResponse>("/user", {
+    notFoundMessage: "GitHub authenticated user endpoint was not found.",
+    token,
+    allowEnvironmentFallback: false,
+  });
+  const login = response.login?.trim();
+
+  if (!login) {
+    throw new GitHubApiError("GitHub authenticated user response was invalid.", 502);
+  }
+
+  return {
+    login,
+    ...(typeof response.id === "number" ? { id: response.id } : {}),
+    ...(response.type?.trim() ? { type: response.type.trim() } : {}),
+  };
+}
+
+function mapRateLimitResources(
+  resources: GitHubRateLimitApiResponse["resources"]
+): Record<string, GitHubRateLimitBucketSummary> {
+  if (!resources || typeof resources !== "object") {
+    return {};
+  }
+
+  const mapped: Record<string, GitHubRateLimitBucketSummary> = {};
+  for (const [resourceName, bucket] of Object.entries(resources)) {
+    const resource = mapRateLimitBucket(bucket, resourceName);
+    if (resource) {
+      mapped[resourceName] = resource;
+    }
+  }
+
+  return mapped;
+}
+
+function mapRateLimitBucket(
+  bucket: GitHubRateLimitApiBucket | undefined,
+  fallbackResource: string
+): GitHubRateLimitBucketSummary | null {
+  if (
+    typeof bucket?.limit !== "number" ||
+    typeof bucket.remaining !== "number" ||
+    typeof bucket.reset !== "number" ||
+    typeof bucket.used !== "number"
+  ) {
+    return null;
+  }
+
+  return {
+    limit: bucket.limit,
+    remaining: bucket.remaining,
+    reset: bucket.reset,
+    used: bucket.used,
+    resource: bucket.resource?.trim() || fallbackResource,
   };
 }
 
