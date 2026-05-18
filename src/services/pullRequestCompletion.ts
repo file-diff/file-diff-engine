@@ -2,6 +2,11 @@ import * as githubApi from "./githubApi";
 import { GitHubApiError } from "./githubApi";
 import type { PullRequestCompletionMode } from "../types";
 
+export interface PullRequestCompletionResult {
+  actions: string[];
+  merged: boolean;
+}
+
 export async function applyPullRequestCompletionMode(options: {
   repo: string;
   branch: string;
@@ -9,8 +14,19 @@ export async function applyPullRequestCompletionMode(options: {
   mode?: PullRequestCompletionMode;
   token?: string;
 }): Promise<string[]> {
+  const result = await applyPullRequestCompletionModeWithResult(options);
+  return result.actions;
+}
+
+export async function applyPullRequestCompletionModeWithResult(options: {
+  repo: string;
+  branch: string;
+  pullNumber: number;
+  mode?: PullRequestCompletionMode;
+  token?: string;
+}): Promise<PullRequestCompletionResult> {
   if (!options.mode || options.mode === "None") {
-    return [];
+    return { actions: [], merged: false };
   }
 
   const actions: string[] = [];
@@ -32,7 +48,7 @@ export async function applyPullRequestCompletionMode(options: {
   }
 
   if (options.mode !== "AutoMerge") {
-    return actions;
+    return { actions, merged: false };
   }
 
   let mergeResult: githubApi.MergePullRequestResult;
@@ -46,7 +62,7 @@ export async function applyPullRequestCompletionMode(options: {
       actions.push(
         `Pull request #${options.pullNumber} could not be merged because the base branch '${pullRequest.baseBranch}' is protected or required checks are not satisfied: ${reason}. Pull request was left open.`
       );
-      return actions;
+      return { actions, merged: false };
     }
     throw error;
   }
@@ -55,7 +71,7 @@ export async function applyPullRequestCompletionMode(options: {
     actions.push(
       `Pull request #${options.pullNumber} was not merged: ${mergeResult.message || "GitHub did not merge the pull request."}. Pull request was left open.`
     );
-    return actions;
+    return { actions, merged: false };
   }
 
   const mergedSha = mergeResult.sha ? ` (${mergeResult.sha.slice(0, 7)})` : "";
@@ -71,7 +87,7 @@ export async function applyPullRequestCompletionMode(options: {
     );
   }
 
-  return actions;
+  return { actions, merged: true };
 }
 
 function isMergeBlockedError(error: unknown): boolean {

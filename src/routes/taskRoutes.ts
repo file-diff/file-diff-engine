@@ -30,7 +30,7 @@ export function createTaskRoutes(
 
     /**
      * GET /agents/repos/:owner/:repo/tasks
-     * Lists currently active (waiting or active) agent task jobs for a repository.
+     * Lists visible agent task jobs for a repository.
      */
     app.get<{
       Params: {
@@ -60,10 +60,10 @@ export function createTaskRoutes(
           return reply.code(400).send(response);
         }
 
-        logger.info("Listing active agent task jobs for repo", { owner, repo });
+        logger.info("Listing visible agent task jobs for repo", { owner, repo });
 
         try {
-          const tasks = await jobRepo.listActiveAgentTaskJobs(fullRepo);
+          const tasks = await jobRepo.listVisibleAgentTaskJobs(fullRepo);
           return reply.code(200).send(tasks satisfies AgentTaskJobInfo[]);
         } catch (error) {
           const message =
@@ -76,7 +76,7 @@ export function createTaskRoutes(
 
     /**
      * GET /agents/tasks
-     * Lists currently active (waiting or active) agent task jobs across all repositories.
+     * Lists visible agent task jobs across all repositories.
      */
     app.get(
       "/agents/tasks",
@@ -90,10 +90,10 @@ export function createTaskRoutes(
         ],
       },
       async (_request, reply) => {
-        logger.info("Listing all active agent task jobs");
+        logger.info("Listing all visible agent task jobs");
 
         try {
-          const tasks = await jobRepo.listActiveAgentTaskJobs();
+          const tasks = await jobRepo.listVisibleAgentTaskJobs();
           return reply.code(200).send(tasks satisfies AgentTaskJobInfo[]);
         } catch (error) {
           const message =

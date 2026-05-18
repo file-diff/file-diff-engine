@@ -25,7 +25,7 @@ import {
   type OpencodeCapturedLogs,
   type PreviousAgentTaskSession,
 } from "../services/opencodeTask";
-import { applyPullRequestCompletionMode } from "../services/pullRequestCompletion";
+import { applyPullRequestCompletionModeWithResult } from "../services/pullRequestCompletion";
 import {
   MAX_CONCURRENCY_PER_TASK_KIND,
   QUEUE_NAMES,
@@ -300,6 +300,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
   let lastKnownPullRequestUrl: string | undefined;
   let lastCapturedLogs: OpencodeCapturedLogs | null = null;
   let pullRequestActions: string[] = [];
+  let autoMergeSucceeded = false;
   const [owner, repoNameOnly] = splitRepoName(repoName);
 
   try {
@@ -400,17 +401,23 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       throw new Error("Task canceled by request.");
     }
     if (taskMode !== "review") {
-      pullRequestActions = await applyPullRequestCompletionMode({
-        repo: repoName,
-        branch: prepared.branch,
-        pullNumber: prepared.pullRequest.number,
-        mode: pullRequestCompletionMode ?? existingJob?.pullRequestCompletionMode,
-        token: githubKey,
-      });
+      const pullRequestCompletionResult =
+        await applyPullRequestCompletionModeWithResult({
+          repo: repoName,
+          branch: prepared.branch,
+          pullNumber: prepared.pullRequest.number,
+          mode: pullRequestCompletionMode ?? existingJob?.pullRequestCompletionMode,
+          token: githubKey,
+        });
+      pullRequestActions = pullRequestCompletionResult.actions;
+      autoMergeSucceeded = pullRequestCompletionResult.merged;
     }
     await repo.updateAgentTaskStatus(jobId, "completed", prepared.branch);
     await repo.updateAgentTaskLogs(jobId, logs);
     await repo.updateAgentTaskJobStatus(jobId, "completed");
+    if (autoMergeSucceeded) {
+      await repo.markAgentTaskJobDeleted(jobId);
+    }
     logger.info(`${tag} Completed branch=${prepared.branch} pr=${prepared.pullRequest.url}`);
     await sendTerminalTaskNotification(
       owner,

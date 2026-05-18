@@ -404,6 +404,27 @@ export class JobRepository {
     );
   }
 
+  async listVisibleAgentTaskJobs(repo?: string): Promise<AgentTaskJobInfo[]> {
+    const params: unknown[] = [];
+    let whereClause = "deleted_at IS NULL";
+    if (repo !== undefined) {
+      params.push(repo);
+      whereClause += ` AND repo = $${params.length}`;
+    }
+
+    const result = await this.db.query(
+      `SELECT *
+       FROM agent_task_jobs
+       WHERE ${whereClause}
+       ORDER BY COALESCE(scheduled_at, created_at) ASC, created_at ASC`,
+      params
+    );
+
+    return result.rows.map((row) =>
+      mapAgentTaskJobRow(row as Record<string, unknown>)
+    );
+  }
+
   async listWaitingJobs(): Promise<JobInfo[]> {
     const result = await this.db.query(
       "SELECT * FROM jobs WHERE status = 'waiting' ORDER BY created_at ASC"

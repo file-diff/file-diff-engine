@@ -153,3 +153,7 @@ GET /api/agents/tasks
 
 `task_id` is the local agent task job id. For Codex tasks, the captured Codex
 session id can also be used where supported.
+
+The list views return visible task jobs, including completed jobs that have not
+been soft-deleted. A completed task is automatically soft-deleted only when its
+completion mode is `AutoMerge` and the pull request is successfully merged.
