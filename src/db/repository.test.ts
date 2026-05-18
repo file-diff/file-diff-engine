@@ -109,4 +109,40 @@ describe("JobRepository", () => {
     ).resolves.toBe(true);
     await expect(repository.listActiveAgentTaskJobs()).resolves.toEqual([]);
   });
+
+  it("lists completed visible agent task jobs until they are soft-deleted", async () => {
+    const database = await createTestDatabase();
+    const repository = new JobRepository(database);
+
+    await repository.createAgentTaskJob({
+      id: "job-visible",
+      repo: "file-diff/file-diff-engine",
+      taskRunner: "codex",
+      model: "gpt-5.2-codex",
+      baseRef: "main",
+    });
+    await repository.createAgentTaskJob({
+      id: "job-hidden",
+      repo: "file-diff/file-diff-engine",
+      taskRunner: "opencode",
+      model: "deepseek-v4-flash",
+      baseRef: "main",
+    });
+    await repository.updateAgentTaskJobStatus("job-visible", "completed");
+    await repository.updateAgentTaskJobStatus("job-hidden", "completed");
+    await repository.markAgentTaskJobDeleted("job-hidden");
+
+    await expect(repository.listActiveAgentTaskJobs()).resolves.toEqual([]);
+    await expect(
+      repository.listVisibleAgentTaskJobs("file-diff/file-diff-engine")
+    ).resolves.toMatchObject([
+      {
+        id: "job-visible",
+        status: "completed",
+        deletedAt: null,
+      },
+    ]);
+
+    await database.end();
+  });
 });

@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { applyPullRequestCompletionMode } from "./pullRequestCompletion";
+import {
+  applyPullRequestCompletionMode,
+  applyPullRequestCompletionModeWithResult,
+} from "./pullRequestCompletion";
 import { JobRepository } from "../db/repository";
 import { createTestDatabase } from "../__tests__/helpers/testDatabase";
 import { GitHubApiError } from "./githubApi";
@@ -56,6 +59,31 @@ describe("applyPullRequestCompletionMode", () => {
     expect(githubApi.mergePullRequest).not.toHaveBeenCalled();
   });
 
+  it("reports AutoReady as not merged in the structured result", async () => {
+    vi.mocked(githubApi.findOpenPullRequestByHeadBranch).mockResolvedValue({
+      number: 43,
+      title: "Task PR",
+      url: "https://github.com/file-diff/file-diff-engine/pull/43",
+      state: "open",
+      draft: true,
+      baseBranch: "main",
+    });
+    vi.mocked(githubApi.markPullRequestReady).mockResolvedValue();
+
+    await expect(
+      applyPullRequestCompletionModeWithResult({
+        repo: "file-diff/file-diff-engine",
+        branch: "fd-agent/test",
+        pullNumber: 43,
+        mode: "AutoReady",
+      })
+    ).resolves.toEqual({
+      actions: ["Marked pull request #43 as ready for review."],
+      merged: false,
+    });
+    expect(githubApi.mergePullRequest).not.toHaveBeenCalled();
+  });
+
   it("marks draft pull requests ready, merges them, and deletes the branch for AutoMerge", async () => {
     vi.mocked(githubApi.findOpenPullRequestByHeadBranch).mockResolvedValue({
       number: 99,
@@ -99,6 +127,38 @@ describe("applyPullRequestCompletionMode", () => {
     );
   });
 
+  it("reports successful AutoMerge in the structured result", async () => {
+    vi.mocked(githubApi.findOpenPullRequestByHeadBranch).mockResolvedValue({
+      number: 104,
+      title: "Task PR",
+      url: "https://github.com/file-diff/file-diff-engine/pull/104",
+      state: "open",
+      draft: false,
+      baseBranch: "main",
+    });
+    vi.mocked(githubApi.mergePullRequest).mockResolvedValue({
+      merged: true,
+      message: "Pull Request successfully merged",
+      sha: "abcdef1234567890",
+    });
+    vi.mocked(githubApi.deleteRemoteBranch).mockResolvedValue();
+
+    await expect(
+      applyPullRequestCompletionModeWithResult({
+        repo: "file-diff/file-diff-engine",
+        branch: "fd-agent/test",
+        pullNumber: 104,
+        mode: "AutoMerge",
+      })
+    ).resolves.toEqual({
+      actions: [
+        "Merged pull request #104 (abcdef1).",
+        "Deleted branch 'fd-agent/test' after successful merge.",
+      ],
+      merged: true,
+    });
+  });
+
   it("reports protected branch and skips deletion when merge is blocked", async () => {
     vi.mocked(githubApi.findOpenPullRequestByHeadBranch).mockResolvedValue({
       number: 100,
@@ -126,6 +186,38 @@ describe("applyPullRequestCompletionMode", () => {
       "Pull request #100 could not be merged because the base branch 'main' is protected or required checks are not satisfied: At least 1 approving review is required by reviewers with write access.. Pull request was left open.",
     ]);
 
+    expect(githubApi.deleteRemoteBranch).not.toHaveBeenCalled();
+  });
+
+  it("reports blocked AutoMerge as not merged in the structured result", async () => {
+    vi.mocked(githubApi.findOpenPullRequestByHeadBranch).mockResolvedValue({
+      number: 105,
+      title: "Task PR",
+      url: "https://github.com/file-diff/file-diff-engine/pull/105",
+      state: "open",
+      draft: false,
+      baseBranch: "main",
+    });
+    vi.mocked(githubApi.mergePullRequest).mockRejectedValue(
+      new GitHubApiError(
+        "At least 1 approving review is required by reviewers with write access.",
+        405
+      )
+    );
+
+    await expect(
+      applyPullRequestCompletionModeWithResult({
+        repo: "file-diff/file-diff-engine",
+        branch: "fd-agent/test",
+        pullNumber: 105,
+        mode: "AutoMerge",
+      })
+    ).resolves.toEqual({
+      actions: [
+        "Pull request #105 could not be merged because the base branch 'main' is protected or required checks are not satisfied: At least 1 approving review is required by reviewers with write access.. Pull request was left open.",
+      ],
+      merged: false,
+    });
     expect(githubApi.deleteRemoteBranch).not.toHaveBeenCalled();
   });
 

@@ -1131,7 +1131,9 @@ Returns the updated agent task job record.
 
 ### `GET /api/agents/repos/:owner/:repo/tasks`
 
-Lists active (waiting or running) locally-managed agent task jobs for the repository.
+Lists visible locally-managed agent task jobs for the repository. Completed
+tasks remain visible unless they have been soft-deleted, including automatic
+soft deletion after a successful `AutoMerge`.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -1139,7 +1141,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 
 Status: `200 OK`
 
-Returns an array of active agent task job records for the repository.
+Returns an array of visible agent task job records for the repository.
 
 #### Common statuses
 
@@ -1158,7 +1160,9 @@ curl https://your-host.example.com/api/agents/repos/facebook/react/tasks \
 
 ### `GET /api/agents/tasks`
 
-Lists active (waiting or running) locally-managed agent task jobs across all repositories.
+Lists visible locally-managed agent task jobs across all repositories. Completed
+tasks remain visible unless they have been soft-deleted, including automatic
+soft deletion after a successful `AutoMerge`.
 
 This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and the client to send `Authorization: Bearer <token>`.
 
@@ -1166,7 +1170,7 @@ This endpoint requires the server to be configured with `ADMIN_BEARER_TOKEN` and
 
 Status: `200 OK`
 
-Returns an array of active agent task job records.
+Returns an array of visible agent task job records.
 
 #### Common statuses
 
