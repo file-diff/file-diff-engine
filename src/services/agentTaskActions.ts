@@ -43,7 +43,7 @@ export async function cancelAgentTaskJob(
     getQueueJobNameForTaskRunner(job.taskRunner)
   );
   if (job.status === "waiting" || removedQueuedJob) {
-    await jobRepo.updateAgentTaskStatus(taskId, "canceled", job.branch ?? undefined);
+    await jobRepo.updateAgentTaskBranch(taskId, job.branch ?? undefined);
     await jobRepo.updateAgentTaskJobStatus(taskId, "canceled", CANCEL_MESSAGE);
   }
 
@@ -68,7 +68,7 @@ export async function deleteAgentTaskJob(
       getQueueJobNameForTaskRunner(job.taskRunner)
     );
     if (job.status === "waiting" || removedQueuedJob) {
-      await jobRepo.updateAgentTaskStatus(taskId, "canceled", job.branch ?? undefined);
+      await jobRepo.updateAgentTaskBranch(taskId, job.branch ?? undefined);
       await jobRepo.updateAgentTaskJobStatus(taskId, "canceled", CANCEL_MESSAGE);
     }
   }
