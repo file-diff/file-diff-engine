@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { newDb } from "pg-mem";
 import { createTestDatabase } from "../__tests__/helpers/testDatabase";
+import { getDatabase } from "./database";
 import { JobRepository } from "./repository";
 
 describe("JobRepository", () => {
@@ -142,6 +144,76 @@ describe("JobRepository", () => {
         deletedAt: null,
       },
     ]);
+
+    await database.end();
+  });
+
+  it("resets legacy agent task rows once and recreates a clean table", async () => {
+    const db = newDb();
+    const { Pool } = db.adapters.createPg();
+    const pool = new Pool();
+
+    await pool.query(`
+      CREATE TABLE agent_task_jobs (
+        id TEXT PRIMARY KEY,
+        repo TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'waiting',
+        github_task_id TEXT,
+        task_status TEXT,
+        branch_name TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`
+      INSERT INTO agent_task_jobs (
+        id,
+        repo,
+        status,
+        github_task_id,
+        task_status,
+        branch_name
+      )
+      VALUES (
+        'legacy-job',
+        'file-diff/file-diff-engine',
+        'completed',
+        'github-task-1',
+        'done',
+        'legacy-branch'
+      )
+    `);
+
+    const database = await getDatabase({ pool });
+    const repository = new JobRepository(database);
+
+    await expect(repository.listVisibleAgentTaskJobs()).resolves.toEqual([]);
+    const columns = await database.query<{ column_name: string }>(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_name = 'agent_task_jobs'
+       ORDER BY column_name`
+    );
+    expect(columns.rows.map((row) => row.column_name)).not.toEqual(
+      expect.arrayContaining(["github_task_id", "task_status"])
+    );
+
+    await repository.createAgentTaskJob({
+      id: "new-job",
+      repo: "file-diff/file-diff-engine",
+      taskRunner: "codex",
+      model: "gpt-5.2-codex",
+      baseRef: "main",
+    });
+
+    await expect(repository.listVisibleAgentTaskJobs()).resolves.toMatchObject([
+      { id: "new-job" },
+    ]);
+
+    const migrations = await database.query(
+      "SELECT * FROM schema_migrations WHERE id = '2026-05-21-reset-agent-task-jobs'"
+    );
+    expect(migrations.rowCount).toBe(1);
 
     await database.end();
   });

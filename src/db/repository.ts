@@ -73,8 +73,6 @@ function mapAgentTaskJobRow(row: Record<string, unknown>): AgentTaskJobInfo {
       row.pull_request_number === null || row.pull_request_number === undefined
         ? undefined
         : Number(row.pull_request_number),
-    taskId: (row.github_task_id as string | null) ?? undefined,
-    taskStatus: (row.task_status as string | null) ?? undefined,
     opencodeSessionId: (row.opencode_session_id as string | null) ?? undefined,
     opencodeSessionExport: parseStoredJsonValue(
       row.opencode_session_export,
@@ -112,8 +110,6 @@ export interface FileLookupRecord {
 export interface CreateAgentTaskJobParams {
   id: string;
   repo: string;
-  taskId?: string;
-  taskStatus?: string;
   branchName?: string | null;
   taskDelayMs?: number;
   scheduledAt?: Date | string | null;
@@ -139,8 +135,6 @@ export class JobRepository {
          id,
          repo,
          status,
-         github_task_id,
-         task_status,
          branch_name,
          task_runner,
          base_ref,
@@ -158,12 +152,10 @@ export class JobRepository {
          created_at,
          updated_at
         )
-       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+       VALUES ($1, $2, 'waiting', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [
         params.id,
         params.repo,
-        params.taskId ?? null,
-        params.taskStatus ?? null,
         params.branchName ?? null,
         params.taskRunner ?? null,
         params.baseRef ?? null,
@@ -235,10 +227,6 @@ export class JobRepository {
     await this.db.query(
       `UPDATE agent_task_jobs
        SET cancel_requested_at = COALESCE(cancel_requested_at, CURRENT_TIMESTAMP),
-           task_status = CASE
-             WHEN status IN ('waiting', 'active') THEN 'canceling'
-             ELSE task_status
-           END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1`,
       [id]
@@ -270,35 +258,13 @@ export class JobRepository {
     );
   }
 
-  async attachAgentTaskToJob(
-    id: string,
-    taskId: string,
-    taskStatus?: string,
-    branchName?: string
-  ): Promise<void> {
+  async updateAgentTaskBranch(id: string, branchName?: string): Promise<void> {
     await this.db.query(
       `UPDATE agent_task_jobs
-        SET github_task_id = $1,
-            task_status = COALESCE($2, task_status),
-            branch_name = COALESCE($3, branch_name),
+        SET branch_name = COALESCE($1, branch_name),
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = $4`,
-      [taskId, taskStatus ?? null, branchName ?? null, id]
-    );
-  }
-
-  async updateAgentTaskStatus(
-    id: string,
-    taskStatus: string,
-    branchName?: string
-  ): Promise<void> {
-    await this.db.query(
-      `UPDATE agent_task_jobs
-        SET task_status = $1,
-            branch_name = COALESCE($2, branch_name),
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = $3`,
-      [taskStatus, branchName ?? null, id]
+        WHERE id = $2`,
+      [branchName ?? null, id]
     );
   }
 
@@ -373,7 +339,6 @@ export class JobRepository {
       `SELECT *
        FROM agent_task_jobs
        WHERE status = 'waiting'
-         AND github_task_id IS NULL
          AND deleted_at IS NULL
        ORDER BY COALESCE(scheduled_at, created_at) ASC, created_at ASC`
     );

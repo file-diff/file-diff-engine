@@ -308,13 +308,13 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     lastKnownPullRequestUrl = existingJob?.pullRequestUrl;
     if (existingJob?.status === "canceled" || existingJob?.cancelRequestedAt) {
       logger.info(`${tag} Skipping canceled task job`);
-      await repo.updateAgentTaskStatus(jobId, "canceled");
+      await repo.updateAgentTaskBranch(jobId);
       await repo.updateAgentTaskJobStatus(jobId, "canceled", "Task canceled by request.");
       return;
     }
 
     await repo.updateAgentTaskJobStatus(jobId, "active");
-    await repo.updateAgentTaskStatus(jobId, "preparing");
+    await repo.updateAgentTaskBranch(jobId);
 
     const continuation = await resolveContinuationTask(
       repo,
@@ -365,7 +365,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       prepared.pullRequest.url,
       prepared.pullRequest.number
     );
-    await repo.updateAgentTaskStatus(jobId, "working", prepared.branch);
+    await repo.updateAgentTaskBranch(jobId, prepared.branch);
     const persistLogs = async (logs: OpencodeCapturedLogs): Promise<void> => {
       lastCapturedLogs = logs;
       await repo.updateAgentTaskLogs(jobId, logs);
@@ -412,7 +412,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
       pullRequestActions = pullRequestCompletionResult.actions;
       autoMergeSucceeded = pullRequestCompletionResult.merged;
     }
-    await repo.updateAgentTaskStatus(jobId, "completed", prepared.branch);
+    await repo.updateAgentTaskBranch(jobId, prepared.branch);
     await repo.updateAgentTaskLogs(jobId, logs);
     await repo.updateAgentTaskJobStatus(jobId, "completed");
     if (autoMergeSucceeded) {
@@ -441,7 +441,7 @@ async function handleAgentTaskJob(job: Job, repo: JobRepository): Promise<void> 
     if (cancellationRequested) {
       const cancelMessage = "Task canceled by request.";
       logger.warn(`${tag} Job canceled for repo=${repoName}: ${cancelMessage}`);
-      await repo.updateAgentTaskStatus(jobId, "canceled", lastKnownBranchName ?? undefined);
+      await repo.updateAgentTaskBranch(jobId, lastKnownBranchName ?? undefined);
       await repo.updateAgentTaskJobStatus(jobId, "canceled", cancelMessage);
       if (logs) {
         lastCapturedLogs = logs;

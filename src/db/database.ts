@@ -9,6 +9,9 @@ export interface DatabaseConfig {
 
 export type DatabaseClient = Pool;
 
+const RESET_AGENT_TASK_JOBS_MIGRATION_ID =
+  "2026-05-21-reset-agent-task-jobs";
+
 function createPool(): Pool {
   const baseConfig: PoolConfig = {
     idleTimeoutMillis: parseNonNegativeInteger(
@@ -52,6 +55,8 @@ export async function getDatabase(
 async function initSchema(db: DatabaseClient): Promise<void> {
   await db.query("BEGIN");
   try {
+    await ensureMigrationLedger(db);
+    await runResetAgentTaskJobsMigration(db);
     await db.query(`
       CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY,
@@ -83,8 +88,6 @@ async function initSchema(db: DatabaseClient): Promise<void> {
         id TEXT PRIMARY KEY,
         repo TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'waiting',
-        github_task_id TEXT,
-        task_status TEXT,
         branch_name TEXT,
         task_runner TEXT,
         base_ref TEXT,
@@ -118,12 +121,6 @@ async function initSchema(db: DatabaseClient): Promise<void> {
       ADD COLUMN IF NOT EXISTS file_disk_path TEXT NOT NULL DEFAULT '';
 
       -- Migration safety for existing databases created before task-tracking columns existed.
-      ALTER TABLE agent_task_jobs
-      ADD COLUMN IF NOT EXISTS github_task_id TEXT;
-
-      ALTER TABLE agent_task_jobs
-      ADD COLUMN IF NOT EXISTS task_status TEXT;
-
       ALTER TABLE agent_task_jobs
       ADD COLUMN IF NOT EXISTS branch_name TEXT;
 
@@ -210,6 +207,50 @@ async function initSchema(db: DatabaseClient): Promise<void> {
     await db.query("ROLLBACK");
     throw error;
   }
+}
+
+async function ensureMigrationLedger(db: DatabaseClient): Promise<void> {
+  if (await tableExists(db, "schema_migrations")) {
+    return;
+  }
+
+  await db.query(`
+    CREATE TABLE schema_migrations (
+      id TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+}
+
+async function runResetAgentTaskJobsMigration(
+  db: DatabaseClient
+): Promise<void> {
+  const result = await db.query(
+    "SELECT 1 FROM schema_migrations WHERE id = $1",
+    [RESET_AGENT_TASK_JOBS_MIGRATION_ID]
+  );
+  if (result.rowCount && result.rowCount > 0) {
+    return;
+  }
+
+  await db.query("DROP TABLE IF EXISTS agent_task_jobs");
+  await db.query("DROP INDEX IF EXISTS agent_task_jobs_pkey");
+  await db.query("INSERT INTO schema_migrations (id) VALUES ($1)", [
+    RESET_AGENT_TASK_JOBS_MIGRATION_ID,
+  ]);
+}
+
+async function tableExists(
+  db: DatabaseClient,
+  tableName: string
+): Promise<boolean> {
+  const result = await db.query(
+    `SELECT 1
+     FROM information_schema.tables
+     WHERE table_name = $1`,
+    [tableName]
+  );
+  return Boolean(result.rowCount && result.rowCount > 0);
 }
 
 function parseNonNegativeInteger(

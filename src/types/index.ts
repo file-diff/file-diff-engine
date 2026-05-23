@@ -516,8 +516,6 @@ export interface AgentTaskJobSummary {
   pullRequestCompletionMode?: PullRequestCompletionMode;
   pullRequestUrl?: string;
   pullRequestNumber?: number;
-  taskId?: string;
-  taskStatus?: string;
   opencodeSessionId?: string;
   opencodeSessionExport?: unknown;
   codexSessionId?: string;
