@@ -1,4 +1,5 @@
 import { execFile } from "child_process";
+import { createHash } from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -6,6 +7,7 @@ import { promisify } from "util";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   listRepositoryBranches,
+  listRepositoryCommits,
   listRepositoryTags,
 } from "./repoProcessor";
 
@@ -33,6 +35,11 @@ async function createLocalRepository(): Promise<{ repoDir: string; rootDir: stri
   await runGit(repoDir, ["config", "user.name", "Test User"]);
 
   return { repoDir, rootDir };
+}
+
+function getMetadataCacheLockDir(repoUrl: string, tmpDir: string): string {
+  const cacheKey = createHash("sha256").update(repoUrl).digest("hex");
+  return path.join(tmpDir, "repo-cache", `${cacheKey}.metadata.lock`);
 }
 
 describe("repoProcessor discovery cache", () => {
@@ -105,5 +112,51 @@ describe("repoProcessor discovery cache", () => {
 
     const branches = await listRepositoryBranches(repoDir);
     expect(branches.map((branch) => branch.name)).toEqual(["main"]);
+  });
+
+  it("removes stale metadata cache locks before listing commits", async () => {
+    const { repoDir, rootDir } = await createLocalRepository();
+    roots.push(rootDir);
+    process.env.TMP_DIR = path.join(rootDir, "tmp");
+
+    const commit = await createCommit(repoDir, "file.txt", "first\n");
+    const lockDir = getMetadataCacheLockDir(repoDir, process.env.TMP_DIR);
+    fs.mkdirSync(lockDir, { recursive: true });
+    const staleDate = new Date(Date.now() - 31 * 60 * 1000);
+    fs.utimesSync(lockDir, staleDate, staleDate);
+
+    await expect(listRepositoryCommits(repoDir, 10)).resolves.toEqual([
+      expect.objectContaining({
+        commit,
+        branch: "main",
+      }),
+    ]);
+    expect(fs.existsSync(lockDir)).toBe(false);
+  });
+
+  it("serializes concurrent metadata cache refreshes while listing commits", async () => {
+    const { repoDir, rootDir } = await createLocalRepository();
+    roots.push(rootDir);
+    process.env.TMP_DIR = path.join(rootDir, "tmp");
+
+    const firstCommit = await createCommit(repoDir, "file.txt", "first\n");
+    const secondCommit = await createCommit(repoDir, "file.txt", "second\n");
+
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () => listRepositoryCommits(repoDir, 10))
+    );
+
+    for (const commits of results) {
+      expect(commits.map((commit) => commit.commit)).toEqual([
+        secondCommit,
+        firstCommit,
+      ]);
+      expect(commits[0]).toEqual(
+        expect.objectContaining({
+          branch: "main",
+          parents: [firstCommit],
+        })
+      );
+    }
   });
 });

@@ -18,6 +18,9 @@ const execFileAsync = promisify(execFile);
 const logger = createLogger("repo-processor");
 const CACHE_COLLISION_MAX_ATTEMPTS = 5;
 const CACHE_COLLISION_RETRY_DELAY_MS = 5000;
+const CACHE_LOCK_RETRY_DELAY_MS = 100;
+const CACHE_LOCK_MAX_WAIT_MS = 60000;
+const CACHE_LOCK_STALE_MS = 30 * 60 * 1000;
 const GITHUB_HOSTNAME = "github.com";
 
 /**
@@ -214,13 +217,14 @@ export async function resolveRefToCommitHash(
 }
 
 export async function listRepositoryRefs(repoUrl: string): Promise<GitRefSummary[]> {
-  assertSafeGitRepositoryUrl(repoUrl);
-  const cacheDir = await getRepositoryMetadataCache(repoUrl, {
-    refreshRefs: true,
-    fetchDepth: 1,
-  });
-
-  return listRepositoryRefsFromCache(cacheDir);
+  return withRepositoryMetadataCache(
+    repoUrl,
+    {
+      refreshRefs: true,
+      fetchDepth: 1,
+    },
+    (cacheDir) => listRepositoryRefsFromCache(cacheDir)
+  );
 }
 
 async function listRepositoryRefsFromCache(cacheDir: string): Promise<GitRefSummary[]> {
@@ -277,108 +281,109 @@ export async function listRepositoryTags(
   repoUrl: string,
   limit: number
 ): Promise<TagSummary[]> {
-  assertSafeGitRepositoryUrl(repoUrl);
   if (!Number.isInteger(limit) || limit <= 0) {
     throw new Error("Field 'limit' must be a positive integer.");
   }
 
-  const cacheDir = await getRepositoryMetadataCache(repoUrl, {
-    refreshRefs: true,
-    fetchDepth: 1,
-  });
-  const output = await runGitCommand(cacheDir, [
-    "for-each-ref",
-    "--sort=-creatordate",
-    `--format=%(refname)\x1f%(objectname)\x1f%(*objectname)`,
-    `--count=${limit}`,
-    "refs/tags",
-  ]);
+  return withRepositoryMetadataCache(
+    repoUrl,
+    {
+      refreshRefs: true,
+      fetchDepth: 1,
+    },
+    async (cacheDir) => {
+      const output = await runGitCommand(cacheDir, [
+        "for-each-ref",
+        "--sort=-creatordate",
+        `--format=%(refname)\x1f%(objectname)\x1f%(*objectname)`,
+        `--count=${limit}`,
+        "refs/tags",
+      ]);
 
-  return output
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const [ref, objectHash, peeledHash = ""] = line.split("\x1f");
-      const name = ref.slice("refs/tags/".length);
-      const commit = (peeledHash || objectHash).toLowerCase();
-      return {
-        name,
-        ref,
-        commit,
-        commitShort: getCommitShort(commit),
-      } satisfies TagSummary;
-    });
+      return output
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const [ref, objectHash, peeledHash = ""] = line.split("\x1f");
+          const name = ref.slice("refs/tags/".length);
+          const commit = (peeledHash || objectHash).toLowerCase();
+          return {
+            name,
+            ref,
+            commit,
+            commitShort: getCommitShort(commit),
+          } satisfies TagSummary;
+        });
+    }
+  );
 }
 
 export async function listRepositoryBranches(repoUrl: string): Promise<BranchSummary[]> {
-  assertSafeGitRepositoryUrl(repoUrl);
-  const cacheDir = await getRepositoryMetadataCache(repoUrl, {
-    refreshRefs: true,
-    fetchDepth: 1,
-  });
-  const { branchRef } = await getHeadReferenceFromCache(cacheDir);
-  const defaultBranch =
-    branchRef?.startsWith("refs/heads/") ? branchRef.slice("refs/heads/".length) : null;
-  const refs = await listRepositoryRefsFromCache(cacheDir);
-  const branches = refs.filter((ref) => ref.type === "branch");
+  const githubRepo = getGitHubRepoName(repoUrl);
+  const branches = await withRepositoryMetadataCache(
+    repoUrl,
+    {
+      refreshRefs: true,
+      fetchDepth: 1,
+    },
+    async (cacheDir) => {
+      const { branchRef } = await getHeadReferenceFromCache(cacheDir);
+      const defaultBranch =
+        branchRef?.startsWith("refs/heads/") ? branchRef.slice("refs/heads/".length) : null;
+      const refs = await listRepositoryRefsFromCache(cacheDir);
+      const branches = refs.filter((ref) => ref.type === "branch");
 
-  if (branches.length === 0) {
-    return [];
-  }
-
-  const tagsByCommit = new Map<string, string[]>();
-  for (const ref of refs) {
-    if (ref.type !== "tag") {
-      continue;
-    }
-
-    const tags = tagsByCommit.get(ref.commit) ?? [];
-    tags.push(ref.name);
-    tagsByCommit.set(ref.commit, tags);
-  }
-
-  {
-    const output = await runGitCommand(cacheDir, [
-      "for-each-ref",
-      `--format=%(refname)\x1f%(objectname)\x1f%(committerdate:iso-strict)\x1f%(authorname)\x1f%(subject)`,
-      "refs/remotes/origin",
-    ]);
-    const metadataByBranch = new Map<
-      string,
-      {
-        date: string;
-        author: string;
-        title: string;
-      }
-    >();
-
-    for (const line of output.split("\n").filter(Boolean)) {
-      const [ref, , date = "", author = "", title = ""] = line.split("\x1f");
-      if (!ref || ref === "refs/remotes/origin/HEAD") {
-        continue;
+      if (branches.length === 0) {
+        return [];
       }
 
-      const branchName = ref.startsWith("refs/remotes/origin/")
-        ? ref.slice("refs/remotes/origin/".length)
-        : null;
-      if (!branchName) {
-        continue;
+      const tagsByCommit = new Map<string, string[]>();
+      for (const ref of refs) {
+        if (ref.type !== "tag") {
+          continue;
+        }
+
+        const tags = tagsByCommit.get(ref.commit) ?? [];
+        tags.push(ref.name);
+        tagsByCommit.set(ref.commit, tags);
       }
 
-      metadataByBranch.set(branchName, {
-        date,
-        author,
-        title,
-      });
-    }
+      const output = await runGitCommand(cacheDir, [
+        "for-each-ref",
+        `--format=%(refname)\x1f%(objectname)\x1f%(committerdate:iso-strict)\x1f%(authorname)\x1f%(subject)`,
+        "refs/remotes/origin",
+      ]);
+      const metadataByBranch = new Map<
+        string,
+        {
+          date: string;
+          author: string;
+          title: string;
+        }
+      >();
 
-    const githubRepo = getGitHubRepoName(repoUrl);
-    return Promise.all(
-      branches.map(async (branch) => {
-        const metadata = metadataByBranch.get(branch.name);
-        const pullRequest = githubRepo
-          ? await getCommitPullRequest(githubRepo, branch.commit).catch(() => null)
+      for (const line of output.split("\n").filter(Boolean)) {
+        const [ref, , date = "", author = "", title = ""] = line.split("\x1f");
+        if (!ref || ref === "refs/remotes/origin/HEAD") {
+          continue;
+        }
+
+        const branchName = ref.startsWith("refs/remotes/origin/")
+          ? ref.slice("refs/remotes/origin/".length)
           : null;
+        if (!branchName) {
+          continue;
+        }
+
+        metadataByBranch.set(branchName, {
+          date,
+          author,
+          title,
+        });
+      }
+
+      return branches.map((branch) => {
+        const metadata = metadataByBranch.get(branch.name);
 
         return {
           name: branch.name,
@@ -389,98 +394,117 @@ export async function listRepositoryBranches(repoUrl: string): Promise<BranchSum
           author: metadata?.author ?? "",
           title: metadata?.title ?? "",
           isDefault: branch.name === defaultBranch,
-          pullRequestStatus: pullRequest?.state ?? "none",
-          pullRequest,
+          pullRequestStatus: "none",
+          pullRequest: null,
           tags: [...(tagsByCommit.get(branch.commit) ?? [])],
         } satisfies BranchSummary;
-      })
-    );
+      });
+    }
+  );
+
+  if (!githubRepo) {
+    return branches;
   }
+
+  return Promise.all(
+    branches.map(async (branch) => {
+      const pullRequest = await getCommitPullRequest(githubRepo, branch.commit).catch(
+        () => null
+      );
+      return {
+        ...branch,
+        pullRequestStatus: pullRequest?.state ?? "none",
+        pullRequest,
+      };
+    })
+  );
 }
 
 export async function listRepositoryCommits(
   repoUrl: string,
   limit: number
 ): Promise<CommitSummary[]> {
-  assertSafeGitRepositoryUrl(repoUrl);
   if (!Number.isInteger(limit) || limit <= 0) {
     throw new Error("Field 'limit' must be a positive integer.");
   }
 
-  const cacheDir = await getRepositoryMetadataCache(repoUrl, {
-    refreshRefs: true,
-    fetchDepth: limit,
-  });
-  const { branchRef } = await getHeadReferenceFromCache(cacheDir);
-  const defaultBranch =
-    branchRef?.startsWith("refs/heads/") ? branchRef.slice("refs/heads/".length) : null;
-  const refs = await listRepositoryRefsFromCache(cacheDir);
-  const refsByCommit = new Map<
-    string,
+  const githubRepo = getGitHubRepoName(repoUrl);
+  const commits = await withRepositoryMetadataCache(
+    repoUrl,
     {
-      branches: string[];
-      tags: string[];
-    }
-  >();
-
-  for (const ref of refs) {
-    const current = refsByCommit.get(ref.commit) ?? { branches: [], tags: [] };
-    if (ref.type === "branch") {
-      current.branches.push(ref.name);
-    } else {
-      current.tags.push(ref.name);
-    }
-    refsByCommit.set(ref.commit, current);
-  }
-
-  {
-    const output = await runGitCommand(cacheDir, [
-      "log",
-      "--remotes=origin",
-      "--date=iso-strict",
-      "--pretty=format:%H%x1f%cI%x1f%an%x1f%s%x1f%P",
-    ]);
-    const commits = output
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => {
-        const [commit, date, author, title, parents = ""] = line.split("\x1f");
-        const commitRefs = refsByCommit.get(commit) ?? { branches: [], tags: [] };
-        return {
-          commit,
-          date,
-          author,
-          title,
-          branch:
-            (defaultBranch && commitRefs.branches.includes(defaultBranch)
-              ? defaultBranch
-              : commitRefs.branches[0]) ?? null,
-          parents: parents ? parents.split(" ").filter(Boolean) : [],
-          pullRequest: null,
-          tags: [...commitRefs.tags],
-        } satisfies CommitSummary;
-      })
-      .sort((a, b) => compareCommitDatesDescending(a.date, b.date))
-      .slice(0, limit);
-
-    const githubRepo = getGitHubRepoName(repoUrl);
-    if (!githubRepo) {
-      return commits;
-    }
-
-    return Promise.all(
-      commits.map(async (commit) => {
-        try {
-          return {
-            ...commit,
-            pullRequest: await getCommitPullRequest(githubRepo, commit.commit),
-          };
-        } catch {
-          return commit;
+      refreshRefs: true,
+      fetchDepth: limit,
+    },
+    async (cacheDir) => {
+      const { branchRef } = await getHeadReferenceFromCache(cacheDir);
+      const defaultBranch =
+        branchRef?.startsWith("refs/heads/") ? branchRef.slice("refs/heads/".length) : null;
+      const refs = await listRepositoryRefsFromCache(cacheDir);
+      const refsByCommit = new Map<
+        string,
+        {
+          branches: string[];
+          tags: string[];
         }
-      })
-    );
+      >();
+
+      for (const ref of refs) {
+        const current = refsByCommit.get(ref.commit) ?? { branches: [], tags: [] };
+        if (ref.type === "branch") {
+          current.branches.push(ref.name);
+        } else {
+          current.tags.push(ref.name);
+        }
+        refsByCommit.set(ref.commit, current);
+      }
+
+      const output = await runGitCommand(cacheDir, [
+        "log",
+        "--remotes=origin",
+        "--date=iso-strict",
+        "--pretty=format:%H%x1f%cI%x1f%an%x1f%s%x1f%P",
+      ]);
+      return output
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const [commit, date, author, title, parents = ""] = line.split("\x1f");
+          const commitRefs = refsByCommit.get(commit) ?? { branches: [], tags: [] };
+          return {
+            commit,
+            date,
+            author,
+            title,
+            branch:
+              (defaultBranch && commitRefs.branches.includes(defaultBranch)
+                ? defaultBranch
+                : commitRefs.branches[0]) ?? null,
+            parents: parents ? parents.split(" ").filter(Boolean) : [],
+            pullRequest: null,
+            tags: [...commitRefs.tags],
+          } satisfies CommitSummary;
+        })
+        .sort((a, b) => compareCommitDatesDescending(a.date, b.date))
+        .slice(0, limit);
+    }
+  );
+
+  if (!githubRepo) {
+    return commits;
   }
+
+  return Promise.all(
+    commits.map(async (commit) => {
+      try {
+        return {
+          ...commit,
+          pullRequest: await getCommitPullRequest(githubRepo, commit.commit),
+        };
+      } catch {
+        return commit;
+      }
+    })
+  );
 }
 
 /**
@@ -755,14 +779,26 @@ async function getHeadReferenceFromCache(
   return { branchRef, commit };
 }
 
-async function getRepositoryMetadataCache(
+async function withRepositoryMetadataCache<T>(
   repoUrl: string,
-  options: { refreshRefs?: boolean; fetchDepth?: number } = {}
-): Promise<string> {
+  options: { refreshRefs?: boolean; fetchDepth?: number },
+  callback: (cacheDir: string) => Promise<T> | T
+): Promise<T> {
   assertSafeGitRepositoryUrl(repoUrl);
   const cacheDir = getRepositoryCacheDir(repoUrl);
   fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
 
+  return withRepositoryMetadataCacheLock(cacheDir, async () => {
+    await prepareRepositoryMetadataCache(cacheDir, repoUrl, options);
+    return callback(cacheDir);
+  });
+}
+
+async function prepareRepositoryMetadataCache(
+  cacheDir: string,
+  repoUrl: string,
+  options: { refreshRefs?: boolean; fetchDepth?: number }
+): Promise<void> {
   if (!fs.existsSync(path.join(cacheDir, ".git"))) {
     fs.rmSync(cacheDir, { recursive: true, force: true });
     await runGitCommandWithRetry(path.dirname(cacheDir), [
@@ -777,8 +813,102 @@ async function getRepositoryMetadataCache(
   if (options.refreshRefs) {
     await refreshRepositoryCacheRefs(cacheDir, options.fetchDepth);
   }
+}
 
-  return cacheDir;
+async function withRepositoryMetadataCacheLock<T>(
+  cacheDir: string,
+  callback: () => Promise<T> | T
+): Promise<T> {
+  const release = await acquireRepositoryMetadataCacheLock(cacheDir);
+  try {
+    return await callback();
+  } finally {
+    release();
+  }
+}
+
+async function acquireRepositoryMetadataCacheLock(
+  cacheDir: string
+): Promise<() => void> {
+  const lockDir = getRepositoryMetadataCacheLockDir(cacheDir);
+  const deadline = Date.now() + CACHE_LOCK_MAX_WAIT_MS;
+
+  fs.mkdirSync(path.dirname(lockDir), { recursive: true });
+
+  while (true) {
+    try {
+      fs.mkdirSync(lockDir);
+      try {
+        fs.writeFileSync(
+          path.join(lockDir, "owner"),
+          JSON.stringify({
+            pid: process.pid,
+            createdAt: new Date().toISOString(),
+          })
+        );
+      } catch (error) {
+        fs.rmSync(lockDir, { recursive: true, force: true });
+        throw error;
+      }
+      return () => {
+        fs.rmSync(lockDir, { recursive: true, force: true });
+      };
+    } catch (error) {
+      if (!isFileExistsError(error)) {
+        throw error;
+      }
+
+      if (removeStaleRepositoryMetadataCacheLock(lockDir)) {
+        continue;
+      }
+
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for repository metadata cache lock: ${cacheDir}`);
+      }
+
+      logger.debug("Waiting for repository metadata cache lock", { cacheDir, lockDir });
+      await wait(CACHE_LOCK_RETRY_DELAY_MS);
+    }
+  }
+}
+
+function getRepositoryMetadataCacheLockDir(cacheDir: string): string {
+  return `${cacheDir}.metadata.lock`;
+}
+
+function removeStaleRepositoryMetadataCacheLock(lockDir: string): boolean {
+  try {
+    const stats = fs.statSync(lockDir);
+    if (Date.now() - stats.mtimeMs < CACHE_LOCK_STALE_MS) {
+      return false;
+    }
+
+    fs.rmSync(lockDir, { recursive: true, force: true });
+    logger.warn("Removed stale repository metadata cache lock", { lockDir });
+    return true;
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return true;
+    }
+    throw error;
+  }
+}
+
+function isFileExistsError(error: unknown): boolean {
+  return isNodeErrorWithCode(error, "EEXIST");
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return isNodeErrorWithCode(error, "ENOENT");
+}
+
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === code
+  );
 }
 
 async function refreshRepositoryCacheRefs(
