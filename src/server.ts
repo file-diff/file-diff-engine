@@ -1,6 +1,7 @@
 import { createApp } from "./app";
 import { createWorker, recoverOrphanedWaitingJobs } from "./workers/repoWorker";
 import { createLogger } from "./utils/logger";
+import { loadBaseloadWorkersConfigFromRedis } from "./services/baseloadWorkerConfig";
 
 const PORT = parseInt(process.env.PORT || "12986", 10);
 const HOST = process.env.HOST || process.env.ADDR || "0.0.0.0";
@@ -8,7 +9,14 @@ const logger = createLogger("server");
 
 async function main() {
   const { app, queue, db } = await createApp();
-  const worker = await createWorker(db);
+  const { config: baseloadWorkersConfig, source: baseloadWorkersConfigSource } =
+    await loadBaseloadWorkersConfigFromRedis();
+  const worker = await createWorker(db, { baseloadWorkersConfig });
+  logger.info("Loaded baseload workers config.", {
+    source: baseloadWorkersConfigSource,
+    version: baseloadWorkersConfig.version,
+    workers: baseloadWorkersConfig.workers,
+  });
 
   queue.on("error", (error) => {
     logger.error("Queue connection error", {
