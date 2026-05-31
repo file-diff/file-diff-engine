@@ -64,6 +64,28 @@ describe("baseload worker config", () => {
     expect(store.set).toHaveBeenCalledTimes(1);
   });
 
+  it("replaces Redis configs that are missing queue entries", async () => {
+    const store = createStore(
+      JSON.stringify({
+        version: BASELOAD_WORKERS_CONFIG_VERSION,
+        workers: {
+          repo: { concurrency: 2 },
+          opencode: { concurrency: 3 },
+          codex: { concurrency: 4 },
+        },
+      })
+    );
+
+    const result = await loadBaseloadWorkersConfig(store);
+
+    expect(result.source).toBe("default");
+    expect(result.config).toEqual(DEFAULT_BASELOAD_WORKERS_CONFIG);
+    expect(store.set).toHaveBeenCalledWith(
+      BASELOAD_WORKERS_CONFIG_REDIS_KEY,
+      JSON.stringify(DEFAULT_BASELOAD_WORKERS_CONFIG)
+    );
+  });
+
   it("rejects unsupported config versions", () => {
     const parsed = parseBaseloadWorkersConfig(
       JSON.stringify({
