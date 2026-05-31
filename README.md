@@ -20,6 +20,8 @@ API reference:
 - `ADMIN_BEARER_TOKEN`: Required bearer token for every admin endpoint listed in [`SECURITY.md`](./SECURITY.md). It is also accepted on viewer endpoints.
 - `VIEWER_BEARER_TOKEN`: Required bearer token for every viewer endpoint listed in [`SECURITY.md`](./SECURITY.md).
 
+On startup, the server loads the versioned baseload worker configuration from Redis key `file-diff-engine:baseload-workers-config`. If the key is missing or invalid, the server writes the default version `1` config with five workers per queue kind before creating workers.
+
 ## CLI
 
 After building the project, you can run the revert helper from the CLI:

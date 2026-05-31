@@ -27,11 +27,14 @@ import {
 } from "../services/opencodeTask";
 import { applyPullRequestCompletionModeWithResult } from "../services/pullRequestCompletion";
 import {
-  MAX_CONCURRENCY_PER_TASK_KIND,
   QUEUE_NAMES,
   type ManagedQueue,
   type QueueJobName,
 } from "../services/queue";
+import {
+  DEFAULT_BASELOAD_WORKERS_CONFIG,
+  type BaseloadWorkersConfig,
+} from "../services/baseloadWorkerConfig";
 import {
   sendAgentTaskFinishedSlackNotification,
   type AgentTaskSlackNotification,
@@ -50,16 +53,46 @@ export interface WorkerManager {
   close(): Promise<void>;
 }
 
-export async function createWorker(db?: DatabaseClient): Promise<WorkerManager> {
+export interface WorkerManagerOptions {
+  baseloadWorkersConfig?: BaseloadWorkersConfig;
+}
+
+export async function createWorker(
+  db?: DatabaseClient,
+  options?: WorkerManagerOptions
+): Promise<WorkerManager> {
   const database = db ?? (await getDatabase());
   const repo = new JobRepository(database);
+  const baseloadWorkersConfig =
+    options?.baseloadWorkersConfig ?? DEFAULT_BASELOAD_WORKERS_CONFIG;
   logger.info("Worker connected to database, ready to process jobs.");
 
   const workers = [
-    createNamedWorker(QUEUE_NAMES.repo, repo, "process-repo", true),
-    createNamedWorker(QUEUE_NAMES.opencode, repo, "create-opencode-task"),
-    createNamedWorker(QUEUE_NAMES.codex, repo, "create-codex-task"),
-    createNamedWorker(QUEUE_NAMES.claude, repo, "create-claude-task"),
+    createNamedWorker(
+      QUEUE_NAMES.repo,
+      repo,
+      "process-repo",
+      baseloadWorkersConfig.workers.repo.concurrency,
+      true
+    ),
+    createNamedWorker(
+      QUEUE_NAMES.opencode,
+      repo,
+      "create-opencode-task",
+      baseloadWorkersConfig.workers.opencode.concurrency
+    ),
+    createNamedWorker(
+      QUEUE_NAMES.codex,
+      repo,
+      "create-codex-task",
+      baseloadWorkersConfig.workers.codex.concurrency
+    ),
+    createNamedWorker(
+      QUEUE_NAMES.claude,
+      repo,
+      "create-claude-task",
+      baseloadWorkersConfig.workers.claude.concurrency
+    ),
   ];
 
   return {
@@ -74,6 +107,7 @@ function createNamedWorker(
   queueName: string,
   repo: JobRepository,
   expectedJobName: QueueJobName,
+  concurrency: number,
   allowLegacyAgentTasks = false
 ): Worker {
   const worker = new Worker(
@@ -102,7 +136,7 @@ function createNamedWorker(
         port: REDIS_PORT,
         maxRetriesPerRequest: null,
       },
-      concurrency: MAX_CONCURRENCY_PER_TASK_KIND,
+      concurrency,
     }
   );
 

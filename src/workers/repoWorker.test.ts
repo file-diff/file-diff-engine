@@ -1,9 +1,26 @@
 import type { Job } from "bullmq";
+import { Worker } from "bullmq";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTestDatabase } from "../__tests__/helpers/testDatabase";
 import { JobRepository } from "../db/repository";
+import { DEFAULT_BASELOAD_WORKERS_CONFIG } from "../services/baseloadWorkerConfig";
 import type { ManagedQueue } from "../services/queue";
-import { recoverOrphanedWaitingJobs } from "./repoWorker";
+import { createWorker, recoverOrphanedWaitingJobs } from "./repoWorker";
+
+vi.mock("bullmq", () => ({
+  Worker: vi.fn().mockImplementation(function (
+    this: Record<string, unknown>,
+    queueName,
+    processor,
+    options
+  ) {
+    this.queueName = queueName;
+    this.processor = processor;
+    this.options = options;
+    this.on = vi.fn();
+    this.close = vi.fn().mockResolvedValue(undefined);
+  }),
+}));
 
 const COMMIT_A = "a".repeat(40);
 const COMMIT_B = "b".repeat(40);
@@ -11,6 +28,7 @@ const REPO = "file-diff/file-diff-engine";
 
 describe("recoverOrphanedWaitingJobs", () => {
   afterEach(() => {
+    vi.clearAllMocks();
     vi.restoreAllMocks();
   });
 
@@ -106,6 +124,62 @@ describe("recoverOrphanedWaitingJobs", () => {
       const recovered = await recoverOrphanedWaitingJobs(database, queue);
       expect(recovered).toBe(1);
       expect(add).toHaveBeenCalledTimes(2);
+    } finally {
+      await database.end();
+    }
+  });
+});
+
+describe("createWorker", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  it("uses baseload worker config concurrency per queue kind", async () => {
+    const database = await createTestDatabase();
+    const config = {
+      ...DEFAULT_BASELOAD_WORKERS_CONFIG,
+      workers: {
+        repo: { concurrency: 1 },
+        opencode: { concurrency: 2 },
+        codex: { concurrency: 3 },
+        claude: { concurrency: 4 },
+      },
+    };
+
+    try {
+      const manager = await createWorker(database, {
+        baseloadWorkersConfig: config,
+      });
+
+      expect(Worker).toHaveBeenCalledTimes(4);
+      expect((Worker as unknown as ReturnType<typeof vi.fn>).mock.calls).toEqual(
+        expect.arrayContaining([
+          expect.arrayContaining([
+            "repo-processing",
+            expect.any(Function),
+            expect.objectContaining({ concurrency: 1 }),
+          ]),
+          expect.arrayContaining([
+            "repo-processing-opencode",
+            expect.any(Function),
+            expect.objectContaining({ concurrency: 2 }),
+          ]),
+          expect.arrayContaining([
+            "repo-processing-codex",
+            expect.any(Function),
+            expect.objectContaining({ concurrency: 3 }),
+          ]),
+          expect.arrayContaining([
+            "repo-processing-claude",
+            expect.any(Function),
+            expect.objectContaining({ concurrency: 4 }),
+          ]),
+        ])
+      );
+
+      await manager.close();
     } finally {
       await database.end();
     }
