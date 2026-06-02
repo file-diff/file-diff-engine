@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  AGENT_TASK_SERIAL_QUEUE_NAMES,
   getQueueJobNameForTaskRunner,
   getQueueNameForJobName,
   MAX_CONCURRENCY_PER_TASK_KIND,
@@ -15,7 +16,17 @@ describe("queue routing", () => {
   });
 
   it("uses BullMQ-safe queue names", () => {
-    expect(Object.values(QUEUE_NAMES).every((name) => !name.includes(":"))).toBe(true);
+    const queueNames = [
+      ...Object.values(QUEUE_NAMES),
+      ...Object.values(AGENT_TASK_SERIAL_QUEUE_NAMES),
+    ];
+    expect(queueNames.every((name) => !name.includes(":"))).toBe(true);
+  });
+
+  it("defines serial queue names for agent task runners", () => {
+    expect(AGENT_TASK_SERIAL_QUEUE_NAMES.opencode).toBe("repo-processing-opencode-serial");
+    expect(AGENT_TASK_SERIAL_QUEUE_NAMES.codex).toBe("repo-processing-codex-serial");
+    expect(AGENT_TASK_SERIAL_QUEUE_NAMES.claude).toBe("repo-processing-claude-serial");
   });
 
   it("uses five workers per job kind", () => {

@@ -450,6 +450,8 @@ export interface CreateTaskRequest {
   branch_title?: string;
   /** Optional delay in milliseconds before starting the remote task */
   task_delay_ms?: number;
+  /** Optional serial queue start; cannot be combined with a positive task_delay_ms */
+  queue?: boolean;
   /** Optional DeepSeek API key override for this task. Prefer DEEPSEEK_API_KEY in production. */
   deepseek_api_key?: string;
   /** Optional GitHub token override used for branch, commit, push, and PR creation. */
@@ -480,6 +482,8 @@ export interface CreatePullRequestReviewRequest {
   system_prompt?: string;
   /** Optional delay in milliseconds before starting the review task */
   task_delay_ms?: number;
+  /** Optional serial queue start; cannot be combined with a positive task_delay_ms */
+  queue?: boolean;
   /** Optional DeepSeek API key override for this task. Prefer DEEPSEEK_API_KEY in production. */
   deepseek_api_key?: string;
   /** Optional GitHub token override used for PR lookup and repository checkout. */

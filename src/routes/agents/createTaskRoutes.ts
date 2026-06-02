@@ -107,6 +107,7 @@ export function registerAgentCreateTaskRoutes(
         branch,
         branch_title,
         task_delay_ms,
+        queue: shouldQueueTask,
         deepseek_api_key,
         githubKey,
       } = request.body ?? {};
@@ -208,6 +209,12 @@ export function registerAgentCreateTaskRoutes(
         return reply.code(400).send(response);
       }
 
+      const queueError = validateQueueTaskStart(shouldQueueTask, task_delay_ms);
+      if (queueError) {
+        const response: ErrorResponse = { error: queueError };
+        return reply.code(400).send(response);
+      }
+
       const [owner, repoName] = repo.split("/", 2);
       const previousTask = previousSessionResult.job;
       const effectiveBaseRef = previousTask?.baseRef ?? base_ref;
@@ -230,6 +237,7 @@ export function registerAgentCreateTaskRoutes(
         return reply.code(400).send(response);
       }
       const taskDelayMs = task_delay_ms ?? 0;
+      const queueTaskStart = shouldQueueTask === true;
       const taskModel = resolveTaskModel(taskRunner, model);
       const jobId = randomUUID();
       const scheduledAt = taskDelayMs > 0
@@ -246,7 +254,7 @@ export function registerAgentCreateTaskRoutes(
 
       let agentTaskJobCreated = false;
       try {
-        logger.info(`AgentTask: Scheduling ${taskRunner} task job=${jobId} repo=${repo} model=${taskModel} delay_ms=${taskDelayMs}`);
+        logger.info(`AgentTask: Scheduling ${taskRunner} task job=${jobId} repo=${repo} model=${taskModel} delay_ms=${taskDelayMs} queue=${queueTaskStart}`);
         await jobRepo.createAgentTaskJob({
           id: jobId,
           repo,
@@ -283,6 +291,7 @@ export function registerAgentCreateTaskRoutes(
           previousSessionResult.previousSession,
           pullRequestCompletionResolution.mode,
           taskDelayMs,
+          queueTaskStart,
           githubKey?.trim() || undefined,
           deepseek_api_key?.trim() || undefined
         );
@@ -327,6 +336,7 @@ export function registerAgentCreateTaskRoutes(
         codex_web_search,
         system_prompt,
         task_delay_ms,
+        queue: shouldQueueTask,
         deepseek_api_key,
         githubKey,
       } = request.body ?? {};
@@ -402,7 +412,14 @@ export function registerAgentCreateTaskRoutes(
         return reply.code(400).send(response);
       }
 
+      const queueError = validateQueueTaskStart(shouldQueueTask, task_delay_ms);
+      if (queueError) {
+        const response: ErrorResponse = { error: queueError };
+        return reply.code(400).send(response);
+      }
+
       const taskDelayMs = task_delay_ms ?? 0;
+      const queueTaskStart = shouldQueueTask === true;
       const taskModel = resolveTaskModel(taskRunner, model);
       const jobId = randomUUID();
       const scheduledAt = taskDelayMs > 0
@@ -430,7 +447,7 @@ export function registerAgentCreateTaskRoutes(
           pullRequest.number
         );
 
-        logger.info(`AgentTask: Scheduling ${taskRunner} review job=${jobId} repo=${repo} pr=${pullRequest.number} model=${taskModel} delay_ms=${taskDelayMs}`);
+        logger.info(`AgentTask: Scheduling ${taskRunner} review job=${jobId} repo=${repo} pr=${pullRequest.number} model=${taskModel} delay_ms=${taskDelayMs} queue=${queueTaskStart}`);
         await jobRepo.createAgentTaskJob({
           id: jobId,
           repo,
@@ -465,6 +482,7 @@ export function registerAgentCreateTaskRoutes(
           undefined,
           undefined,
           taskDelayMs,
+          queueTaskStart,
           token,
           deepseek_api_key?.trim() || undefined,
           "review",
@@ -802,6 +820,28 @@ function validateTaskDelayMs(taskDelayMs: unknown): string | undefined {
   return undefined;
 }
 
+function validateQueueTaskStart(
+  shouldQueueTask: unknown,
+  taskDelayMs: unknown
+): string | undefined {
+  if (
+    shouldQueueTask !== undefined &&
+    typeof shouldQueueTask !== "boolean"
+  ) {
+    return "Field 'queue' must be a boolean.";
+  }
+
+  if (
+    shouldQueueTask === true &&
+    typeof taskDelayMs === "number" &&
+    taskDelayMs > 0
+  ) {
+    return "Fields 'queue' and 'task_delay_ms' cannot both request delayed task start.";
+  }
+
+  return undefined;
+}
+
 async function resolvePreviousSessionJob(
   jobRepo: JobRepository,
   repo: string,
@@ -928,6 +968,7 @@ async function enqueueAgentTaskJob(
   previousSession: string | undefined,
   pullRequestCompletionMode: PullRequestCompletionMode | undefined,
   delayMs = 0,
+  queueTaskStart = false,
   githubKey?: string,
   deepseekApiKey?: string,
   taskMode: AgentTaskMode = "task",
@@ -976,6 +1017,7 @@ async function enqueueAgentTaskJob(
     {
       jobId,
       delay: delayMs,
+      ...(queueTaskStart ? { serial: true } : {}),
     }
   );
 }

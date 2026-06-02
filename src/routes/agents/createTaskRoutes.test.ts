@@ -77,6 +77,135 @@ describe("registerAgentCreateTaskRoutes", () => {
     }
   });
 
+  it("enqueues agent tasks on a serial runner queue when queue is true", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      registerAgentCreateTaskRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          base_ref: "main",
+          problem_statement: "Run after previous queued task",
+          task: "codex",
+          queue: true,
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      const body = response.json() as { id: string };
+
+      await expect(jobRepo.getAgentTaskJob(body.id)).resolves.toMatchObject({
+        id: body.id,
+        taskDelayMs: 0,
+        scheduledAt: null,
+      });
+
+      expect(queue.add).toHaveBeenCalledWith(
+        "create-codex-task",
+        expect.objectContaining({
+          repoName: "file-diff/file-diff-engine",
+          problemStatement: "Run after previous queued task",
+          task: "codex",
+        }),
+        expect.objectContaining({
+          jobId: body.id,
+          delay: 0,
+          serial: true,
+        })
+      );
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("rejects queue with a positive task delay", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      registerAgentCreateTaskRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          base_ref: "main",
+          problem_statement: "Invalid start options",
+          task: "codex",
+          queue: true,
+          task_delay_ms: 1,
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: "Fields 'queue' and 'task_delay_ms' cannot both request delayed task start.",
+      });
+      expect(queue.add).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
+  it("rejects non-boolean queue values", async () => {
+    const app = Fastify();
+    const database = await createTestDatabase();
+    const jobRepo = new JobRepository(database);
+    const queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ManagedQueue;
+
+    try {
+      registerAgentCreateTaskRoutes(app, queue, jobRepo);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/create-task",
+        headers: {
+          authorization: "Bearer admin-token",
+        },
+        payload: {
+          repo: "file-diff/file-diff-engine",
+          base_ref: "main",
+          problem_statement: "Invalid queue option",
+          task: "codex",
+          queue: "true",
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: "Field 'queue' must be a boolean.",
+      });
+      expect(queue.add).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+      await database.end();
+    }
+  });
+
   it("passes a custom system prompt through to opencode queue jobs", async () => {
     const app = Fastify();
     const database = await createTestDatabase();
