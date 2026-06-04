@@ -21,12 +21,28 @@ export const QUEUE_NAMES: Record<QueueKind, string> = {
   claude: `${QUEUE_NAME}-claude`,
 };
 
+export type AgentQueueKind = Exclude<QueueKind, "repo">;
+
+export const AGENT_TASK_SERIAL_QUEUE_NAMES: Record<AgentQueueKind, string> = {
+  opencode: `${QUEUE_NAME}-opencode-serial`,
+  codex: `${QUEUE_NAME}-codex-serial`,
+  claude: `${QUEUE_NAME}-claude-serial`,
+};
+
+export interface ManagedQueueAddOptions extends JobsOptions {
+  serial?: boolean;
+}
+
 export interface ManagedQueue {
-  add(name: QueueJobName, data: unknown, options?: JobsOptions): Promise<Job>;
+  add(
+    name: QueueJobName,
+    data: unknown,
+    options?: ManagedQueueAddOptions
+  ): Promise<Job>;
   getJob(jobId: string, jobName?: QueueJobName): Promise<Job | undefined>;
   close(): Promise<void>;
   on(event: "error", listener: (error: Error) => void): void;
-  getQueueForJobName(jobName: QueueJobName): Queue;
+  getQueueForJobName(jobName: QueueJobName, serial?: boolean): Queue;
   getQueues(): Queue[];
 }
 
@@ -71,6 +87,7 @@ export function getQueueNameForJobName(jobName: QueueJobName): string {
 
 class BullManagedQueue implements ManagedQueue {
   private readonly queuesByKind: Record<QueueKind, Queue>;
+  private readonly serialAgentQueuesByKind: Record<AgentQueueKind, Queue>;
 
   constructor() {
     this.queuesByKind = {
@@ -79,14 +96,20 @@ class BullManagedQueue implements ManagedQueue {
       codex: createBullQueue(QUEUE_NAMES.codex),
       claude: createBullQueue(QUEUE_NAMES.claude),
     };
+    this.serialAgentQueuesByKind = {
+      opencode: createBullQueue(AGENT_TASK_SERIAL_QUEUE_NAMES.opencode),
+      codex: createBullQueue(AGENT_TASK_SERIAL_QUEUE_NAMES.codex),
+      claude: createBullQueue(AGENT_TASK_SERIAL_QUEUE_NAMES.claude),
+    };
   }
 
   async add(
     name: QueueJobName,
     data: unknown,
-    options?: JobsOptions
+    options?: ManagedQueueAddOptions
   ): Promise<Job> {
-    return this.getQueueForJobName(name).add(name, data, options);
+    const { serial, ...jobsOptions } = options ?? {};
+    return this.getQueueForJobName(name, serial).add(name, data, jobsOptions);
   }
 
   async getJob(
@@ -117,8 +140,13 @@ class BullManagedQueue implements ManagedQueue {
     }
   }
 
-  getQueueForJobName(jobName: QueueJobName): Queue {
-    return this.queuesByKind[QUEUE_KIND_BY_JOB_NAME[jobName]];
+  getQueueForJobName(jobName: QueueJobName, serial = false): Queue {
+    const kind = QUEUE_KIND_BY_JOB_NAME[jobName];
+    if (serial && kind !== "repo") {
+      return this.serialAgentQueuesByKind[kind];
+    }
+
+    return this.queuesByKind[kind];
   }
 
   getQueues(): Queue[] {
@@ -127,6 +155,9 @@ class BullManagedQueue implements ManagedQueue {
       this.queuesByKind.opencode,
       this.queuesByKind.codex,
       this.queuesByKind.claude,
+      this.serialAgentQueuesByKind.opencode,
+      this.serialAgentQueuesByKind.codex,
+      this.serialAgentQueuesByKind.claude,
     ];
   }
 }

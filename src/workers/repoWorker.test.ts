@@ -153,7 +153,7 @@ describe("createWorker", () => {
         baseloadWorkersConfig: config,
       });
 
-      expect(Worker).toHaveBeenCalledTimes(4);
+      expect(Worker).toHaveBeenCalledTimes(7);
       expect((Worker as unknown as ReturnType<typeof vi.fn>).mock.calls).toEqual(
         expect.arrayContaining([
           expect.arrayContaining([
@@ -175,6 +175,21 @@ describe("createWorker", () => {
             "repo-processing-claude",
             expect.any(Function),
             expect.objectContaining({ concurrency: 4 }),
+          ]),
+          expect.arrayContaining([
+            "repo-processing-opencode-serial",
+            expect.any(Function),
+            expect.objectContaining({ concurrency: 1 }),
+          ]),
+          expect.arrayContaining([
+            "repo-processing-codex-serial",
+            expect.any(Function),
+            expect.objectContaining({ concurrency: 1 }),
+          ]),
+          expect.arrayContaining([
+            "repo-processing-claude-serial",
+            expect.any(Function),
+            expect.objectContaining({ concurrency: 1 }),
           ]),
         ])
       );

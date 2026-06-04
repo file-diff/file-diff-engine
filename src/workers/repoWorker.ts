@@ -27,6 +27,7 @@ import {
 } from "../services/opencodeTask";
 import { applyPullRequestCompletionModeWithResult } from "../services/pullRequestCompletion";
 import {
+  AGENT_TASK_SERIAL_QUEUE_NAMES,
   QUEUE_NAMES,
   type ManagedQueue,
   type QueueJobName,
@@ -92,6 +93,24 @@ export async function createWorker(
       repo,
       "create-claude-task",
       baseloadWorkersConfig.workers.claude.concurrency
+    ),
+    createNamedWorker(
+      AGENT_TASK_SERIAL_QUEUE_NAMES.opencode,
+      repo,
+      "create-opencode-task",
+      1
+    ),
+    createNamedWorker(
+      AGENT_TASK_SERIAL_QUEUE_NAMES.codex,
+      repo,
+      "create-codex-task",
+      1
+    ),
+    createNamedWorker(
+      AGENT_TASK_SERIAL_QUEUE_NAMES.claude,
+      repo,
+      "create-claude-task",
+      1
     ),
   ];
 

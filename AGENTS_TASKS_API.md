@@ -49,6 +49,7 @@ Optional body fields:
 | `auto_ready` | `boolean` | Compatibility alias for `AutoReady`. |
 | `auto_merge` | `boolean` | Compatibility alias for `AutoMerge`. |
 | `task_delay_ms` | `integer` | Non-negative delay before the worker starts. |
+| `queue` | `boolean` | When `true`, starts the task from the runner's serial queue so it begins after the previous queued task for that runner finishes. Cannot be combined with a positive `task_delay_ms`. |
 | `githubKey` | `string` | Per-request GitHub token override. |
 | `deepseek_api_key` | `string` | Per-request DeepSeek key for opencode tasks. |
 
@@ -93,7 +94,7 @@ Required body fields:
 | `repo` | `string` | Repository in `owner/repo` format. |
 | `pull_request_number` | `integer` | Pull request number to review. |
 
-The `task`, `model`, Codex tuning fields, `system_prompt`, `task_delay_ms`,
+The `task`, `model`, Codex tuning fields, `system_prompt`, `task_delay_ms`, `queue`,
 `githubKey`, and `deepseek_api_key` options match
 `POST /api/agents/create-task`.
 
